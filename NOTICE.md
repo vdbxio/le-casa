@@ -1,0 +1,25 @@
+# Third-party notices
+
+Le'Casa is GPL-3.0-or-later with an App Store exception (see `LICENSE` and
+`LICENSE-EXCEPTION`). It stands on the shoulders of these projects:
+
+| What | Where it came from | License |
+| --- | --- | --- |
+| Victron Instant Readout record layouts, model id table (`lib/decoders/victron.dart`, `victron_models.dart`) and test vectors | [keshavdv/victron-ble](https://github.com/keshavdv/victron-ble) | MIT |
+| BTHome v2 object table and test vectors (`lib/decoders/bthome_objects.dart`, `test/bthome_test.dart`) | [Bluetooth-Devices/bthome-ble](https://github.com/Bluetooth-Devices/bthome-ble) and the [BTHome format](https://bthome.io/format/) | MIT |
+| pvvx custom / ATC1441 advertising formats | [pvvx/ATC_MiThermometer](https://github.com/pvvx/ATC_MiThermometer) | GPL-3.0 (format description only) |
+| `bluetooth_low_energy` Flutter plugin | [yanshouwang/bluetooth_low_energy](https://pub.dev/packages/bluetooth_low_energy) | MIT |
+| `pointycastle` (AES-CTR, AES-CCM) | [bcgit/pc-dart](https://pub.dev/packages/pointycastle) | MIT |
+| Flutter | [flutter/flutter](https://flutter.dev) | BSD-3-Clause |
+
+Planned (not yet included): BMS auto-detection ported from
+[patman15/aiobmsble](https://github.com/patman15/aiobmsble) (Apache-2.0).
+
+## Why not flutter_blue_plus
+
+flutter_blue_plus 2.x (September 2025 onward) moved from BSD-3 to the
+"FlutterBluePlus License", which requires a paid commercial licence for any
+for-profit use, forbids relicensing, and phones home at build time. That is
+not compatible with a GPL app that may be sold or used commercially, so
+Le'Casa uses `bluetooth_low_energy` (MIT), which also supports the
+peripheral role we need later for tablet-to-tablet sync and the phone relay.

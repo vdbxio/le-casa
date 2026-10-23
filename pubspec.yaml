@@ -1,0 +1,22 @@
+name: lecasa
+description: "Le'Casa: a Bluetooth-first home automation dashboard for vans, boats and off-grid homes. No router, no Pi, no login."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+  bluetooth_low_energy: ^6.2.1
+  pointycastle: ^4.0.0
+  shared_preferences: ^2.5.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

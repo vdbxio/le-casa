@@ -76,10 +76,15 @@ class DeviceTracker extends ChangeNotifier {
 
   TrackedDevice? operator [](String id) => _devices[id];
 
-  void onAdvertisement(RawAdvertisement adv) {
+  void onAdvertisement(RawAdvertisement raw) {
     totalPackets++;
+    var d = _devices[raw.id];
+    // Keep the last known name: many devices only send it in every other
+    // packet, and a name that flickers makes the list unreadable.
+    final adv = (raw.name == null && d?.latest.name != null)
+        ? raw.withName(d!.latest.name)
+        : raw;
     final decoded = registry.decode(adv);
-    final d = _devices[adv.id];
     if (d == null) {
       _devices[adv.id] = TrackedDevice(adv)
         ..decoded = decoded

@@ -133,4 +133,27 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('8'), findsOneWidget);
   });
+
+  test('a packet without a name keeps the name heard earlier', () {
+    final t = DeviceTracker(DecoderRegistry.standard());
+    t.onAdvertisement(
+      adv(id: 'mppt', name: 'Roof MPPT', manufacturerData: {0x02E1: mppt}),
+    );
+    t.onAdvertisement(
+      adv(id: 'mppt', name: null, manufacturerData: {0x02E1: mppt}),
+    );
+    expect(t['mppt']!.latest.name, 'Roof MPPT');
+    // And a decoder that uses the name still sees it.
+    t.onAdvertisement(
+      adv(
+        id: 'fob',
+        name: "Le'Fob",
+        serviceData: {0xFCD2: '44 00 07 01 5a 3a 01'},
+      ),
+    );
+    t.onAdvertisement(
+      adv(id: 'fob', name: null, serviceData: {0xFCD2: '44 00 08 01 5a 3a 00'}),
+    );
+    expect(t['fob']!.decoded!.model, "Le'Fob");
+  });
 }

@@ -47,6 +47,21 @@ class RawAdvertisement {
     this.longServiceUuids = const [],
   });
 
+  /// Same packet with a different name. Devices often alternate between
+  /// packets with and without their name (the name rides in the scan
+  /// response), so the tracker fills a remembered name back in.
+  RawAdvertisement withName(String? name) => RawAdvertisement(
+    id: id,
+    rssi: rssi,
+    seenAt: seenAt,
+    mac: mac,
+    name: name,
+    serviceData: serviceData,
+    manufacturerData: manufacturerData,
+    serviceUuids: serviceUuids,
+    longServiceUuids: longServiceUuids,
+  );
+
   /// MAC as `AA:BB:CC:DD:EE:FF`, or null when unknown.
   String? get macString => mac
       ?.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase())

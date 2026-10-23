@@ -34,8 +34,10 @@ tablet-to-tablet sync, phone relay, voice. See the roadmap below.
    debug APK from the latest CI run under *Actions → CI → Artifacts*.
 2. Enable developer mode and USB debugging on the tablet.
 3. `flutter run` (or `adb install app-debug.apk`).
-4. Allow the Bluetooth permission. On Android 11 and older, also turn
-   location services on; Android requires that for any BLE scan.
+4. Allow the "Nearby devices" permission when asked (there is also an
+   *Allow* button in the status bar). On Android 11 and older the prompt
+   is for location instead, and location services must be on; Android
+   requires that for any BLE scan on those versions.
 5. Walk around the van. Recognised devices float to the top. Tap one for
    raw bytes, packet rate and the key field.
 

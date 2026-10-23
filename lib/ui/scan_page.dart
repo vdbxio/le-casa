@@ -41,18 +41,51 @@ class _ScanPageState extends State<ScanPage> {
     _state = s.state;
     _stateSub = s.stateChanges.listen((st) {
       setState(() => _state = st);
-      if (st == BluetoothLowEnergyState.poweredOn) _start();
+      _react(st);
     });
-    if (_state == BluetoothLowEnergyState.unauthorized) {
+    _react(_state);
+    setState(() {});
+  }
+
+  bool _asking = false;
+
+  /// The plugin starts in `unknown`, then reports the real state once the
+  /// platform side is up. React to whatever it says, whenever it says it.
+  Future<void> _react(BluetoothLowEnergyState st) async {
+    switch (st) {
+      case BluetoothLowEnergyState.unauthorized:
+        await _askPermission();
+      case BluetoothLowEnergyState.poweredOn:
+        await _start();
+      default:
+        break;
+    }
+  }
+
+  Future<void> _askPermission() async {
+    if (_asking) return;
+    _asking = true;
+    try {
+      final s = AppServices.of(context).scanner;
       final ok = await s.authorize();
+      if (!mounted) return;
       if (!ok) {
-        setState(() => _error = 'Bluetooth permission was not granted.');
+        setState(
+          () => _error = 'Bluetooth permission was not granted. Allow "Nearby devices" in Settings.',
+        );
         return;
       }
+      setState(() => _error = null);
+      // The plugin refreshes its state when the app resumes after the
+      // permission dialog; give it a moment, then start if it is ready.
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      if (!mounted) return;
       _state = s.state;
+      if (_state == BluetoothLowEnergyState.poweredOn) await _start();
+      setState(() {});
+    } finally {
+      _asking = false;
     }
-    if (_state == BluetoothLowEnergyState.poweredOn) _start();
-    setState(() {});
   }
 
   Future<void> _start() async {
@@ -115,7 +148,12 @@ class _ScanPageState extends State<ScanPage> {
       ),
       body: Column(
         children: [
-          _StatusBar(state: _state, error: _error, scanning: scanning),
+          _StatusBar(
+            state: _state,
+            error: _error,
+            scanning: scanning,
+            onAllow: _askPermission,
+          ),
           Expanded(
             child: ListenableBuilder(
               listenable: services.tracker,
@@ -157,10 +195,12 @@ class _StatusBar extends StatelessWidget {
   final BluetoothLowEnergyState state;
   final String? error;
   final bool scanning;
+  final VoidCallback onAllow;
   const _StatusBar({
     required this.state,
     required this.error,
     required this.scanning,
+    required this.onAllow,
   });
 
   @override
@@ -206,11 +246,13 @@ class _StatusBar extends StatelessWidget {
                 ),
               ),
             ),
-            if (state == BluetoothLowEnergyState.unauthorized)
+            if (state == BluetoothLowEnergyState.unauthorized) ...[
+              TextButton(onPressed: onAllow, child: const Text('Allow')),
               TextButton(
                 onPressed: services.scanner.showAppSettings,
                 child: const Text('Settings'),
               ),
+            ],
           ],
         ),
       ),

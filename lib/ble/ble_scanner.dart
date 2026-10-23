@@ -77,6 +77,10 @@ class BleScanner {
       serviceData: serviceData,
       manufacturerData: mfr,
       serviceUuids: [for (final u in a.serviceUUIDs) ?shortUuid(u)],
+      longServiceUuids: [
+        for (final u in a.serviceUUIDs)
+          if (!u.isShort) u.toString().toLowerCase(),
+      ],
     );
   }
 

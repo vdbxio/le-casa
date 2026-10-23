@@ -23,6 +23,8 @@ gear in Chloe's van. The app currently
 - recognises a Xiaomi sensor still on **stock firmware** and tells you to
   flash pvvx, and reads the pvvx "custom" and ATC1441 formats in the
   meantime;
+- recognises **Improv BLE** Wi-Fi setup broadcasts and parks them in
+  their own group;
 - stores per-device encryption keys on the tablet.
 
 Not yet: dashboard layout, two-way devices (Alpicool, Hcalory, Daly BMS),
@@ -38,8 +40,13 @@ tablet-to-tablet sync, phone relay, voice. See the roadmap below.
    *Allow* button in the status bar). On Android 11 and older the prompt
    is for location instead, and location services must be on; Android
    requires that for any BLE scan on those versions.
-5. Walk around the van. Recognised devices float to the top. Tap one for
-   raw bytes, packet rate and the key field.
+5. Walk around the van. Recognised devices are grouped by type (Climate,
+   Solar, Battery, Buttons, Le' devices, ...) in square tiles at the top;
+   tap a tile for its devices and a device for raw bytes, packet rate and
+   the key field. Everything unrecognised is listed below in the order it
+   was first heard, so rows do not jump around. Devices waiting for Wi-Fi
+   setup over Improv BLE (fresh ESPHome boards and similar) are tucked into
+   a collapsed group at the very end.
 
 ### Victron keys
 

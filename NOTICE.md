@@ -8,6 +8,7 @@ Le'Casa is GPL-3.0-or-later with an App Store exception (see `LICENSE` and
 | Victron Instant Readout record layouts, model id table (`lib/decoders/victron.dart`, `victron_models.dart`) and test vectors | [keshavdv/victron-ble](https://github.com/keshavdv/victron-ble) | MIT |
 | BTHome v2 object table and test vectors (`lib/decoders/bthome_objects.dart`, `test/bthome_test.dart`) | [Bluetooth-Devices/bthome-ble](https://github.com/Bluetooth-Devices/bthome-ble) and the [BTHome format](https://bthome.io/format/) | MIT |
 | pvvx custom / ATC1441 advertising formats | [pvvx/ATC_MiThermometer](https://github.com/pvvx/ATC_MiThermometer) | GPL-3.0 (format description only) |
+| Improv BLE advertisement format (`lib/decoders/improv.dart`) | [Improv Wi-Fi](https://www.improv-wifi.com/ble/) | format description only, no code copied |
 | `bluetooth_low_energy` Flutter plugin | [yanshouwang/bluetooth_low_energy](https://pub.dev/packages/bluetooth_low_energy) | MIT |
 | `pointycastle` (AES-CTR, AES-CCM) | [bcgit/pc-dart](https://pub.dev/packages/pointycastle) | MIT |
 | Flutter | [flutter/flutter](https://flutter.dev) | BSD-3-Clause |

@@ -41,10 +41,31 @@ class DeviceEvent {
   String toString() => '$label $kind';
 }
 
+/// What sort of thing a device is, used to group it on screen. The order
+/// here is the order groups appear in.
+enum DeviceKind {
+  climate('Climate', 'Temperature and humidity sensors'),
+  solar('Solar', 'Solar chargers'),
+  battery('Battery', 'Battery monitors and BMS'),
+  power('Power', 'Inverters, chargers and DC/DC'),
+  buttons('Buttons', 'Remotes and switches'),
+  leDevice("Le' devices", "Le'Fob, Le'Dongle"),
+  sensor('Sensors', 'Other BTHome sensors'),
+  needsSetup('Needs setup', 'Recognised, but needs firmware or a key'),
+  improv('Improv setup', 'Devices waiting for Wi-Fi credentials (Improv BLE)');
+
+  final String label;
+  final String description;
+  const DeviceKind(this.label, this.description);
+}
+
 /// What a decoder figured out about one advertisement.
 class Decoded {
   /// Short protocol tag: "BTHome", "Victron", "Xiaomi (stock)", ...
   final String protocol;
+
+  /// Which group the device belongs to on screen.
+  final DeviceKind kind;
 
   /// Best human name for the device model/kind: "SmartSolar Charger MPPT
   /// 100/50", "Temperature/Humidity sensor", "Le'Fob", ...
@@ -63,6 +84,7 @@ class Decoded {
   const Decoded({
     required this.protocol,
     required this.model,
+    this.kind = DeviceKind.sensor,
     this.readings = const [],
     this.events = const [],
     this.needs,

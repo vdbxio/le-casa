@@ -151,10 +151,21 @@ class VictronDecoder implements Decoder {
       'counter': '${h.iv}',
     };
 
+    final kind = switch (h.record) {
+      VictronRecord.solarCharger => DeviceKind.solar,
+      VictronRecord.batteryMonitor ||
+      VictronRecord.smartLithium ||
+      VictronRecord.lynxSmartBms => DeviceKind.battery,
+      _ => DeviceKind.power,
+    };
+
     final key = keyFor(adv.id);
     if (key == null) {
+      // Still grouped by what it is: a Victron MPPT without a key is shown
+      // under Solar with a "needs key" note, not hidden away.
       return Decoded(
         protocol: 'Victron',
+        kind: kind,
         model: h.modelName,
         needs:
             'Needs the encryption key from VictronConnect '
@@ -165,6 +176,7 @@ class VictronDecoder implements Decoder {
     if (key.length != 16 || key[0] != h.keyByte0) {
       return Decoded(
         protocol: 'Victron',
+        kind: kind,
         model: h.modelName,
         needs:
             'Key does not match this device (first byte should be '
@@ -185,6 +197,7 @@ class VictronDecoder implements Decoder {
       default:
         return Decoded(
           protocol: 'Victron',
+          kind: kind,
           model: h.modelName,
           needs: 'Record type "${info['record type']}" is not decoded yet',
           info: {...info, 'decrypted': hex(plain)},
@@ -192,6 +205,7 @@ class VictronDecoder implements Decoder {
     }
     return Decoded(
       protocol: 'Victron',
+      kind: kind,
       model: h.modelName,
       readings: readings,
       info: info,

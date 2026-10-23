@@ -9,9 +9,8 @@ import 'package:flutter/material.dart';
 
 import '../app.dart';
 import '../ble/device_tracker.dart';
-import '../decoders/raw_advertisement.dart';
-import 'device_page.dart';
-import 'format.dart';
+import '../decoders/decoded.dart';
+import 'group_tiles.dart';
 
 /// Phase 0 screen: every broadcast the radio hears, decoded where we can.
 class ScanPage extends StatefulWidget {
@@ -115,6 +114,79 @@ class _ScanPageState extends State<ScanPage> {
     super.dispose();
   }
 
+  Widget _body(BuildContext context, bool scanning) {
+    final tracker = AppServices.of(context).tracker;
+    final theme = Theme.of(context);
+    final groups = tracker.groups;
+    final improv = groups.remove(DeviceKind.improv) ?? const [];
+    final unknown = _onlyRecognised ? const <TrackedDevice>[] : tracker.unknown;
+
+    if (groups.isEmpty && unknown.isEmpty && improv.isEmpty) {
+      return Center(
+        child: Text(
+          scanning ? 'Listening…' : 'Not scanning',
+          style: theme.textTheme.titleMedium,
+        ),
+      );
+    }
+
+    return CustomScrollView(
+      slivers: [
+        if (groups.isNotEmpty)
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 220,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 1,
+              ),
+              delegate: SliverChildListDelegate([
+                for (final e in groups.entries)
+                  GroupTile(
+                    key: ValueKey(e.key),
+                    kind: e.key,
+                    devices: e.value,
+                  ),
+              ]),
+            ),
+          ),
+        if (unknown.isNotEmpty) ...[
+          _SectionHeader('Unknown · ${unknown.length}'),
+          SliverFixedExtentList(
+            // Fixed height rows and first-heard order: nothing jumps around
+            // while you are trying to tap it.
+            itemExtent: 64,
+            delegate: SliverChildBuilderDelegate(
+              (context, i) =>
+                  UnknownRow(key: ValueKey(unknown[i].id), device: unknown[i]),
+              childCount: unknown.length,
+            ),
+          ),
+        ],
+        if (improv.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(4, 12, 4, 0),
+              child: ExpansionTile(
+                leading: const Icon(Icons.wifi_tethering),
+                title: Text('Improv setup · ${improv.length}'),
+                subtitle: const Text(
+                  'Devices advertising Improv Wi-Fi setup (ESPHome and similar)',
+                ),
+                children: [
+                  for (final d in improv)
+                    UnknownRow(key: ValueKey(d.id), device: d),
+                ],
+              ),
+            ),
+          ),
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final services = AppServices.of(context);
@@ -125,8 +197,8 @@ class _ScanPageState extends State<ScanPage> {
         actions: [
           IconButton(
             tooltip: _onlyRecognised
-                ? 'Show everything'
-                : 'Only recognised devices',
+                ? 'Show unknown devices'
+                : 'Hide unknown devices',
             icon: Icon(
               _onlyRecognised ? Icons.filter_alt : Icons.filter_alt_off,
             ),
@@ -157,32 +229,7 @@ class _ScanPageState extends State<ScanPage> {
           Expanded(
             child: ListenableBuilder(
               listenable: services.tracker,
-              builder: (context, _) {
-                var devices = services.tracker.devices;
-                if (_onlyRecognised) {
-                  devices = devices.where((d) => d.decoded != null).toList();
-                }
-                // Recognised first, then strongest signal.
-                devices.sort((a, b) {
-                  final ra = a.decoded == null ? 1 : 0;
-                  final rb = b.decoded == null ? 1 : 0;
-                  if (ra != rb) return ra - rb;
-                  return b.latest.rssi.compareTo(a.latest.rssi);
-                });
-                if (devices.isEmpty) {
-                  return Center(
-                    child: Text(
-                      scanning ? 'Listening…' : 'Not scanning',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  );
-                }
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: devices.length,
-                  itemBuilder: (context, i) => _DeviceCard(device: devices[i]),
-                );
-              },
+              builder: (context, _) => _body(context, scanning),
             ),
           ),
         ],
@@ -260,183 +307,19 @@ class _StatusBar extends StatelessWidget {
   }
 }
 
-class _DeviceCard extends StatelessWidget {
-  final TrackedDevice device;
-  const _DeviceCard({required this.device});
-
-  @override
-  Widget build(BuildContext context) {
-    final d = device.decoded;
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final stale =
-        DateTime.now().difference(device.lastSeen) >
-        const Duration(seconds: 30);
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => DevicePage(id: device.id))),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      device.title,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: stale
-                            ? scheme.onSurface.withValues(alpha: 0.5)
-                            : null,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (d != null)
-                    _Badge(d.protocol, color: scheme.primaryContainer),
-                  const SizedBox(width: 8),
-                  _Rssi(device.latest.rssi),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                [
-                  if (device.latest.name != null &&
-                      device.latest.name != device.title)
-                    device.latest.name!,
-                  device.id,
-                  ago(device.lastSeen),
-                  '${device.packets} pkts',
-                ].join(' · '),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-              if (d != null && d.readings.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: [
-                    for (final r in d.readings)
-                      _Badge(
-                        '${r.label}  ${r.display}',
-                        color: scheme.surfaceContainerHighest,
-                        big: true,
-                      ),
-                  ],
-                ),
-              ],
-              if (d != null && d.needs != null) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Icon(Icons.key, size: 16, color: scheme.tertiary),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(d.needs!, style: theme.textTheme.bodySmall),
-                    ),
-                  ],
-                ),
-              ],
-              if (device.events.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                for (final e in device.events.take(3))
-                  Text(
-                    '${clock(e.at)}  ${e.event}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontFamily: 'monospace',
-                    ),
-                  ),
-              ],
-              if (d == null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  _rawSummary(device.latest),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontFamily: 'monospace',
-                    color: scheme.onSurfaceVariant,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  static String _rawSummary(RawAdvertisement a) {
-    final parts = <String>[
-      for (final e in a.manufacturerData.entries)
-        'mfr 0x${e.key.toRadixString(16).padLeft(4, '0')}: ${hex(e.value)}',
-      for (final e in a.serviceData.entries)
-        'svc 0x${e.key.toRadixString(16).padLeft(4, '0')}: ${hex(e.value)}',
-      if (a.serviceUuids.isNotEmpty)
-        'uuids: ${a.serviceUuids.map((u) => u.toRadixString(16)).join(', ')}',
-    ];
-    return parts.isEmpty ? 'no payload (name/flags only)' : parts.join('\n');
-  }
-}
-
-class _Badge extends StatelessWidget {
+class _SectionHeader extends StatelessWidget {
   final String text;
-  final Color color;
-  final bool big;
-  const _Badge(this.text, {required this.color, this.big = false});
+  const _SectionHeader(this.text);
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: EdgeInsets.symmetric(
-      horizontal: big ? 10 : 8,
-      vertical: big ? 6 : 3,
-    ),
-    decoration: BoxDecoration(
-      color: color,
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Text(
-      text,
-      style: big
-          ? Theme.of(context).textTheme.bodyMedium
-          : Theme.of(context).textTheme.labelSmall,
+  Widget build(BuildContext context) => SliverToBoxAdapter(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      child: Text(
+        text,
+        style: Theme.of(context).textTheme.titleSmall
+            ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      ),
     ),
   );
-}
-
-class _Rssi extends StatelessWidget {
-  final int rssi;
-  const _Rssi(this.rssi);
-
-  @override
-  Widget build(BuildContext context) {
-    final bars = rssi > -60
-        ? 4
-        : rssi > -70
-        ? 3
-        : rssi > -80
-        ? 2
-        : rssi > -90
-        ? 1
-        : 0;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(switch (bars) {
-          4 => Icons.signal_cellular_alt,
-          3 => Icons.signal_cellular_alt,
-          2 => Icons.signal_cellular_alt_2_bar,
-          1 => Icons.signal_cellular_alt_1_bar,
-          _ => Icons.signal_cellular_0_bar,
-        }, size: 16),
-        const SizedBox(width: 3),
-        Text('$rssi', style: Theme.of(context).textTheme.labelSmall),
-      ],
-    );
-  }
 }

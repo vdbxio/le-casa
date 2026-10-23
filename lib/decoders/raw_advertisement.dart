@@ -31,6 +31,10 @@ class RawAdvertisement {
   /// 16-bit service UUIDs listed in the advertisement.
   final List<int> serviceUuids;
 
+  /// 128-bit (vendor) service UUIDs, lowercase with dashes, e.g. Improv's
+  /// `00467768-6228-2272-4663-277478268000`.
+  final List<String> longServiceUuids;
+
   const RawAdvertisement({
     required this.id,
     required this.rssi,
@@ -40,6 +44,7 @@ class RawAdvertisement {
     this.serviceData = const {},
     this.manufacturerData = const {},
     this.serviceUuids = const [],
+    this.longServiceUuids = const [],
   });
 
   /// MAC as `AA:BB:CC:DD:EE:FF`, or null when unknown.

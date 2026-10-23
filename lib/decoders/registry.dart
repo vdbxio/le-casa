@@ -5,6 +5,7 @@
 import 'bthome.dart';
 import 'decoded.dart';
 import 'decoder.dart';
+import 'improv.dart';
 import 'raw_advertisement.dart';
 import 'victron.dart';
 import 'xiaomi.dart';
@@ -23,6 +24,7 @@ class DecoderRegistry {
         VictronDecoder(keyFor: keyFor),
         const XiaomiStockDecoder(),
         const PvvxCustomDecoder(),
+        const ImprovDecoder(),
       ]);
 
   Decoded? decode(RawAdvertisement adv) {

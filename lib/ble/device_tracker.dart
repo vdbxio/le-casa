@@ -50,7 +50,29 @@ class DeviceTracker extends ChangeNotifier {
 
   DeviceTracker(this.registry);
 
+  /// All devices in the order they were first heard. Insertion order of the
+  /// map, so a device never moves once it is on screen.
   List<TrackedDevice> get devices => _devices.values.toList();
+
+  /// Recognised devices grouped by kind, groups in [DeviceKind] order and
+  /// devices in first-heard order.
+  Map<DeviceKind, List<TrackedDevice>> get groups {
+    final out = <DeviceKind, List<TrackedDevice>>{};
+    for (final k in DeviceKind.values) {
+      final list = [
+        for (final d in _devices.values)
+          if (d.decoded?.kind == k) d,
+      ];
+      if (list.isNotEmpty) out[k] = list;
+    }
+    return out;
+  }
+
+  /// Devices no decoder recognised, in first-heard order.
+  List<TrackedDevice> get unknown => [
+    for (final d in _devices.values)
+      if (d.decoded == null) d,
+  ];
 
   TrackedDevice? operator [](String id) => _devices[id];
 

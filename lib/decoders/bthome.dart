@@ -43,6 +43,7 @@ class BtHomeDecoder implements Decoder {
     if (version != 2) {
       return Decoded(
         protocol: 'BTHome',
+        kind: DeviceKind.needsSetup,
         model: 'BTHome v$version device',
         needs: 'Only BTHome v2 is supported',
       );
@@ -68,6 +69,7 @@ class BtHomeDecoder implements Decoder {
       if (key == null) {
         return Decoded(
           protocol: 'BTHome (encrypted)',
+          kind: DeviceKind.needsSetup,
           model: _guessModel(adv, const []),
           needs: 'Needs the 16-byte BTHome encryption key',
           info: extra,
@@ -76,6 +78,7 @@ class BtHomeDecoder implements Decoder {
       if (mac == null) {
         return Decoded(
           protocol: 'BTHome (encrypted)',
+          kind: DeviceKind.needsSetup,
           model: _guessModel(adv, const []),
           needs:
               'Cannot decrypt without the MAC address (iOS hides it). '
@@ -86,6 +89,7 @@ class BtHomeDecoder implements Decoder {
       if (data.length < offset + 8 + 1) {
         return Decoded(
           protocol: 'BTHome (encrypted)',
+          kind: DeviceKind.needsSetup,
           model: _guessModel(adv, const []),
           needs: 'Encrypted packet too short',
           info: extra,
@@ -99,6 +103,7 @@ class BtHomeDecoder implements Decoder {
       if (plain == null) {
         return Decoded(
           protocol: 'BTHome (encrypted)',
+          kind: DeviceKind.needsSetup,
           model: _guessModel(adv, const []),
           needs: 'Decryption failed: wrong key?',
           info: extra,
@@ -186,9 +191,11 @@ class BtHomeDecoder implements Decoder {
       }
     }
 
+    final model = _guessModel(adv, readings, events: events);
     return Decoded(
       protocol: encrypted ? 'BTHome (encrypted)' : 'BTHome',
-      model: _guessModel(adv, readings, events: events),
+      model: model,
+      kind: _kindFor(model, readings, events),
       readings: readings,
       events: events,
       info: extra,
@@ -212,6 +219,24 @@ class BtHomeDecoder implements Decoder {
       return 'Temperature/Humidity sensor';
     }
     return 'BTHome device';
+  }
+
+  static DeviceKind _kindFor(
+    String model,
+    List<Reading> readings,
+    List<DeviceEvent> events,
+  ) {
+    if (model.startsWith("Le'")) return DeviceKind.leDevice;
+    final labels = readings.map((r) => r.label).toSet();
+    if (labels.contains('temperature') || labels.contains('humidity')) {
+      return DeviceKind.climate;
+    }
+    // A button device may only send its battery level between presses, so
+    // the model guess (from name or events) decides.
+    if (events.isNotEmpty || model == 'BTHome button device') {
+      return DeviceKind.buttons;
+    }
+    return DeviceKind.sensor;
   }
 
   static String _dedupe(Map<String, int> seen, String label) {

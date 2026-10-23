@@ -41,6 +41,7 @@ class XiaomiStockDecoder implements Decoder {
     };
     return Decoded(
       protocol: 'Xiaomi MiBeacon',
+      kind: DeviceKind.needsSetup,
       model: model,
       needs: encrypted
           ? 'Stock firmware is encrypted with a cloud bindkey. '
@@ -78,6 +79,7 @@ class PvvxCustomDecoder implements Decoder {
       final mac = Uint8List.fromList(d.sublist(0, 6).reversed.toList());
       return Decoded(
         protocol: 'pvvx custom',
+        kind: DeviceKind.climate,
         model: 'Xiaomi LYWSD03MMC (pvvx, custom format)',
         readings: [
           Reading('temperature', bd.getInt16(6, Endian.little) / 100, '°C'),
@@ -101,6 +103,7 @@ class PvvxCustomDecoder implements Decoder {
     // uint16 BE, counter
     return Decoded(
       protocol: 'ATC1441',
+      kind: DeviceKind.climate,
       model: 'Xiaomi LYWSD03MMC (ATC1441 format)',
       readings: [
         Reading('temperature', bd.getInt16(6, Endian.big) / 10, '°C'),

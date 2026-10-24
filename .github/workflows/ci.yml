@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.8
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: flutter analyze
+      - run: flutter test
+
+  android:
+    name: Build debug APK
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.8
+          cache: true
+      - run: flutter pub get
+      - run: flutter build apk --debug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lecasa-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 30
+      # Also publish the APK on a rolling pre-release so it can be downloaded
+      # with a plain link on a tablet (Actions artifacts need a desktop browser
+      # and a login). One tag per branch: preview-<branch>.
+      - name: Publish preview release
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          tag="preview-$(echo "$BRANCH" | tr '/' '-')"
+          cp build/app/outputs/flutter-apk/app-debug.apk lecasa-debug.apk
+          gh release delete "$tag" --cleanup-tag --yes 2>/dev/null || true
+          gh release create "$tag" lecasa-debug.apk \
+            --prerelease --target "$SHA" \
+            --title "Preview build: $BRANCH" \
+            --notes "Debug APK built by CI from \`$BRANCH\` at $SHA. Sideload on an Android tablet: download, tap, allow installs from your browser, open Le'Casa, allow Bluetooth."

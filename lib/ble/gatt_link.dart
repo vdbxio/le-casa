@@ -72,6 +72,18 @@ class GattLink implements ClosableSession {
     await central.connect(peripheral).timeout(timeout);
     debugPrint('gatt: connected ${peripheral.uuid}, discovering services');
     try {
+      // Ask for a big MTU first, like iOS and macOS do on every connection.
+      // A Daly module answered a Mac (MTU 512) in one 129-byte notification
+      // but dropped the tablet, which never asked, so some firmware may
+      // wait for this exchange. Not supported everywhere; failure is fine.
+      try {
+        final mtu = await central
+            .requestMTU(peripheral, mtu: 512)
+            .timeout(const Duration(seconds: 3));
+        debugPrint('gatt: mtu $mtu');
+      } catch (e) {
+        debugPrint('gatt: mtu request skipped: $e');
+      }
       final services = await central
           .discoverGATT(peripheral)
           .timeout(const Duration(seconds: 15));

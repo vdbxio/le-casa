@@ -181,6 +181,48 @@ void main() {
       expect(parseDalyD2Status(short), isNull);
     });
 
+    test('decodes the real frame from an 8S DL-694201312BA module', () {
+      // Captured 2026-10-24 over bleak from a Mac (single notification,
+      // MTU 512). 8 LiFePO4 cells, pack discharging.
+      final frame = fromHex(
+        'd2037c0cf30cf30cf10cf30cf40cf60cf30cf3'
+        '000000000000000000000000000000000000000000000000'
+        '000000000000000000000000000000000000000000000000'
+        '003a003a000000000000000000000000'
+        '010974f503620cf60cf1003a003a00020a9f00080002008a'
+        '0000000100010cf3000500a10000000000000000915f',
+      );
+      expect(frame.length, 129);
+      final asm = DalyFrameAssembler(DalyProtocol.d2);
+      expect(asm.add(frame), frame, reason: 'CRC must check out');
+      final s = parseDalyD2Status(frame)!;
+      expect(s.cellVoltages, [
+        3.315,
+        3.315,
+        3.313,
+        3.315,
+        3.316,
+        3.318,
+        3.315,
+        3.315,
+      ]);
+      expect(s.temperatures, [18.0, 18.0]);
+      expect(s.voltage, 26.5);
+      expect(s.current, -5.9);
+      expect(s.soc, 86.6);
+      expect(s.chargeStateText, 'discharging');
+      expect(s.remainingAh, 271.9);
+      expect(s.cycles, 138);
+      expect(s.balancing, isFalse);
+      expect(s.chargeMos, isTrue);
+      expect(s.dischargeMos, isTrue);
+      expect(s.deltaMv, 5);
+      expect(s.alarms, isEmpty);
+      // The module's own power register says 161 W; V*I gives 156 W.
+      expect(s.power, closeTo(-156.4, 0.1));
+      expect(s.toDecoded('DL-694201312BA').model, 'Daly smart BMS (8S)');
+    });
+
     test('toDecoded is a Battery device with the headline readings', () {
       final d = parseDalyD2Status(d2StatusFrame())!.toDecoded('DL-TEST');
       expect(d.kind, DeviceKind.battery);

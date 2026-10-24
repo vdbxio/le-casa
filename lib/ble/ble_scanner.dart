@@ -33,14 +33,35 @@ class BleScanner {
 
   Future<void> showAppSettings() => _central.showAppSettings();
 
-  Future<void> start() async {
-    if (_scanning) return;
+  Future<void>? _starting;
+
+  /// Starts scanning. Safe to call from several places at once: callers that
+  /// arrive while a start is in flight share the same future, and a platform
+  /// "already started" error is treated as success.
+  Future<void> start() {
+    if (_scanning) return Future.value();
+    return _starting ??= _doStart().whenComplete(() => _starting = null);
+  }
+
+  Future<void> _doStart() async {
     _sub ??= _central.discovered.listen((e) {
       final adv = toRaw(e.peripheral.uuid, e.rssi, e.advertisement);
       _out.add(adv);
     });
-    await _central.startDiscovery();
+    try {
+      await _central.startDiscovery();
+    } catch (e) {
+      // Android reports SCAN_FAILED_ALREADY_STARTED (1) when another path
+      // got there first; the radio is scanning, so that is not a failure.
+      if (!_isAlreadyStarted(e)) rethrow;
+    }
     _scanning = true;
+  }
+
+  static bool _isAlreadyStarted(Object e) {
+    final msg = e.toString().toLowerCase();
+    return msg.contains('already') ||
+        RegExp(r'error ?code[ =:]*1\b').hasMatch(msg);
   }
 
   Future<void> stop() async {

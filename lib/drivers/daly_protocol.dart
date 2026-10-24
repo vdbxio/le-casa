@@ -74,26 +74,32 @@ class DalyFrameAssembler {
   DalyFrameAssembler(this.protocol);
 
   Uint8List? add(List<int> chunk) {
-    if (_buf.isEmpty) {
+    _buf.addAll(chunk);
+    while (true) {
       // Skip to a plausible frame start.
-      final start = chunk.indexOf(protocol.response);
-      if (start < 0) return null;
-      _buf.addAll(chunk.sublist(start));
-    } else {
-      _buf.addAll(chunk);
+      final start = _buf.indexOf(protocol.response);
+      if (start < 0) {
+        _buf.clear();
+        return null;
+      }
+      if (start > 0) _buf.removeRange(0, start);
+      if (_buf.length < 3) return null;
+      if (_buf[1] != 0x03 && _buf[1] != 0x06) {
+        _buf.removeAt(0);
+        continue;
+      }
+      final total = 3 + _buf[2] + 2;
+      if (_buf.length < total) return null;
+      final frame = Uint8List.fromList(_buf.sublist(0, total));
+      final want = frame[total - 2] | (frame[total - 1] << 8);
+      if (crc16Modbus(frame, total - 2) == want) {
+        _buf.removeRange(0, total);
+        return frame;
+      }
+      // Not a frame after all (we probably joined mid-stream): slide one
+      // byte and look for the next start marker in what we already have.
+      _buf.removeAt(0);
     }
-    if (_buf.length < 3) return null;
-    if (_buf[1] != 0x03 && _buf[1] != 0x06) {
-      _buf.clear();
-      return null;
-    }
-    final total = 3 + _buf[2] + 2;
-    if (_buf.length < total) return null;
-    final frame = Uint8List.fromList(_buf.sublist(0, total));
-    _buf.clear();
-    final want = frame[total - 2] | (frame[total - 1] << 8);
-    if (crc16Modbus(frame, total - 2) != want) return null;
-    return frame;
   }
 
   void reset() => _buf.clear();

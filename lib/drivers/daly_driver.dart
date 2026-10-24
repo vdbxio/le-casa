@@ -43,6 +43,16 @@ class DalyDriver implements GattDriver {
   Future<Decoded> read(GattSession s, RawAdvertisement adv) async {
     final rx = s.require(notifyUuid, 'Daly notify');
     final tx = s.require(writeUuid, 'Daly write');
+    // Fire the status request before subscribing. On the tablet the link to
+    // the module has been seen to die a few seconds after connecting, so
+    // every millisecond before the first request counts; if the module
+    // answers before notifications are on, the reply is simply repeated
+    // by the exchange below.
+    await s.write(
+      tx,
+      dalyReadRequest(DalyProtocol.d2, 0x0000, 62),
+      withResponse: false,
+    );
     final notifications = await s.subscribe(rx);
 
     // Auto-detect: newer modules answer 0xD2, older ones 0x81. Whichever

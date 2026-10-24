@@ -100,6 +100,25 @@ void main() {
       expect(asm.add(good), good);
     });
 
+    test('assembler recovers when it joins mid-frame', () {
+      final frame = d2StatusFrame();
+      final asm = DalyFrameAssembler(DalyProtocol.d2);
+      // Tail of an earlier frame, containing a stray 0xD2, then a good one.
+      final tail = Uint8List.fromList([
+        ...frame.sublist(60, 100),
+        0xD2,
+        0x03,
+        0x10,
+        ...frame.sublist(100),
+      ]);
+      expect(asm.add(tail), isNull);
+      Uint8List? got;
+      for (final c in chunked(frame)) {
+        got ??= asm.add(c);
+      }
+      expect(got, frame);
+    });
+
     test('assembler ignores noise before the start byte', () {
       final frame = d2StatusFrame();
       final asm = DalyFrameAssembler(DalyProtocol.d2);
@@ -211,8 +230,8 @@ void main() {
       final d = await const DalyDriver().read(session, dalyAdv);
       expect(d.model, 'Daly smart BMS (4S)');
       expect(d.info['protocol'], 'D2');
-      // Status request, then the optional MOS request.
-      expect(session.writes.length, 2);
+      // Early status request, status request, then the optional MOS request.
+      expect(session.writes.length, 3);
       expect(session.writes.first, fromHex('d2 03 00 00 00 3e d7 b9'));
     });
 

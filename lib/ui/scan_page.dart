@@ -21,80 +21,14 @@ class ScanPage extends StatefulWidget {
 }
 
 class _ScanPageState extends State<ScanPage> {
-  BluetoothLowEnergyState _state = BluetoothLowEnergyState.unknown;
-  StreamSubscription? _stateSub;
   Timer? _tick;
   bool _onlyRecognised = false;
-  String? _error;
 
   @override
   void initState() {
     super.initState();
     // Repaint "3s ago" labels once a second.
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => setState(() {}));
-    WidgetsBinding.instance.addPostFrameCallback((_) => _boot());
-  }
-
-  Future<void> _boot() async {
-    final s = AppServices.of(context).scanner;
-    _state = s.state;
-    _stateSub = s.stateChanges.listen((st) {
-      setState(() => _state = st);
-      _react(st);
-    });
-    _react(_state);
-    setState(() {});
-  }
-
-  bool _asking = false;
-
-  /// The plugin starts in `unknown`, then reports the real state once the
-  /// platform side is up. React to whatever it says, whenever it says it.
-  Future<void> _react(BluetoothLowEnergyState st) async {
-    switch (st) {
-      case BluetoothLowEnergyState.unauthorized:
-        await _askPermission();
-      case BluetoothLowEnergyState.poweredOn:
-        await _start();
-      default:
-        break;
-    }
-  }
-
-  Future<void> _askPermission() async {
-    if (_asking) return;
-    _asking = true;
-    try {
-      final s = AppServices.of(context).scanner;
-      final ok = await s.authorize();
-      if (!mounted) return;
-      if (!ok) {
-        setState(
-          () => _error = 'Bluetooth permission was not granted. Allow "Nearby devices" in Settings.',
-        );
-        return;
-      }
-      setState(() => _error = null);
-      // The plugin refreshes its state when the app resumes after the
-      // permission dialog; give it a moment, then start if it is ready.
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-      if (!mounted) return;
-      _state = s.state;
-      if (_state == BluetoothLowEnergyState.poweredOn) await _start();
-      setState(() {});
-    } finally {
-      _asking = false;
-    }
-  }
-
-  Future<void> _start() async {
-    final s = AppServices.of(context).scanner;
-    try {
-      await s.start();
-      setState(() => _error = null);
-    } catch (e) {
-      setState(() => _error = 'Could not start scanning: $e');
-    }
   }
 
   Future<void> _toggle() async {
@@ -102,7 +36,7 @@ class _ScanPageState extends State<ScanPage> {
     if (s.scanning) {
       await s.stop();
     } else {
-      await _start();
+      await AppServices.of(context).autostart.startScan();
     }
     setState(() {});
   }
@@ -110,7 +44,6 @@ class _ScanPageState extends State<ScanPage> {
   @override
   void dispose() {
     _tick?.cancel();
-    _stateSub?.cancel();
     super.dispose();
   }
 
@@ -194,9 +127,11 @@ class _ScanPageState extends State<ScanPage> {
   Widget build(BuildContext context) {
     final services = AppServices.of(context);
     final scanning = services.scanner.scanning;
+    final autostart = services.autostart;
+    final state = autostart.state;
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Le'Casa · Bluetooth test"),
+        title: const Text('Devices'),
         actions: [
           IconButton(
             tooltip: _onlyRecognised
@@ -233,7 +168,7 @@ class _ScanPageState extends State<ScanPage> {
           IconButton(
             tooltip: scanning ? 'Pause' : 'Scan',
             icon: Icon(scanning ? Icons.pause_circle : Icons.play_circle),
-            onPressed: _state == BluetoothLowEnergyState.poweredOn
+            onPressed: state == BluetoothLowEnergyState.poweredOn
                 ? _toggle
                 : null,
           ),
@@ -242,10 +177,10 @@ class _ScanPageState extends State<ScanPage> {
       body: Column(
         children: [
           _StatusBar(
-            state: _state,
-            error: _error,
+            state: state,
+            error: autostart.error,
             scanning: scanning,
-            onAllow: _askPermission,
+            onAllow: autostart.askPermission,
           ),
           Expanded(
             child: ListenableBuilder(

@@ -20,3 +20,13 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    # League Spartan, SIL Open Font License 1.1 (assets/fonts/OFL.txt).
+    - family: LeagueSpartan
+      fonts:
+        - asset: assets/fonts/LeagueSpartan-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/LeagueSpartan-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/LeagueSpartan-Bold.ttf
+          weight: 700

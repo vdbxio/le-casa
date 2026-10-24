@@ -20,6 +20,9 @@
                      tools:targetApi="31"/>
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE"
                      tools:targetApi="31"/>
+    <!-- Only for the weather card when the tablet happens to be online
+         (Open-Meteo, no account). Everything else works offline. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true"/>
     <application
         android:label="Le'Casa"

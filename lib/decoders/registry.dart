@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Chloe Madison and contributors.
 // SPDX-License-Identifier: GPL-3.0-or-later WITH App-Store-Exception
 
+import 'appliances.dart';
 import 'apple.dart';
 import 'bthome.dart';
 import 'daly.dart';
@@ -28,6 +29,8 @@ class DecoderRegistry {
         const PvvxCustomDecoder(),
         const ImprovDecoder(),
         const DalyDecoder(),
+        const HcaloryDecoder(),
+        const AlpicoolDecoder(),
         const AppleDecoder(),
       ]);
 

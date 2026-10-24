@@ -16,6 +16,7 @@ IconData iconFor(DeviceKind k) => switch (k) {
   DeviceKind.solar => Icons.solar_power,
   DeviceKind.battery => Icons.battery_charging_full,
   DeviceKind.power => Icons.electrical_services,
+  DeviceKind.appliance => Icons.kitchen,
   DeviceKind.buttons => Icons.radio_button_checked,
   DeviceKind.leDevice => Icons.home,
   DeviceKind.sensor => Icons.sensors,

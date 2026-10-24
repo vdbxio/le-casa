@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lecasa/decoders/decoded.dart';
+import 'package:lecasa/decoders/raw_advertisement.dart';
 import 'package:lecasa/decoders/registry.dart';
 
 import 'helpers.dart';
@@ -69,5 +70,24 @@ void main() {
     expect(out.kind, DeviceKind.battery);
     expect(out.needs, contains('connection'));
     expect(out.info['module'], 'DL-694201312BA');
+  });
+
+  test('Hcalory heater and Alpicool fridge get appliance cards', () {
+    final heater = reg.decode(
+      RawAdvertisement(
+        id: 'h',
+        name: 'BYD-DC32622B4821',
+        rssi: -60,
+        seenAt: DateTime.utc(2026),
+        serviceUuids: const [0xFFE0],
+      ),
+    )!;
+    expect(heater.protocol, 'Hcalory');
+    expect(heater.kind, DeviceKind.appliance);
+
+    final fridge = reg.decode(adv(name: 'AK1-1234'))!;
+    expect(fridge.protocol, 'Alpicool');
+    expect(fridge.kind, DeviceKind.appliance);
+    expect(reg.decode(adv(name: 'Avocado')), isNull);
   });
 }

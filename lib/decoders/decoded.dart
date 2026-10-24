@@ -48,6 +48,7 @@ enum DeviceKind {
   solar('Solar', 'Solar chargers'),
   battery('Battery', 'Battery monitors and BMS'),
   power('Power', 'Inverters, chargers and DC/DC'),
+  appliance('Appliances', 'Heaters, fridges and other connected appliances'),
   buttons('Buttons', 'Remotes and switches'),
   leDevice("Le' devices", "Le'Fob, Le'Dongle"),
   sensor('Sensors', 'Other BTHome sensors'),

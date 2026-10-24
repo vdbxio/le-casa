@@ -52,7 +52,11 @@ enum DeviceKind {
   leDevice("Le' devices", "Le'Fob, Le'Dongle"),
   sensor('Sensors', 'Other BTHome sensors'),
   needsSetup('Needs setup', 'Recognised, but needs firmware or a key'),
-  improv('Improv setup', 'Devices waiting for Wi-Fi credentials (Improv BLE)');
+  improv('Improv setup', 'Devices waiting for Wi-Fi credentials (Improv BLE)'),
+  background(
+    'Phones & beacons',
+    'Apple and similar background adverts with nothing to read',
+  );
 
   final String label;
   final String description;

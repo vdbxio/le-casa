@@ -13,7 +13,7 @@ void main() {
   DeviceTracker feed() {
     final t = DeviceTracker(DecoderRegistry.standard());
     t.onAdvertisement(
-      adv(id: 'phone', mac: null, manufacturerData: {0x004C: '10 05 01'}),
+      adv(id: 'phone', mac: null, manufacturerData: {0x0059: '10 05 01'}),
     );
     t.onAdvertisement(
       adv(
@@ -36,6 +36,9 @@ void main() {
     t.onAdvertisement(
       adv(id: 'tv', mac: null, manufacturerData: {0x0075: '42 04'}),
     );
+    t.onAdvertisement(
+      adv(id: 'airtag', mac: null, manufacturerData: {0x004C: '12 02 00 00'}),
+    );
     return t;
   }
 
@@ -46,6 +49,7 @@ void main() {
       DeviceKind.solar,
       DeviceKind.leDevice,
       DeviceKind.improv,
+      DeviceKind.background,
     ]);
     expect(
       g[DeviceKind.solar]!.single.decoded!.needs,
@@ -61,7 +65,7 @@ void main() {
       adv(id: 'tv', mac: null, manufacturerData: {0x0075: '42 05'}),
     );
     t.onAdvertisement(
-      adv(id: 'phone', mac: null, manufacturerData: {0x004C: '10 06'}),
+      adv(id: 'phone', mac: null, manufacturerData: {0x0059: '10 06'}),
     );
     expect(t.unknown.map((d) => d.id), ['phone', 'tv']);
   });

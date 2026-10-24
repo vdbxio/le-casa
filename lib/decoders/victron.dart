@@ -128,6 +128,26 @@ class VictronDecoder implements Decoder {
 
   const VictronDecoder({this.keyFor = noKeys});
 
+  static Decoded _instantReadoutOff(Uint8List data) {
+    String model = 'Victron device';
+    final info = <String, String>{};
+    if (data.length >= 4) {
+      final id = ByteData.sublistView(data).getUint16(2, Endian.little);
+      model = victronModelNames[id] ?? model;
+      info['model id'] = '0x${id.toRadixString(16).toUpperCase()}';
+    }
+    return Decoded(
+      protocol: 'Victron',
+      kind: DeviceKind.needsSetup,
+      model: model,
+      needs:
+          'Instant Readout is off. In VictronConnect open the device, '
+          'Settings > Product info, turn on "Instant readout via Bluetooth", '
+          'then paste its key here.',
+      info: info,
+    );
+  }
+
   @override
   String get name => 'Victron';
 
@@ -142,7 +162,11 @@ class VictronDecoder implements Decoder {
     final data = adv.manufacturerData[victronCompanyId];
     if (data == null) return null;
     final h = VictronHeader.parse(data);
-    if (h == null) return null;
+    if (h == null) {
+      // A short product advert with no Instant Readout record: the device
+      // exists but is not broadcasting readings yet.
+      return _instantReadoutOff(data);
+    }
 
     final info = <String, String>{
       'model id': '0x${h.modelId.toRadixString(16).toUpperCase()}',

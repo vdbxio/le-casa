@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Chloe Madison and contributors.
 // SPDX-License-Identifier: GPL-3.0-or-later WITH App-Store-Exception
 
+import 'apple.dart';
 import 'bthome.dart';
 import 'decoded.dart';
 import 'decoder.dart';
@@ -25,6 +26,7 @@ class DecoderRegistry {
         const XiaomiStockDecoder(),
         const PvvxCustomDecoder(),
         const ImprovDecoder(),
+        const AppleDecoder(),
       ]);
 
   Decoded? decode(RawAdvertisement adv) {

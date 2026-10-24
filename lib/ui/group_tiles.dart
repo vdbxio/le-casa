@@ -21,6 +21,7 @@ IconData iconFor(DeviceKind k) => switch (k) {
   DeviceKind.sensor => Icons.sensors,
   DeviceKind.needsSetup => Icons.key,
   DeviceKind.improv => Icons.wifi_tethering,
+  DeviceKind.background => Icons.phone_iphone,
 };
 
 /// The one reading that best sums a device up on a small tile.

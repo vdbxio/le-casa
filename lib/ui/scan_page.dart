@@ -119,9 +119,13 @@ class _ScanPageState extends State<ScanPage> {
     final theme = Theme.of(context);
     final groups = tracker.groups;
     final improv = groups.remove(DeviceKind.improv) ?? const [];
+    final background = groups.remove(DeviceKind.background) ?? const [];
     final unknown = _onlyRecognised ? const <TrackedDevice>[] : tracker.unknown;
 
-    if (groups.isEmpty && unknown.isEmpty && improv.isEmpty) {
+    if (groups.isEmpty &&
+        unknown.isEmpty &&
+        improv.isEmpty &&
+        background.isEmpty) {
       return Center(
         child: Text(
           scanning ? 'Listening…' : 'Not scanning',
@@ -166,21 +170,20 @@ class _ScanPageState extends State<ScanPage> {
           ),
         ],
         if (improv.isNotEmpty)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(4, 12, 4, 0),
-              child: ExpansionTile(
-                leading: const Icon(Icons.wifi_tethering),
-                title: Text('Improv setup · ${improv.length}'),
-                subtitle: const Text(
-                  'Devices advertising Improv Wi-Fi setup (ESPHome and similar)',
-                ),
-                children: [
-                  for (final d in improv)
-                    UnknownRow(key: ValueKey(d.id), device: d),
-                ],
-              ),
-            ),
+          _CollapsedGroup(
+            icon: Icons.wifi_tethering,
+            title: 'Improv setup · ${improv.length}',
+            subtitle:
+                'Devices advertising Improv Wi-Fi setup (ESPHome and similar)',
+            devices: improv,
+          ),
+        if (background.isNotEmpty)
+          _CollapsedGroup(
+            icon: Icons.phone_iphone,
+            title: 'Phones & beacons · ${background.length}',
+            subtitle:
+                'Apple and similar background adverts. Nothing to read here.',
+            devices: background,
           ),
         const SliverToBoxAdapter(child: SizedBox(height: 24)),
       ],
@@ -319,6 +322,37 @@ class _SectionHeader extends StatelessWidget {
         text,
         style: Theme.of(context).textTheme.titleSmall
             ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      ),
+    ),
+  );
+}
+
+/// A group of recognised-but-uninteresting devices, folded away at the end
+/// of the list so they do not crowd out the things worth tapping.
+class _CollapsedGroup extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final List<TrackedDevice> devices;
+
+  const _CollapsedGroup({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.devices,
+  });
+
+  @override
+  Widget build(BuildContext context) => SliverToBoxAdapter(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(4, 12, 4, 0),
+      child: ExpansionTile(
+        leading: Icon(icon),
+        title: Text(title),
+        subtitle: Text(subtitle),
+        children: [
+          for (final d in devices) UnknownRow(key: ValueKey(d.id), device: d),
+        ],
       ),
     ),
   );

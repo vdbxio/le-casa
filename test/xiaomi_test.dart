@@ -49,6 +49,6 @@ void main() {
   });
 
   test('unknown packets decode to null', () {
-    expect(reg.decode(adv(manufacturerData: {0x004C: '02 15 00'})), isNull);
+    expect(reg.decode(adv(manufacturerData: {0x0059: '02 15 00'})), isNull);
   });
 }

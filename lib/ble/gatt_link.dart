@@ -5,9 +5,9 @@
 // Real GattSession on top of the bluetooth_low_energy CentralManager.
 
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:bluetooth_low_energy/bluetooth_low_energy.dart';
+import 'package:flutter/foundation.dart';
 
 import 'gatt_session.dart';
 
@@ -39,12 +39,18 @@ class GattLink implements ClosableSession {
       ] {
     _notifySub = _central.characteristicNotified.listen((e) {
       if (e.peripheral != peripheral) return;
-      _notify[e.characteristic.uuid.toString().toLowerCase()]?.add(e.value);
+      final uuid = e.characteristic.uuid.toString().toLowerCase();
+      debugPrint(
+        'gatt: notify ${uuid.substring(4, 8)} ${e.value.length} B: '
+        '${_hex(e.value)}',
+      );
+      _notify[uuid]?.add(e.value);
     });
     _stateSub = _central.connectionStateChanged.listen((e) {
       if (e.peripheral == peripheral &&
           e.state == ConnectionState.disconnected &&
           !_disconnected.isCompleted) {
+        debugPrint('gatt: ${peripheral.uuid} disconnected by the device');
         _disconnected.complete();
       }
     });
@@ -58,18 +64,29 @@ class GattLink implements ClosableSession {
   static Future<GattLink> open(
     CentralManager central,
     Peripheral peripheral, {
-    Duration timeout = const Duration(seconds: 15),
+    // Android gives up on its own after 30 s; a Daly module in a battery
+    // box has been seen to take 22 s, so do not cut it shorter than that.
+    Duration timeout = const Duration(seconds: 32),
   }) async {
+    debugPrint('gatt: connecting ${peripheral.uuid}');
     await central.connect(peripheral).timeout(timeout);
+    debugPrint('gatt: connected ${peripheral.uuid}, discovering services');
     try {
-      final services = await central.discoverGATT(peripheral).timeout(timeout);
+      final services = await central
+          .discoverGATT(peripheral)
+          .timeout(const Duration(seconds: 15));
       final chars = <GATTCharacteristic>[
         for (final s in services) ...s.characteristics,
         for (final s in services)
           for (final inc in s.includedServices) ...inc.characteristics,
       ];
+      debugPrint(
+        'gatt: ${peripheral.uuid} has ${chars.length} characteristics: '
+        '${chars.map((c) => c.uuid.toString().substring(4, 8)).join(' ')}',
+      );
       return GattLink._(central, peripheral, chars);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('gatt: discovery on ${peripheral.uuid} failed: $e');
       try {
         await central.disconnect(peripheral);
       } catch (_) {}
@@ -85,15 +102,25 @@ class GattLink implements ClosableSession {
       _central.readCharacteristic(peripheral, _platform(c));
 
   @override
-  Future<void> write(GattChar c, Uint8List data, {bool withResponse = true}) =>
-      _central.writeCharacteristic(
-        peripheral,
-        _platform(c),
-        value: data,
-        type: withResponse
-            ? GATTCharacteristicWriteType.withResponse
-            : GATTCharacteristicWriteType.withoutResponse,
-      );
+  Future<void> write(GattChar c, Uint8List data, {bool withResponse = true}) {
+    // Honour what the characteristic actually supports: a module that only
+    // takes one kind of write would reject (or worse, stall on) the other.
+    final useResponse = withResponse
+        ? c.canWrite || !c.canWriteWithoutResponse
+        : !c.canWriteWithoutResponse && c.canWrite;
+    debugPrint(
+      'gatt: write ${c.uuid.substring(4, 8)} '
+      '${useResponse ? 'with' : 'without'} response: ${_hex(data)}',
+    );
+    return _central.writeCharacteristic(
+      peripheral,
+      _platform(c),
+      value: data,
+      type: useResponse
+          ? GATTCharacteristicWriteType.withResponse
+          : GATTCharacteristicWriteType.withoutResponse,
+    );
+  }
 
   @override
   Future<Stream<Uint8List>> subscribe(GattChar c) async {
@@ -101,6 +128,7 @@ class GattLink implements ClosableSession {
     if (existing != null) return existing.stream;
     final ctl = StreamController<Uint8List>.broadcast();
     _notify[c.uuid] = ctl;
+    debugPrint('gatt: subscribe ${c.uuid.substring(4, 8)}');
     await _central.setCharacteristicNotifyState(
       peripheral,
       _platform(c),
@@ -111,6 +139,7 @@ class GattLink implements ClosableSession {
 
   @override
   Future<void> close() async {
+    debugPrint('gatt: closing ${peripheral.uuid}');
     await _notifySub?.cancel();
     await _stateSub?.cancel();
     for (final c in _notify.values) {
@@ -124,3 +153,6 @@ class GattLink implements ClosableSession {
     }
   }
 }
+
+String _hex(List<int> b) =>
+    b.map((x) => x.toRadixString(16).padLeft(2, '0')).join(' ');

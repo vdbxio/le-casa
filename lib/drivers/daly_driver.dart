@@ -117,7 +117,9 @@ class DalyDriver implements GattDriver {
       if (f != null && !done.isCompleted) done.complete(f);
     });
     try {
-      await s.write(tx, request, withResponse: tx.canWrite);
+      // Both community drivers write without response; the module's UART
+      // bridge does not like ATT write requests.
+      await s.write(tx, request, withResponse: false);
       return await done.future.timeout(timeout, onTimeout: () => null);
     } finally {
       await sub.cancel();

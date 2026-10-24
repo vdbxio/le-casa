@@ -209,6 +209,7 @@ class ConnectionManager extends ChangeNotifier {
       ..phase = LinkPhase.connecting
       ..lastAttempt = DateTime.now()
       ..error = null;
+    debugPrint('poll: ${l.id} (${l.driver.name}) connecting');
     notifyListeners();
     ClosableSession? link;
     try {
@@ -218,6 +219,7 @@ class ConnectionManager extends ChangeNotifier {
       final decoded = await l.driver
           .read(link, dev.lastRecognised ?? dev.latest)
           .timeout(l.driver.timeout);
+      debugPrint('poll: ${l.id} ok: ${decoded.readings.take(4).join(', ')}');
       tracker.setPolled(l.id, decoded);
       l
         ..phase = LinkPhase.ok
@@ -225,10 +227,12 @@ class ConnectionManager extends ChangeNotifier {
         ..lastOk = DateTime.now()
         ..nextDue = DateTime.now().add(l.driver.interval);
     } on UnsupportedDeviceException catch (e) {
+      debugPrint('poll: ${l.id} unsupported: ${e.message}');
       l
         ..phase = LinkPhase.unsupported
         ..error = e.message;
     } catch (e) {
+      debugPrint('poll: ${l.id} failed: $e');
       _fail(l, _describe(e));
     } finally {
       await link?.close();

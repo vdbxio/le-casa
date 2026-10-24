@@ -41,6 +41,13 @@ The app currently
   - Each device has a "Read over connection" switch and a "Read now"
     button on its page; the link icon on the scan screen pauses all
     connections at once (handy when you want to use the vendor app).
+  - Known issue: the PRITOM M10 test tablet cannot hold a link to the
+    Daly module. The module connects, then the link times out 4 s after
+    the module's connection-parameter update, every time, whatever the app
+    does (write type, scan paused, MTU 512). The same module answers a Mac
+    instantly, so the Daly driver is verified against a real frame (see
+    `test/daly_protocol_test.dart`) and the card simply waits until a
+    radio that gets along with the module, or a Le'Dongle relay, reads it.
 
 Not yet: dashboard layout, controlling two-way devices (Alpicool, Hcalory),
 tablet-to-tablet sync, phone relay, voice. See the roadmap below.

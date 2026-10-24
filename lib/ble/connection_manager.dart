@@ -76,8 +76,49 @@ typedef SessionOpener = Future<ClosableSession> Function(String id);
 SessionOpener scannerOpener(BleScanner scanner) => (id) async {
   final p = scanner.peripheralFor(id);
   if (p == null) throw StateError('Device not seen by the scanner');
-  return GattLink.open(scanner.central, p);
+  // Scanning and connecting fight over the radio on cheap tablets; a scan
+  // left running is the classic cause of GATT status 133 on connect and of
+  // links that time out right after they come up. Pause it for the few
+  // seconds the link lives.
+  final wasScanning = scanner.scanning;
+  if (wasScanning) await scanner.stop();
+  try {
+    final link = await GattLink.open(scanner.central, p);
+    return _ScanPausingSession(link, wasScanning ? scanner : null);
+  } catch (_) {
+    if (wasScanning) unawaited(scanner.start());
+    rethrow;
+  }
 };
+
+/// Restarts the scan when the link closes.
+class _ScanPausingSession implements ClosableSession {
+  final GattLink _link;
+  final BleScanner? _resume;
+  _ScanPausingSession(this._link, this._resume);
+
+  @override
+  List<GattChar> get characteristics => _link.characteristics;
+  @override
+  Future<Uint8List> read(GattChar c) => _link.read(c);
+  @override
+  Future<void> write(GattChar c, Uint8List data, {bool withResponse = true}) =>
+      _link.write(c, data, withResponse: withResponse);
+  @override
+  Future<Stream<Uint8List>> subscribe(GattChar c) => _link.subscribe(c);
+  @override
+  Future<void> close() async {
+    await _link.close();
+    final r = _resume;
+    if (r != null) {
+      try {
+        await r.start();
+      } catch (e) {
+        debugPrint('poll: could not restart scanning: $e');
+      }
+    }
+  }
+}
 
 class ConnectionManager extends ChangeNotifier {
   static const _disabledKey = 'gatt:disabled';

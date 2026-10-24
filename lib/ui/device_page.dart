@@ -7,6 +7,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../app.dart';
+import '../ble/connection_manager.dart';
+import '../ble/device_tracker.dart';
 import '../decoders/raw_advertisement.dart';
 import 'format.dart';
 
@@ -54,7 +56,11 @@ class _DevicePageState extends State<DevicePage> {
     final services = AppServices.of(context);
     final theme = Theme.of(context);
     return ListenableBuilder(
-      listenable: Listenable.merge([services.tracker, services.keys]),
+      listenable: Listenable.merge([
+        services.tracker,
+        services.keys,
+        services.connections,
+      ]),
       builder: (context, _) {
         final dev = services.tracker[widget.id];
         if (dev == null) {
@@ -63,8 +69,9 @@ class _DevicePageState extends State<DevicePage> {
             body: const Center(child: Text('Device gone')),
           );
         }
-        final d = dev.decoded;
+        final d = dev.view;
         final a = dev.latest;
+        final link = services.connections[widget.id];
         final hasKey = services.keys.has(widget.id);
         final wantsKey = d?.needs != null || hasKey;
         return Scaffold(
@@ -80,10 +87,19 @@ class _DevicePageState extends State<DevicePage> {
                 'Packets',
                 '${dev.packets} (${dev.rate.toStringAsFixed(1)}/min)',
               ),
+              if (link != null) ...[
+                const Divider(height: 32),
+                _ConnectionSection(link: link, device: dev),
+              ],
               if (d != null) ...[
                 const Divider(height: 32),
                 Text(d.protocol, style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
+                if (dev.polled != null && dev.polledAt != null)
+                  Text(
+                    'Read over connection ${ago(dev.polledAt!)}',
+                    style: theme.textTheme.bodySmall,
+                  ),
                 if (d.needs != null)
                   Card(
                     color: theme.colorScheme.tertiaryContainer,
@@ -234,4 +250,82 @@ class _DevicePageState extends State<DevicePage> {
       ],
     ),
   );
+}
+
+/// Status and controls for a device that is read over a GATT connection.
+class _ConnectionSection extends StatelessWidget {
+  final Link link;
+  final TrackedDevice device;
+  const _ConnectionSection({required this.link, required this.device});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final connections = AppServices.of(context).connections;
+    final status = switch (link.phase) {
+      LinkPhase.ok when link.lastOk != null =>
+        'Last read ${ago(link.lastOk!)}, next in '
+            '${_inSeconds(link.nextDue)}',
+      LinkPhase.failed =>
+        '${link.statusText}. Retry in ${_inSeconds(link.nextDue)}',
+      _ => link.statusText,
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Connection', style: theme.textTheme.titleMedium),
+        const SizedBox(height: 4),
+        Text(
+          '${link.driver.name} driver. Le\'Casa connects every '
+          '${_duration(link.driver.interval)}, reads, and disconnects so the '
+          'device stays free for its own app in between. Only one app can be '
+          'connected at a time.',
+          style: theme.textTheme.bodySmall,
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Read over connection'),
+          subtitle: Text(status),
+          value: link.enabled,
+          onChanged: link.phase == LinkPhase.unsupported
+              ? null
+              : (v) => connections.setDeviceEnabled(link.id, v),
+        ),
+        if (!connections.enabled)
+          Text(
+            'Connections are paused globally (see the scan screen menu).',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.tertiary,
+            ),
+          ),
+        Row(
+          children: [
+            FilledButton.tonalIcon(
+              onPressed: link.busy || link.phase == LinkPhase.unsupported
+                  ? null
+                  : () => connections.readNow(link.id),
+              icon: link.busy
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.sync),
+              label: Text(link.busy ? link.statusText : 'Read now'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  static String _inSeconds(DateTime t) {
+    final s = t.difference(DateTime.now()).inSeconds;
+    if (s <= 0) return 'a moment';
+    if (s < 90) return '${s}s';
+    return '${(s / 60).round()} min';
+  }
+
+  static String _duration(Duration d) =>
+      d.inMinutes >= 1 ? '${d.inMinutes} min' : '${d.inSeconds} s';
 }

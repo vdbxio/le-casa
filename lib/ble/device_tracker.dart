@@ -24,6 +24,12 @@ class TrackedDevice {
   /// key change must use this, not [latest].
   RawAdvertisement? lastRecognised;
   Decoded? decoded;
+
+  /// The latest reading taken over a GATT connection, for devices that do
+  /// not broadcast their values (Daly BMS, stock Xiaomi). Survives new
+  /// advertisements; [view] prefers it over [decoded].
+  Decoded? polled;
+  DateTime? polledAt;
   final DateTime firstSeen;
   int packets = 1;
   String? lastPacketId;
@@ -32,7 +38,11 @@ class TrackedDevice {
 
   TrackedDevice(this.latest) : id = latest.id, firstSeen = latest.seenAt;
 
-  String get title => decoded?.model ?? latest.name ?? 'Unknown device';
+  /// What to show: the connected reading when there is one, else whatever
+  /// the broadcast decoder made of the device.
+  Decoded? get view => polled ?? decoded;
+
+  String get title => view?.model ?? latest.name ?? 'Unknown device';
 
   DateTime get lastSeen => latest.seenAt;
 
@@ -66,7 +76,7 @@ class DeviceTracker extends ChangeNotifier {
     for (final k in DeviceKind.values) {
       final list = [
         for (final d in _devices.values)
-          if (d.decoded?.kind == k) d,
+          if (d.view?.kind == k) d,
       ];
       if (list.isNotEmpty) out[k] = list;
     }
@@ -76,8 +86,17 @@ class DeviceTracker extends ChangeNotifier {
   /// Devices no decoder recognised, in first-heard order.
   List<TrackedDevice> get unknown => [
     for (final d in _devices.values)
-      if (d.decoded == null) d,
+      if (d.view == null) d,
   ];
+
+  /// Stores a reading taken over a connection.
+  void setPolled(String id, Decoded decoded) {
+    final d = _devices[id];
+    if (d == null) return;
+    d.polled = decoded;
+    d.polledAt = DateTime.now();
+    notifyListeners();
+  }
 
   TrackedDevice? operator [](String id) => _devices[id];
 

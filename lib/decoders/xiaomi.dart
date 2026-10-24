@@ -43,7 +43,12 @@ class XiaomiStockDecoder implements Decoder {
       protocol: 'Xiaomi MiBeacon',
       kind: DeviceKind.needsSetup,
       model: model,
-      needs: encrypted
+      needs: productId == 0x055B
+          ? 'Stock firmware encrypts its broadcasts, so Le\'Casa connects to '
+                'the sensor now and then to read it instead. Waiting for the '
+                'first connection. For broadcast readings flash pvvx firmware '
+                'and pick BTHome.'
+          : encrypted
           ? 'Stock firmware is encrypted with a cloud bindkey. '
                 'Flash pvvx firmware and pick the BTHome format instead.'
           : 'Unencrypted MiBeacon is not decoded; flash pvvx and pick BTHome.',

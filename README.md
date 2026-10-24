@@ -8,10 +8,11 @@ heater and lights. No router, no Raspberry Pi, no cloud, no login.
 
 Built in Flutter. GPL-3.0-or-later with an [App Store exception](LICENSE-EXCEPTION).
 
-## Status: Phase 0, the Bluetooth spike
+## Status: Phase 0 done, "connect and read" in progress
 
-This is the first milestone: prove that a tablet can hear and decode the
-gear in Chloe's van. The app currently
+The first milestone proved that a tablet can hear and decode the gear in
+Chloe's van. The next one adds devices that only talk over a connection.
+The app currently
 
 - lists every BLE broadcast the radio hears, with raw bytes and packet rate;
 - decodes **BTHome v2** (plain and AES-CCM encrypted): Xiaomi LYWSD03MMC on
@@ -25,9 +26,23 @@ gear in Chloe's van. The app currently
   meantime;
 - recognises **Improv BLE** Wi-Fi setup broadcasts and parks them in
   their own group;
-- stores per-device encryption keys on the tablet.
+- stores per-device encryption keys on the tablet;
+- **connects and reads** devices that do not broadcast their values, one
+  at a time, then disconnects so the device stays free for its own app:
+  - **Daly smart BMS** (`DL-…` modules): pack voltage, current, power,
+    state of charge, remaining Ah, every cell voltage and spread,
+    temperatures, MOSFET state, cycles and alarms. Both module
+    generations are auto-detected (the newer `0xD2` dialect and the older
+    `0x81` one). Polled every 30 s.
+  - **Xiaomi LYWSD03MMC on stock firmware**: temperature, humidity and
+    battery over the plain GATT characteristic, no bindkey needed. Polled
+    every 5 minutes because connecting costs the coin cell far more than
+    listening does; flashing pvvx + BTHome is still the better setup.
+  - Each device has a "Read over connection" switch and a "Read now"
+    button on its page; the link icon on the scan screen pauses all
+    connections at once (handy when you want to use the vendor app).
 
-Not yet: dashboard layout, two-way devices (Alpicool, Hcalory, Daly BMS),
+Not yet: dashboard layout, controlling two-way devices (Alpicool, Hcalory),
 tablet-to-tablet sync, phone relay, voice. See the roadmap below.
 
 ## Try it on the Android tablet
@@ -86,7 +101,13 @@ lib/
     victron.dart Victron Instant Readout
     xiaomi.dart  stock MiBeacon detection, pvvx custom, ATC1441
     registry.dart "match a broadcast, pick a decoder"
-  ble/           radio wrapper (bluetooth_low_energy) and device tracker
+  drivers/       GATT drivers for devices that need a connection
+    daly_protocol.dart  Daly frame building/parsing (pure, tested)
+    daly_driver.dart    auto-detects the Daly dialect and reads a snapshot
+    xiaomi_driver.dart  stock LYWSD03MMC live characteristic
+  ble/           radio wrapper (bluetooth_low_energy), device tracker,
+                 GattSession abstraction and the connection manager that
+                 polls one device at a time
   keys/          per-device encryption keys (shared_preferences)
   ui/            scan list and device detail pages
 ```
@@ -99,9 +120,10 @@ packet. That is the seed of the zero-setup "device found, tap to add" flow.
 
 | Phase | What | Status |
 | --- | --- | --- |
-| 0 | Bluetooth spike: hear and decode Xiaomi, Victron, Le'Fob | **in progress** |
+| 0 | Bluetooth spike: hear and decode Xiaomi, Victron, Le'Fob | done |
+| 0.5 | Connect and read: Daly BMS, stock Xiaomi over GATT | **in progress** |
 | 1 | Read-only dashboard with the entity model | |
-| 2 | Two-way devices: Alpicool fridge, Hcalory heater, Daly BMS (auto-detected) | |
+| 2 | Two-way devices: Alpicool fridge, Hcalory heater, Daly BMS control | |
 | 3 | Phone companion relaying weather and the internet over BLE | |
 | 4 | Multiple tablets syncing over BLE; ESPHome over BLE | |
 | 5 | Automations, Le'Configurator, offline voice ("Hey, Gary") | |

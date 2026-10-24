@@ -1,0 +1,268 @@
+// Le'Casa - Bluetooth-first home automation.
+// Copyright (C) 2026 Chloe Madison and contributors.
+// SPDX-License-Identifier: GPL-3.0-or-later WITH App-Store-Exception
+//
+// Polls devices that only talk over a connection. One link at a time: a
+// Daly module or a Xiaomi sensor accepts a single central, and this tablet
+// is meant to be the one that owns it, so we connect, read, disconnect and
+// leave the device free in between. Readings land on the TrackedDevice next
+// to the broadcast ones.
+
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../decoders/raw_advertisement.dart';
+import '../drivers/driver.dart';
+import 'ble_scanner.dart';
+import 'device_tracker.dart';
+import 'gatt_link.dart';
+import 'gatt_session.dart';
+
+enum LinkPhase {
+  /// Waiting for its next slot.
+  scheduled,
+  connecting,
+  reading,
+
+  /// Last poll succeeded; waiting for the next one.
+  ok,
+
+  /// Last poll failed; will retry with backoff.
+  failed,
+
+  /// Turned off for this device by the user.
+  off,
+
+  /// The device does not expose what the driver needs. Not retried.
+  unsupported,
+}
+
+/// Polling state for one device.
+class Link {
+  final String id;
+  final GattDriver driver;
+  LinkPhase phase = LinkPhase.scheduled;
+  DateTime nextDue;
+  DateTime? lastOk;
+  DateTime? lastAttempt;
+  String? error;
+  int failures = 0;
+
+  Link(this.id, this.driver, {bool enabled = true})
+    : nextDue = DateTime.now(),
+      phase = enabled ? LinkPhase.scheduled : LinkPhase.off;
+
+  bool get busy => phase == LinkPhase.connecting || phase == LinkPhase.reading;
+
+  bool get enabled => phase != LinkPhase.off && phase != LinkPhase.unsupported;
+
+  String get statusText => switch (phase) {
+    LinkPhase.scheduled => 'Waiting to connect',
+    LinkPhase.connecting => 'Connecting…',
+    LinkPhase.reading => 'Reading…',
+    LinkPhase.ok => 'Read ok',
+    LinkPhase.failed => 'Failed: $error',
+    LinkPhase.off => 'Off',
+    LinkPhase.unsupported => 'Not supported: $error',
+  };
+}
+
+/// Opens a connected, service-discovered session to a device id, or throws.
+/// The real one goes through the scanner and [GattLink]; tests fake it.
+typedef SessionOpener = Future<ClosableSession> Function(String id);
+
+SessionOpener scannerOpener(BleScanner scanner) => (id) async {
+  final p = scanner.peripheralFor(id);
+  if (p == null) throw StateError('Device not seen by the scanner');
+  return GattLink.open(scanner.central, p);
+};
+
+class ConnectionManager extends ChangeNotifier {
+  static const _disabledKey = 'gatt:disabled';
+  static const _globalKey = 'gatt:enabled';
+
+  /// Do not try to connect to something we have not heard from recently;
+  /// it has probably been carried out of range.
+  static const staleAfter = Duration(minutes: 3);
+
+  final DeviceTracker tracker;
+  final GattDriverRegistry drivers;
+  final SessionOpener _open;
+  final Map<String, Link> _links = {};
+  final Set<String> _disabled = {};
+  SharedPreferences? _prefs;
+  Timer? _tick;
+  bool _enabled = true;
+  String? _busy;
+
+  ConnectionManager(
+    this.tracker, {
+    required SessionOpener open,
+    GattDriverRegistry? drivers,
+    Duration tick = const Duration(seconds: 1),
+  }) : drivers = drivers ?? GattDriverRegistry.standard(),
+       // ignore: prefer_initializing_formals
+       _open = open {
+    _tick = Timer.periodic(tick, (_) => pump());
+  }
+
+  ConnectionManager.forScanner(BleScanner scanner, DeviceTracker tracker)
+    : this(tracker, open: scannerOpener(scanner));
+
+  /// Global switch: when off, nothing connects to anything.
+  bool get enabled => _enabled;
+
+  /// Id of the device we are connected to right now, if any.
+  String? get busyId => _busy;
+
+  List<Link> get links => _links.values.toList();
+
+  Link? operator [](String id) => _links[id];
+
+  Future<void> load() async {
+    _prefs = await SharedPreferences.getInstance();
+    _disabled.addAll(_prefs!.getStringList(_disabledKey) ?? const []);
+    _enabled = _prefs!.getBool(_globalKey) ?? true;
+    for (final l in _links.values) {
+      if (_disabled.contains(l.id) && !l.busy) l.phase = LinkPhase.off;
+    }
+    notifyListeners();
+  }
+
+  Future<void> setEnabled(bool v) async {
+    _enabled = v;
+    await _prefs?.setBool(_globalKey, v);
+    notifyListeners();
+  }
+
+  /// Per-device on/off, remembered across restarts.
+  Future<void> setDeviceEnabled(String id, bool v) async {
+    final l = _links[id];
+    if (v) {
+      _disabled.remove(id);
+      if (l != null && l.phase == LinkPhase.off) {
+        l
+          ..phase = LinkPhase.scheduled
+          ..failures = 0
+          ..nextDue = DateTime.now();
+      }
+    } else {
+      _disabled.add(id);
+      if (l != null && !l.busy) l.phase = LinkPhase.off;
+    }
+    await _prefs?.setStringList(_disabledKey, _disabled.toList());
+    notifyListeners();
+  }
+
+  /// Puts a device at the front of the queue. Returns when the poll that
+  /// it triggered has finished, or at once if one is already running (the
+  /// device then goes next).
+  Future<void> readNow(String id) {
+    final l = _links[id];
+    if (l == null || l.phase == LinkPhase.unsupported) return Future.value();
+    if (l.phase == LinkPhase.off) {
+      _disabled.remove(id);
+      _prefs?.setStringList(_disabledKey, _disabled.toList());
+    }
+    if (!l.busy) {
+      l
+        ..phase = LinkPhase.scheduled
+        ..failures = 0
+        ..nextDue = DateTime.now();
+    }
+    notifyListeners();
+    return pump();
+  }
+
+  /// Called for every advertisement: the first one from a device a driver
+  /// recognises schedules it.
+  void onAdvertisement(RawAdvertisement adv) {
+    if (_links.containsKey(adv.id)) return;
+    final driver = drivers.forAdvertisement(adv);
+    if (driver == null) return;
+    _links[adv.id] = Link(adv.id, driver, enabled: !_disabled.contains(adv.id));
+    notifyListeners();
+  }
+
+  /// Starts the most overdue poll if nothing is in flight. Runs on a timer;
+  /// public so tests can drive it. Returns when that poll has finished.
+  Future<void> pump() {
+    if (!_enabled || _busy != null) return Future.value();
+    final now = DateTime.now();
+    Link? pick;
+    for (final l in _links.values) {
+      if (!l.enabled || l.busy || l.nextDue.isAfter(now)) continue;
+      final dev = tracker[l.id];
+      if (dev == null || now.difference(dev.lastSeen) > staleAfter) continue;
+      if (pick == null || l.nextDue.isBefore(pick.nextDue)) pick = l;
+    }
+    return pick == null ? Future.value() : _poll(pick);
+  }
+
+  Future<void> _poll(Link l) async {
+    final dev = tracker[l.id];
+    if (dev == null) return;
+    _busy = l.id;
+    l
+      ..phase = LinkPhase.connecting
+      ..lastAttempt = DateTime.now()
+      ..error = null;
+    notifyListeners();
+    ClosableSession? link;
+    try {
+      link = await _open(l.id);
+      l.phase = LinkPhase.reading;
+      notifyListeners();
+      final decoded = await l.driver
+          .read(link, dev.lastRecognised ?? dev.latest)
+          .timeout(l.driver.timeout);
+      tracker.setPolled(l.id, decoded);
+      l
+        ..phase = LinkPhase.ok
+        ..failures = 0
+        ..lastOk = DateTime.now()
+        ..nextDue = DateTime.now().add(l.driver.interval);
+    } on UnsupportedDeviceException catch (e) {
+      l
+        ..phase = LinkPhase.unsupported
+        ..error = e.message;
+    } catch (e) {
+      _fail(l, _describe(e));
+    } finally {
+      await link?.close();
+      _busy = null;
+      notifyListeners();
+    }
+  }
+
+  void _fail(Link l, String error) {
+    l.failures++;
+    // Back off: interval, 2x, 4x... capped at ten minutes, so a device
+    // that is being used by another app does not get hammered.
+    final base = l.driver.interval.inSeconds;
+    final wait = (base * (1 << (l.failures - 1).clamp(0, 6))).clamp(base, 600);
+    l
+      ..phase = LinkPhase.failed
+      ..error = error
+      ..nextDue = DateTime.now().add(Duration(seconds: wait));
+    notifyListeners();
+  }
+
+  static String _describe(Object e) {
+    if (e is TimeoutException) {
+      return e.message ?? 'Timed out';
+    }
+    final s = e.toString();
+    // Platform exceptions read like "PlatformException(code, message, ...)".
+    final m = RegExp(r'PlatformException\([^,]*, ([^,]*)').firstMatch(s);
+    return m?.group(1) ?? s;
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+}

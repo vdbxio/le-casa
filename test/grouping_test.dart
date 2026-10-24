@@ -72,6 +72,9 @@ void main() {
 
   test('a Victron device keeps its group after its key is added', () {
     final t = feed();
+    // A name-only scan response arrives last; re-decoding must still use
+    // the data packet, or the device stays on "needs key" until the next one.
+    t.onAdvertisement(adv(id: 'mppt', name: 'Sol 30'));
     t.registry = DecoderRegistry.standard(
       keyFor: keyFor('mppt', 'adeccb947395801a4dd45a2eaa44bf17'),
     );

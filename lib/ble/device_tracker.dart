@@ -18,6 +18,11 @@ class LoggedEvent {
 class TrackedDevice {
   final String id;
   RawAdvertisement latest;
+
+  /// The newest packet a decoder recognised. Devices interleave data
+  /// packets with name-only or housekeeping ones, so re-decoding after a
+  /// key change must use this, not [latest].
+  RawAdvertisement? lastRecognised;
   Decoded? decoded;
   final DateTime firstSeen;
   int packets = 1;
@@ -88,12 +93,16 @@ class DeviceTracker extends ChangeNotifier {
     if (d == null) {
       _devices[adv.id] = TrackedDevice(adv)
         ..decoded = decoded
+        ..lastRecognised = decoded == null ? null : adv
         ..recent.add(adv)
         .._logEvents(decoded);
     } else {
       d.latest = adv;
       d.packets++;
-      d.decoded = decoded ?? d.decoded;
+      if (decoded != null) {
+        d.decoded = decoded;
+        d.lastRecognised = adv;
+      }
       d.recent.add(adv);
       if (d.recent.length > 120) d.recent.removeAt(0);
       d._logEvents(decoded);
@@ -103,7 +112,7 @@ class DeviceTracker extends ChangeNotifier {
 
   void redecodeAll() {
     for (final d in _devices.values) {
-      d.decoded = registry.decode(d.latest) ?? d.decoded;
+      d.decoded = registry.decode(d.lastRecognised ?? d.latest) ?? d.decoded;
     }
     notifyListeners();
   }

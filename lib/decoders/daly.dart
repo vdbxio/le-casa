@@ -5,10 +5,9 @@
 // Daly smart BMS Bluetooth modules. They advertise a "DL-<hex>" name and
 // a short manufacturer record under company id 0x0402 (which contains the
 // module's own address and nothing about the battery). Readings need a
-// GATT connection using the protocol documented by the community
-// (https://github.com/syssi/esphome-daly-bms); that is a later phase, so
-// for now the device is recognised and filed under Battery as needing
-// a connection.
+// GATT connection; drivers/daly_driver.dart does that and the connection
+// manager polls it. This decoder only recognises the module so it gets a
+// Battery card straight away, before the first connection.
 
 import 'decoded.dart';
 import 'decoder.dart';
@@ -36,8 +35,8 @@ class DalyDecoder implements Decoder {
     kind: DeviceKind.battery,
     model: 'Daly smart BMS',
     needs:
-        'Daly BMS broadcasts no readings. Reading cells and state of charge '
-        'needs a connection, which is planned for a later phase.',
+        'Daly BMS broadcasts no readings; Le\'Casa connects to it to read '
+        'cells and state of charge. Waiting for the first connection.',
     info: {'module': adv.name!},
   );
 }

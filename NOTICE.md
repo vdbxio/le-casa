@@ -9,12 +9,11 @@ Le'Casa is GPL-3.0-or-later with an App Store exception (see `LICENSE` and
 | BTHome v2 object table and test vectors (`lib/decoders/bthome_objects.dart`, `test/bthome_test.dart`) | [Bluetooth-Devices/bthome-ble](https://github.com/Bluetooth-Devices/bthome-ble) and the [BTHome format](https://bthome.io/format/) | MIT |
 | pvvx custom / ATC1441 advertising formats | [pvvx/ATC_MiThermometer](https://github.com/pvvx/ATC_MiThermometer) | GPL-3.0 (format description only) |
 | Improv BLE advertisement format (`lib/decoders/improv.dart`) | [Improv Wi-Fi](https://www.improv-wifi.com/ble/) | format description only, no code copied |
+| Daly BMS BLE register layouts, alarm bit table and request bytes (`lib/drivers/daly_protocol.dart`) | [syssi/esphome-daly-bms](https://github.com/syssi/esphome-daly-bms) (daly_bms_ble) and [patman15/aiobmsble](https://github.com/patman15/aiobmsble) | protocol documentation only, re-implemented in Dart; no code copied (GPL-3.0 / Apache-2.0 upstream) |
+| Xiaomi LYWSD03MMC stock GATT characteristics (`lib/drivers/xiaomi_driver.dart`) | [uduncanu/lywsd03mmc](https://github.com/uduncanu/lywsd03mmc) | UUIDs and value layout only, no code copied (MIT) |
 | `bluetooth_low_energy` Flutter plugin | [yanshouwang/bluetooth_low_energy](https://pub.dev/packages/bluetooth_low_energy) | MIT |
 | `pointycastle` (AES-CTR, AES-CCM) | [bcgit/pc-dart](https://pub.dev/packages/pointycastle) | MIT |
 | Flutter | [flutter/flutter](https://flutter.dev) | BSD-3-Clause |
-
-Planned (not yet included): BMS auto-detection ported from
-[patman15/aiobmsble](https://github.com/patman15/aiobmsble) (Apache-2.0).
 
 ## Why not flutter_blue_plus
 

@@ -207,6 +207,24 @@ class _ScanPageState extends State<ScanPage> {
             ),
             onPressed: () => setState(() => _onlyRecognised = !_onlyRecognised),
           ),
+          ListenableBuilder(
+            listenable: services.connections,
+            builder: (context, _) {
+              final c = services.connections;
+              return IconButton(
+                tooltip: c.enabled
+                    ? 'Pause connections (stop polling Daly / Xiaomi)'
+                    : 'Resume connections',
+                icon: Icon(
+                  c.enabled ? Icons.link : Icons.link_off,
+                  color: c.busyId != null
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
+                ),
+                onPressed: () => c.setEnabled(!c.enabled),
+              );
+            },
+          ),
           IconButton(
             tooltip: 'Clear list',
             icon: const Icon(Icons.delete_sweep),

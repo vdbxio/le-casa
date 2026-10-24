@@ -1,0 +1,194 @@
+import 'dart:async';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:lecasa/ble/connection_manager.dart';
+import 'package:lecasa/ble/device_tracker.dart';
+import 'package:lecasa/ble/gatt_session.dart';
+import 'package:lecasa/decoders/decoded.dart';
+import 'package:lecasa/decoders/raw_advertisement.dart';
+import 'package:lecasa/decoders/registry.dart';
+import 'package:lecasa/drivers/driver.dart';
+
+import 'fake_session.dart';
+import 'helpers.dart';
+
+/// Driver that returns a canned reading, or throws what it is told to.
+class ScriptedDriver implements GattDriver {
+  final Object? error;
+  int reads = 0;
+  ScriptedDriver({this.error});
+
+  @override
+  String get name => 'scripted';
+  @override
+  Duration get interval => const Duration(seconds: 30);
+  @override
+  Duration get timeout => const Duration(seconds: 5);
+  @override
+  bool matches(RawAdvertisement adv) => adv.name == 'TEST';
+
+  @override
+  Future<Decoded> read(GattSession s, RawAdvertisement adv) async {
+    reads++;
+    if (error != null) throw error!;
+    return const Decoded(
+      protocol: 'test',
+      model: 'Test device',
+      kind: DeviceKind.battery,
+      readings: [Reading('voltage', 12.5, 'V')],
+    );
+  }
+}
+
+void main() {
+  late DeviceTracker tracker;
+  late List<FakeSession> opened;
+
+  setUp(() {
+    tracker = DeviceTracker(DecoderRegistry.standard());
+    opened = [];
+  });
+
+  ConnectionManager manager(GattDriver driver, {SessionOpener? open}) =>
+      ConnectionManager(
+        tracker,
+        drivers: GattDriverRegistry([driver]),
+        tick: const Duration(hours: 1),
+        open:
+            open ??
+            (id) async {
+              final s = FakeSession(characteristics: const []);
+              opened.add(s);
+              return s;
+            },
+      );
+
+  final testAdv = adv(
+    id: 'AA:BB:CC:DD:EE:01',
+    name: 'TEST',
+    seenAt: DateTime.now(),
+  );
+
+  test('schedules a recognised device, reads it, stores the result', () async {
+    final driver = ScriptedDriver();
+    final m = manager(driver);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    expect(m[testAdv.id]?.phase, LinkPhase.scheduled);
+
+    await m.pump();
+
+    expect(driver.reads, 1);
+    expect(m[testAdv.id]?.phase, LinkPhase.ok);
+    expect(tracker[testAdv.id]!.view?.model, 'Test device');
+    expect(tracker[testAdv.id]!.polledAt, isNotNull);
+    expect(opened.single.closed, isTrue, reason: 'disconnects after reading');
+    expect(m.busyId, isNull);
+    // A later broadcast does not wipe the connected reading.
+    tracker.onAdvertisement(testAdv);
+    expect(tracker[testAdv.id]!.view?.model, 'Test device');
+    m.dispose();
+  });
+
+  test('does not poll again before the interval', () async {
+    final driver = ScriptedDriver();
+    final m = manager(driver);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.pump();
+    await m.pump();
+    expect(driver.reads, 1);
+    await m.readNow(testAdv.id);
+    expect(driver.reads, 2);
+    m.dispose();
+  });
+
+  test('failure backs off and still closes the link', () async {
+    final driver = ScriptedDriver(error: TimeoutException('no answer'));
+    final m = manager(driver);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.pump();
+    final l = m[testAdv.id]!;
+    expect(l.phase, LinkPhase.failed);
+    expect(l.error, 'no answer');
+    expect(l.failures, 1);
+    expect(l.nextDue.isAfter(DateTime.now()), isTrue);
+    expect(opened.single.closed, isTrue);
+    m.dispose();
+  });
+
+  test('unsupported devices are parked, not retried', () async {
+    final driver = ScriptedDriver(
+      error: const UnsupportedDeviceException('no such characteristic'),
+    );
+    final m = manager(driver);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.pump();
+    expect(m[testAdv.id]!.phase, LinkPhase.unsupported);
+    expect(m[testAdv.id]!.enabled, isFalse);
+    await m.readNow(testAdv.id);
+    expect(driver.reads, 1);
+    m.dispose();
+  });
+
+  test('a connect error is reported and the device retried later', () async {
+    final driver = ScriptedDriver();
+    final m = manager(
+      driver,
+      open: (id) async => throw StateError('Device not seen by the scanner'),
+    );
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.pump();
+    expect(m[testAdv.id]!.phase, LinkPhase.failed);
+    expect(m[testAdv.id]!.error, contains('not seen'));
+    expect(driver.reads, 0);
+    m.dispose();
+  });
+
+  test('per-device and global switches stop polling', () async {
+    final driver = ScriptedDriver();
+    final m = manager(driver);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.setDeviceEnabled(testAdv.id, false);
+    await m.pump();
+    expect(driver.reads, 0);
+    expect(m[testAdv.id]!.phase, LinkPhase.off);
+    await m.setDeviceEnabled(testAdv.id, true);
+    await m.setEnabled(false);
+    await m.pump();
+    expect(driver.reads, 0);
+    await m.setEnabled(true);
+    await m.pump();
+    expect(driver.reads, 1);
+    m.dispose();
+  });
+
+  test('devices not heard for a while are not connected to', () async {
+    final driver = ScriptedDriver();
+    final m = manager(driver);
+    final old = adv(id: 'AA:BB:CC:DD:EE:03', name: 'TEST');
+    tracker.onAdvertisement(old);
+    m.onAdvertisement(old);
+    await m.pump();
+    expect(driver.reads, 0);
+    expect(m[old.id]!.phase, LinkPhase.scheduled);
+    m.dispose();
+  });
+
+  test('unrecognised devices are ignored', () {
+    final m = manager(ScriptedDriver());
+    final other = adv(
+      id: 'AA:BB:CC:DD:EE:02',
+      name: 'OTHER',
+      seenAt: DateTime.now(),
+    );
+    tracker.onAdvertisement(other);
+    m.onAdvertisement(other);
+    expect(m.links, isEmpty);
+    m.dispose();
+  });
+}

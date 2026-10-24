@@ -54,7 +54,7 @@ class GroupTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final needs = devices.where((d) => d.decoded?.needs != null).length;
+    final needs = devices.where((d) => d.view?.needs != null).length;
     return Card(
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
@@ -113,7 +113,7 @@ class GroupTile extends StatelessWidget {
     final theme = Theme.of(context);
     final stale =
         DateTime.now().difference(d.lastSeen) > const Duration(seconds: 30);
-    final r = d.decoded == null ? null : primaryReading(d.decoded!);
+    final r = d.view == null ? null : primaryReading(d.view!);
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Row(
@@ -159,7 +159,7 @@ class UnknownRow extends StatelessWidget {
       onTap: () => Navigator.of(context)
           .push(MaterialPageRoute(builder: (_) => DevicePage(id: device.id))),
       title: Text(
-        a.name ?? device.decoded?.model ?? device.id,
+        a.name ?? device.view?.model ?? device.id,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),

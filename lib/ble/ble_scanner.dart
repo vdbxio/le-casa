@@ -15,6 +15,7 @@ import '../decoders/raw_advertisement.dart';
 class BleScanner {
   final CentralManager _central;
   final _out = StreamController<RawAdvertisement>.broadcast();
+  final Map<String, Peripheral> _peripherals = {};
   StreamSubscription? _sub;
   bool _scanning = false;
 
@@ -22,6 +23,13 @@ class BleScanner {
     : _central = central ?? CentralManager();
 
   Stream<RawAdvertisement> get advertisements => _out.stream;
+
+  /// The platform manager, for the connection layer.
+  CentralManager get central => _central;
+
+  /// The platform handle for a device id the scanner has reported, needed
+  /// to connect to it. Null if we never heard it.
+  Peripheral? peripheralFor(String id) => _peripherals[id];
   bool get scanning => _scanning;
 
   BluetoothLowEnergyState get state => _central.state;
@@ -46,6 +54,7 @@ class BleScanner {
   Future<void> _doStart() async {
     _sub ??= _central.discovered.listen((e) {
       final adv = toRaw(e.peripheral.uuid, e.rssi, e.advertisement);
+      _peripherals[adv.id] = e.peripheral;
       _out.add(adv);
     });
     try {

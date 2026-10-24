@@ -8,12 +8,13 @@ RawAdvertisement adv({
   String? name,
   Map<int, String> serviceData = const {},
   Map<int, String> manufacturerData = const {},
+  DateTime? seenAt,
 }) => RawAdvertisement(
   id: id,
   mac: parseMac(mac),
   name: name,
   rssi: -60,
-  seenAt: DateTime.utc(2026, 10, 23),
+  seenAt: seenAt ?? DateTime.utc(2026, 10, 23),
   serviceData: serviceData.map((k, v) => MapEntry(k, fromHex(v))),
   manufacturerData: manufacturerData.map((k, v) => MapEntry(k, fromHex(v))),
 );

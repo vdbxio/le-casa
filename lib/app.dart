@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 
 import 'ble/ble_scanner.dart';
+import 'ble/connection_manager.dart';
 import 'ble/device_tracker.dart';
 import 'decoders/registry.dart';
 import 'keys/key_store.dart';
@@ -16,12 +17,14 @@ class AppServices extends InheritedWidget {
   final BleScanner scanner;
   final KeyStore keys;
   final DeviceTracker tracker;
+  final ConnectionManager connections;
 
   const AppServices({
     super.key,
     required this.scanner,
     required this.keys,
     required this.tracker,
+    required this.connections,
     required super.child,
   });
 
@@ -45,17 +48,26 @@ class _LeCasaAppState extends State<LeCasaApp> {
     DecoderRegistry.standard(keyFor: keys.keyFor),
   );
   late final BleScanner scanner = BleScanner();
+  late final ConnectionManager connections = ConnectionManager.forScanner(
+    scanner,
+    tracker,
+  );
 
   @override
   void initState() {
     super.initState();
     keys.load();
+    connections.load();
     keys.addListener(tracker.redecodeAll);
-    scanner.advertisements.listen(tracker.onAdvertisement);
+    scanner.advertisements.listen((adv) {
+      tracker.onAdvertisement(adv);
+      connections.onAdvertisement(adv);
+    });
   }
 
   @override
   void dispose() {
+    connections.dispose();
     scanner.dispose();
     super.dispose();
   }
@@ -70,6 +82,7 @@ class _LeCasaAppState extends State<LeCasaApp> {
       scanner: scanner,
       keys: keys,
       tracker: tracker,
+      connections: connections,
       child: MaterialApp(
         title: "Le'Casa",
         debugShowCheckedModeBanner: false,

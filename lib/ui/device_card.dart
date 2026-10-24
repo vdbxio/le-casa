@@ -15,7 +15,7 @@ class DeviceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final d = device.decoded;
+    final d = device.view;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final stale =

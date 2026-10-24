@@ -57,4 +57,17 @@ void main() {
     expect(out.model, 'Generic Venus Device');
     expect(out.needs, contains('Instant Readout is off'));
   });
+
+  test('a Daly BMS module is filed under Battery as needing a connection', () {
+    final out = reg.decode(
+      adv(
+        name: 'DL-694201312BA',
+        manufacturerData: {0x0402: '27 d2 19 08 01 c5 61 4a 48 42'},
+      ),
+    )!;
+    expect(out.protocol, 'Daly BMS');
+    expect(out.kind, DeviceKind.battery);
+    expect(out.needs, contains('connection'));
+    expect(out.info['module'], 'DL-694201312BA');
+  });
 }

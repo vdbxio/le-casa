@@ -4,6 +4,7 @@
 
 import 'apple.dart';
 import 'bthome.dart';
+import 'daly.dart';
 import 'decoded.dart';
 import 'decoder.dart';
 import 'improv.dart';
@@ -26,6 +27,7 @@ class DecoderRegistry {
         const XiaomiStockDecoder(),
         const PvvxCustomDecoder(),
         const ImprovDecoder(),
+        const DalyDecoder(),
         const AppleDecoder(),
       ]);
 

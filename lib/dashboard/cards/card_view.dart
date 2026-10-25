@@ -54,7 +54,9 @@ class DashCard extends StatelessWidget {
                     vertical: pad,
                   ),
                   child: LayoutBuilder(
-                    builder: (context, box) => side
+                    builder: (context, box) => model.headline == null
+                        ? _message(context, c, box.biggest)
+                        : side
                         ? _side(context, c, box.biggest)
                         : switch (size) {
                             CardSize.small => _small(context, c, inline),
@@ -480,6 +482,31 @@ class DashCard extends StatelessWidget {
           const SizedBox(height: 6),
           _line(c, model.note!),
         ],
+      ],
+    );
+  }
+
+  /// A card with nothing to show but a sentence (needs setup, offline,
+  /// listening): the sentence wraps over as many lines as fit.
+  Widget _message(BuildContext context, LeColors c, Size box) {
+    final note = model.note ?? '';
+    final fontSize = size == CardSize.small ? 13.0 : 15.0;
+    final lines = math.max(
+      1,
+      ((box.height - CardMetrics.header - CardMetrics.gap) / (fontSize * 1.35))
+          .floor(),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _header(context, c, showSubtitle: size == CardSize.large),
+        const Spacer(),
+        Text(
+          note,
+          maxLines: lines,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: fontSize, height: 1.3, color: c.muted),
+        ),
       ],
     );
   }

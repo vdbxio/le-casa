@@ -44,6 +44,8 @@ import 'drivers/renogy_pro.dart';
 import 'drivers/roypow.dart';
 import 'drivers/saftkiste.dart';
 import 'drivers/saihang.dart';
+import 'drivers/seplos.dart';
+import 'drivers/seplos_v2.dart';
 import 'drivers/topband.dart';
 import 'drivers/vatrer.dart';
 import 'spec.dart';
@@ -90,6 +92,8 @@ final List<BmsSpec> bmsSpecs = [
   RoypowBms.spec,
   SaftkisteBms.spec,
   SaihangBms.spec,
+  SeplosBms.spec,
+  SeplosV2Bms.spec,
   TopbandBms.spec,
   VatrerBms.spec,
 ];

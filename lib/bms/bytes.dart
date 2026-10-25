@@ -455,3 +455,10 @@ int crc32(List<int> data) {
   }
   return c ^ 0xFFFFFFFF;
 }
+
+/// Unsigned big-endian integer of any width: an int when it fits, else a
+/// [BigInt] (Python ints have no width limit).
+Object bigFrom(List<int> b) {
+  final v = BigInt.parse(b.isEmpty ? '0' : b.hex, radix: 16);
+  return v.isValidInt ? v.toInt() : v;
+}

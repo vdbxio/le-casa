@@ -5,8 +5,9 @@
          and neverForLocation lets us scan without asking for location at
          all. Android then filters out location-beacon formats (iBeacon,
          Eddystone), which Le'Casa does not use. -->
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
-                     android:maxSdkVersion="30"/>
+    <!-- Coarse location also serves "Use device location" for the weather
+         card on every Android version, asked for only when chosen. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
                      android:maxSdkVersion="30"/>
     <uses-permission android:name="android.permission.BLUETOOTH"
@@ -20,6 +21,10 @@
                      tools:targetApi="31"/>
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE"
                      tools:targetApi="31"/>
+    <!-- Only for the weather card, once the user allows internet access
+         in its options (Open-Meteo, no account). Everything else works
+         offline. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true"/>
     <application
         android:label="Le'Casa"

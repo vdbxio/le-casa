@@ -12,6 +12,7 @@ dependencies:
   bluetooth_low_energy: ^6.2.1
   pointycastle: ^4.0.0
   shared_preferences: ^2.5.6
+  geolocator: ^14.1.2
 
 dev_dependencies:
   flutter_test:
@@ -20,3 +21,21 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    # League Spartan, SIL Open Font License 1.1 (assets/fonts/OFL.txt).
+    - family: LeagueSpartan
+      fonts:
+        - asset: assets/fonts/LeagueSpartan-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/LeagueSpartan-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/LeagueSpartan-Bold.ttf
+          weight: 700
+    # Clock faces. JetBrains Mono and DM Serif Display, both SIL Open Font
+    # License 1.1 (assets/fonts/OFL-*.txt).
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Variable.ttf
+    - family: DMSerifDisplay
+      fonts:
+        - asset: assets/fonts/DMSerifDisplay-Regular.ttf

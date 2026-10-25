@@ -5,8 +5,10 @@
 import 'package:flutter/material.dart';
 
 import 'app.dart';
+import 'platform/tablet.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  keepSystemBarsHidden();
   runApp(const LeCasaApp());
 }

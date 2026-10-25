@@ -13,6 +13,8 @@ Le'Casa is GPL-3.0-or-later with an App Store exception (see `LICENSE` and
 | Xiaomi LYWSD03MMC stock GATT characteristics (`lib/drivers/xiaomi_driver.dart`) | [uduncanu/lywsd03mmc](https://github.com/uduncanu/lywsd03mmc) | UUIDs and value layout only, no code copied (MIT) |
 | `bluetooth_low_energy` Flutter plugin | [yanshouwang/bluetooth_low_energy](https://pub.dev/packages/bluetooth_low_energy) | MIT |
 | `pointycastle` (AES-CTR, AES-CCM) | [bcgit/pc-dart](https://pub.dev/packages/pointycastle) | MIT |
+| League Spartan typeface (`assets/fonts/`) | [The League of Moveable Type](https://github.com/theleagueof/league-spartan), via Google Fonts | SIL Open Font License 1.1 (`assets/fonts/OFL.txt`) |
+| Weather forecasts and place search (`lib/weather/weather.dart`) | [Open-Meteo](https://open-meteo.com/) API, called at runtime when the tablet is online | data under CC BY 4.0, no code copied |
 | Flutter | [flutter/flutter](https://flutter.dev) | BSD-3-Clause |
 
 ## Why not flutter_blue_plus

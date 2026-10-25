@@ -169,7 +169,7 @@ extension PyBytes on List<int> {
 /// Python `bytes.fromhex` for ASCII hex text (spaces allowed). Throws
 /// [FormatException] on anything else, like Python's ValueError.
 Uint8List fromHexStr(String s) {
-  final t = s.replaceAll(' ', '');
+  final t = s.replaceAll(RegExp(r'[ \t\n\r\x0b\x0c]'), '');
   if (t.length.isOdd) throw const FormatException('odd-length hex string');
   final out = Uint8List(t.length ~/ 2);
   for (var i = 0; i < out.length; i++) {
@@ -410,3 +410,31 @@ double fmean(Iterable<Object?> values) {
 
 /// Numeric view of a value that may be a TempSensor.
 double numOf(Object? v) => v is TempSensor ? v.value : (v as num).toDouble();
+
+final _pyIntRe = RegExp(r'^\s*([+-]?)([0-9a-zA-Z]+(?:_[0-9a-zA-Z]+)*)\s*$');
+
+/// Python `int(text, radix)`: surrounding whitespace, a sign and single
+/// underscores between digits are allowed. Throws [FormatException].
+int pyInt(String s, [int radix = 10]) {
+  final m = _pyIntRe.firstMatch(s);
+  if (m == null) throw FormatException('invalid literal for int(): $s');
+  final v = int.parse(m[2]!.replaceAll('_', ''), radix: radix);
+  return m[1] == '-' ? -v : v;
+}
+
+final _pyFloatSpecial = RegExp(r'^([+-]?)(inf|infinity|nan)$', caseSensitive: false);
+
+/// Python `float(text)`. Throws [FormatException].
+double pyFloat(String s) {
+  final t = s.trim();
+  final m = _pyFloatSpecial.firstMatch(t);
+  if (m != null) {
+    final v = m[2]!.toLowerCase() == 'nan' ? double.nan : double.infinity;
+    return m[1] == '-' ? -v : v;
+  }
+  if (!RegExp(r'^[+-]?(\d(_?\d)*)?(\.(\d(_?\d)*)?)?([eE][+-]?\d(_?\d)*)?$').hasMatch(t) ||
+      !RegExp(r'\d').hasMatch(t.split(RegExp('[eE]')).first)) {
+    throw FormatException('could not convert string to float: $s');
+  }
+  return double.parse(t.replaceAll('_', ''));
+}

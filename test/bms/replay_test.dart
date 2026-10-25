@@ -141,6 +141,8 @@ const _skip = <String, String>{
       'mock notifies from a characteristic the BMS never subscribed',
   'dometic_bms test_update_with_preset_event':
       'relies on asyncio.sleep(0) between two updates',
+  'pwrxtreme_bms test_device_info_decode_error': 'monkeypatches _await_msg',
+  'pwrxtreme_bms test_device_info_timeout': 'monkeypatches _await_msg',
 };
 
 void main() {

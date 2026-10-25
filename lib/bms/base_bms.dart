@@ -84,7 +84,8 @@ abstract class BaseBms {
 
   final BmsDevice device;
   final BmsConfig cfg;
-  late final String name = device.name.trimRight();
+  late final String name =
+      (device.name.isEmpty ? 'undefined' : device.name).trimRight();
 
   GattSession? _client;
   GattSession? _attached;

@@ -120,8 +120,9 @@ void main() {
           await t.pump();
           await shot('edit');
 
-          // Card options open from the gear, list the cards that can take
-          // the slot, and cancel cleanly.
+          // Card options open from the gear on the card's settings, list
+          // the cards that can take the slot one level down, and cancel
+          // cleanly.
           await t.tap(
             find.descendant(
               of: find.byKey(const ValueKey('2.1')),
@@ -129,9 +130,13 @@ void main() {
             ),
           );
           await t.pumpAndSettle();
-          expect(find.text('Change card'), findsOneWidget);
-          expect(find.text('This card'.toUpperCase()), findsOneWidget);
+          expect(find.text('Card settings'), findsOneWidget);
           await shot('options');
+          await t.ensureVisible(find.text('Change card'));
+          await t.tap(find.text('Change card'));
+          await t.pumpAndSettle();
+          expect(find.text('This card'.toUpperCase()), findsOneWidget);
+          await shot('options-cards');
           await t.tap(find.text('Cancel'));
           await t.pumpAndSettle();
           expect(find.text('Change card'), findsNothing);

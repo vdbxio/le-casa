@@ -110,4 +110,23 @@ class CardModel {
     this.stale = false,
     String? pillLabel,
   }) : pillLabel = pillLabel ?? title;
+
+  /// The same card under the user's own title or icon.
+  CardModel relabel({String? title, IconData? icon}) => CardModel(
+    title: title ?? this.title,
+    subtitle: subtitle,
+    icon: icon ?? this.icon,
+    tone: tone,
+    headline: headline,
+    state: state,
+    details: details,
+    shares: shares,
+    ring: ring,
+    series: series,
+    hours: hours,
+    hoursLabel: hoursLabel,
+    note: note,
+    stale: stale,
+    pillLabel: pillLabel == this.title ? null : pillLabel,
+  );
 }

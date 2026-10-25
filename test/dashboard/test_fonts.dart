@@ -1,4 +1,4 @@
-// Loads League Spartan from the app's assets and Roboto plus Material icons
+// Loads League Spartan and the clock faces from the app's assets and Roboto plus Material icons
 // from the Flutter SDK, so rendered previews look like the tablet.
 import 'dart:io';
 
@@ -16,6 +16,12 @@ Future<void> loadTestFonts() async {
   await load('LeagueSpartan', [
     for (final w in ['Regular', 'SemiBold', 'Bold'])
       rootBundle.load('assets/fonts/LeagueSpartan-$w.ttf'),
+  ]);
+  await load('JetBrainsMono', [
+    rootBundle.load('assets/fonts/JetBrainsMono-Variable.ttf'),
+  ]);
+  await load('DMSerifDisplay', [
+    rootBundle.load('assets/fonts/DMSerifDisplay-Regular.ttf'),
   ]);
   final root = Platform.environment['FLUTTER_ROOT'];
   if (root == null) return;

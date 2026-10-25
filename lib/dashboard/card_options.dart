@@ -6,7 +6,9 @@ import 'package:flutter/material.dart' hide Split;
 
 import '../ui/palette.dart';
 import 'card_picker.dart';
+import 'cards/card_icons.dart';
 import 'cards/card_model.dart';
+import 'cards/clock.dart';
 import 'cards/fit.dart' show hasChart;
 import 'cards/template.dart';
 import 'cards/template_view.dart';
@@ -15,10 +17,11 @@ import 'dashboard_page.dart' show cardContent;
 import 'layout.dart';
 
 /// Card options: the card on the left, zoomed from its real slot size, and
-/// on the right either the cards that can go in the slot or, once a box on
-/// the card is tapped, what that box can show. Boxes split and merge like
-/// dashboard slots. Returns the slot's new card, [PickEmpty], or null when
-/// nothing changed.
+/// on the right the card's settings (title, icon, clock style, and one level
+/// down the cards that could replace it) or, once a box on the card is
+/// tapped, what that box can show. Boxes split and merge like dashboard
+/// slots. Returns the slot's new card, [PickEmpty], or null when nothing
+/// changed.
 Future<Pick?> showCardOptions(
   BuildContext context, {
   required CardSpec spec,
@@ -61,51 +64,80 @@ class CardOptionsPage extends StatefulWidget {
   State<CardOptionsPage> createState() => _CardOptionsPageState();
 }
 
+/// What the right-hand panel shows while no box is selected.
+enum _Panel { settings, cards, icons }
+
 class _CardOptionsPageState extends State<CardOptionsPage> {
   late CardTemplate _t;
 
   /// Whether the card uses [_t] rather than the automatic layouts.
   late bool _custom;
   NodePath? _sel;
+  _Panel _panel = _Panel.settings;
+  late final TextEditingController _title;
+  String? _icon;
+  late ClockStyle _clock;
 
   CardSpec get spec => widget.spec;
 
   /// Clocks and chip rows draw themselves; only data cards have boxes.
   bool get _arrangeable => spec.type != 'clock' && spec.type != 'chips';
+  bool get _clockCard => spec.type == 'clock';
 
   @override
   void initState() {
     super.initState();
     _custom = spec.template != null;
     _t = spec.template?.copy() ?? defaultTemplate(_model);
+    _title = TextEditingController(text: spec.title ?? '');
+    _icon = spec.icon;
+    _clock = spec.clock ?? const ClockStyle();
   }
 
-  CardModel get _model => widget.sources.model(spec);
+  @override
+  void dispose() {
+    _title.dispose();
+    super.dispose();
+  }
+
+  /// The card as the device describes it, before the user's title and icon.
+  CardModel get _model => widget.sources.model(spec.copyWith(clearLabel: true));
+
+  /// The slot's card with every change made so far.
+  CardSpec get _edited {
+    final t = _title.text.trim();
+    return spec
+        .copyWith(clearLabel: true, clearTemplate: true, clock: _clock)
+        .copyWith(
+          title: t.isEmpty || t == _model.title ? null : t,
+          icon: _icon,
+          template: _custom ? _t.copy() : null,
+        );
+  }
 
   void _edit(void Function() f) => setState(() {
     f();
     _custom = true;
   });
 
+  void _reset() => setState(() {
+    _t = defaultTemplate(_model);
+    _custom = false;
+    _sel = null;
+    _title.clear();
+    _icon = null;
+    _clock = const ClockStyle();
+  });
+
   void _done() {
-    if (_custom == (spec.template != null) && !_custom) {
-      Navigator.pop(context);
-      return;
-    }
-    Navigator.pop(
-      context,
-      PickCard(
-        _custom
-            ? spec.copyWith(template: _t.copy())
-            : spec.copyWith(clearTemplate: true),
-      ),
-    );
+    final edited = _edited;
+    Navigator.pop(context, edited == spec ? null : PickCard(edited));
   }
 
   @override
   Widget build(BuildContext context) {
     final c = LeColors.of(context);
-    final model = widget.sources.model(spec);
+    final model = widget.sources.model(_edited);
     final slot = widget.slotSize;
     final hiddenHere = _arrangeable
         ? planTemplate(
@@ -120,16 +152,10 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
         child: Column(
           children: [
             _TopBar(
-              title: model.title,
+              title: _clockCard ? 'Clock' : model.title,
               slot: slot,
               onCancel: () => Navigator.pop(context),
-              onReset: _arrangeable
-                  ? () => setState(() {
-                      _t = defaultTemplate(model);
-                      _custom = false;
-                      _sel = null;
-                    })
-                  : null,
+              onReset: spec.type == 'chips' ? null : _reset,
               onDone: _done,
             ),
             Expanded(
@@ -164,10 +190,18 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
                       ),
                     ),
                   ),
-                  Container(
-                    width: 420,
+                  Material(
                     color: c.card,
-                    child: _sel == null ? _cards() : _boxPanel(c, model),
+                    child: SizedBox(
+                      width: 420,
+                      child: _sel != null
+                          ? _boxPanel(c, model)
+                          : switch (_panel) {
+                              _Panel.settings => _settings(c),
+                              _Panel.cards => _cards(),
+                              _Panel.icons => _icons(c),
+                            },
+                    ),
                   ),
                 ],
               ),
@@ -179,9 +213,11 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
   }
 
   String _hint(int hidden) {
+    if (_clockCard) return 'Choose how the clock looks in its settings.';
     if (!_arrangeable) return 'This card arranges itself.';
     final base = _sel == null
-        ? 'Tap a box on the card to choose what it shows.'
+        ? 'Tap a box on the card to choose what it shows, or change the '
+              'whole card from its settings.'
         : 'Drag the handles between boxes to resize them. Hold a box and '
               'drag it onto another to swap them.';
     if (hidden == 0) return base;
@@ -192,7 +228,7 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
   Widget _preview(CardModel model) {
     if (!_arrangeable) {
       return IgnorePointer(
-        child: cardContent(spec, widget.slotSize, widget.sources).$1,
+        child: cardContent(_edited, widget.slotSize, widget.sources).$1,
       );
     }
     return TemplateCard(
@@ -214,20 +250,10 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
   Widget _cards() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      // Options for the card as a whole, for what no box can be tapped for.
-      if (_arrangeable && hasChart(_model))
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 10, 8, 0),
-          child: SwitchListTile(
-            title: const Text('Graph behind the card'),
-            subtitle: const Text(
-              'Faintly, when no box on the card shows the graph',
-            ),
-            value: _t.backdrop,
-            onChanged: (v) => _edit(() => _t.backdrop = v),
-          ),
-        ),
-      _PanelHeader(title: 'Change card'),
+      _PanelHeader(
+        title: 'Change card',
+        onBack: () => setState(() => _panel = _Panel.settings),
+      ),
       Expanded(
         child: CardPickerList(
           entries: widget.entries,
@@ -240,6 +266,237 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
       ),
     ],
   );
+
+  /// Options for the card as a whole: its title and icon, the graph behind
+  /// it, the clock's style, and the way to swap it for another card.
+  Widget _settings(LeColors c) {
+    Widget heading(String s) => Padding(
+      padding: const EdgeInsets.fromLTRB(4, 22, 4, 8),
+      child: Text(
+        s.toUpperCase(),
+        style: TextStyle(fontSize: 12, letterSpacing: 1, color: c.muted),
+      ),
+    );
+    Widget toggle(String label, bool value, void Function(bool) set) =>
+        SwitchListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+          title: Text(label),
+          value: value,
+          onChanged: (v) => setState(() => set(v)),
+        );
+    Widget choices<T>(
+      List<T> values,
+      T selected,
+      String Function(T) label,
+      void Function(T) set, {
+      TextStyle Function(T)? style,
+      bool enabled = true,
+      String? id,
+    }) => Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final v in values)
+          ChoiceChip(
+            key: id == null ? null : ValueKey('$id.${label(v)}'),
+            label: Text(label(v), style: style?.call(v)),
+            selected: v == selected,
+            onSelected: enabled ? (_) => setState(() => set(v)) : null,
+          ),
+      ],
+    );
+    Widget label(String s) => Padding(
+      padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
+      child: Text(s, style: TextStyle(color: c.muted)),
+    );
+    TextStyle fontStyle(ClockFont f) =>
+        f.style(size: 16, color: c.ink).copyWith(height: 1.2);
+
+    final model = _model;
+    final icon = cardIcons[_icon] ?? model.icon;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _PanelHeader(title: 'Card settings'),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
+            children: [
+              if (_arrangeable) ...[
+                heading('Title'),
+                Row(
+                  children: [
+                    Tooltip(
+                      message: 'Change icon',
+                      child: Material(
+                        color: c.card2,
+                        borderRadius: BorderRadius.circular(14),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () => setState(() => _panel = _Panel.icons),
+                          child: SizedBox.square(
+                            dimension: 56,
+                            child: Icon(icon, color: c.ink),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: _title,
+                        textCapitalization: TextCapitalization.words,
+                        onChanged: (_) => setState(() {}),
+                        decoration: InputDecoration(
+                          hintText: model.title,
+                          border: const OutlineInputBorder(),
+                          suffixIcon: _title.text.isEmpty
+                              ? null
+                              : IconButton(
+                                  tooltip: 'Use the device name',
+                                  icon: const Icon(Icons.close),
+                                  onPressed: () =>
+                                      setState(() => _title.clear()),
+                                ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (hasChart(model)) ...[
+                  heading('Graph'),
+                  SwitchListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                    title: const Text('Graph behind the card'),
+                    subtitle: const Text(
+                      'Faintly, when no box on the card shows the graph',
+                    ),
+                    value: _t.backdrop,
+                    onChanged: (v) => _edit(() => _t.backdrop = v),
+                  ),
+                ],
+              ],
+              if (_clockCard) ...[
+                heading('Time'),
+                toggle(
+                  '24-hour time',
+                  _clock.h24,
+                  (v) => _clock = _clock.copyWith(h24: v),
+                ),
+                label('Font'),
+                choices(
+                  ClockFont.values,
+                  _clock.font,
+                  (f) => f.label,
+                  (f) => _clock = _clock.copyWith(font: f),
+                  style: fontStyle,
+                ),
+                heading('Date'),
+                choices(
+                  DateWords.values,
+                  _clock.date,
+                  (d) => d.label,
+                  (d) => _clock = _clock.copyWith(date: d),
+                ),
+                label('Order'),
+                choices(
+                  DateOrder.values,
+                  _clock.order,
+                  (o) => o.label,
+                  (o) => _clock = _clock.copyWith(order: o),
+                  enabled: _clock.date != DateWords.none,
+                ),
+                const SizedBox(height: 4),
+                toggle(
+                  'Day of the week',
+                  _clock.weekday,
+                  (v) => _clock = _clock.copyWith(weekday: v),
+                ),
+                toggle(
+                  'Year',
+                  _clock.year,
+                  (v) => _clock = _clock.copyWith(year: v),
+                ),
+                toggle(
+                  'Capitals',
+                  _clock.caps,
+                  (v) => _clock = _clock.copyWith(caps: v),
+                ),
+                label('Date font'),
+                choices(
+                  ClockFont.values,
+                  _clock.dateFont,
+                  (f) => f.label,
+                  (f) => _clock = _clock.copyWith(dateFont: f),
+                  style: fontStyle,
+                  id: 'date-font',
+                ),
+              ],
+              heading('Card'),
+              Material(
+                color: c.card2,
+                borderRadius: BorderRadius.circular(14),
+                child: ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  leading: const Icon(Icons.swap_horiz),
+                  title: const Text('Change card'),
+                  subtitle: const Text('Put a different card in this slot'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => setState(() => _panel = _Panel.cards),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _icons(LeColors c) {
+    Widget tile(String? name, IconData icon) {
+      final on = _icon == name;
+      return Material(
+        color: on ? c.accent.withValues(alpha: 0.14) : c.card2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: on ? BorderSide(color: c.accent, width: 2) : BorderSide.none,
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => setState(() {
+            _icon = name;
+            _panel = _Panel.settings;
+          }),
+          child: Icon(icon, color: c.ink, size: 28),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _PanelHeader(
+          title: 'Icon',
+          onBack: () => setState(() => _panel = _Panel.settings),
+        ),
+        Expanded(
+          child: GridView.extent(
+            padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
+            maxCrossAxisExtent: 72,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            children: [
+              // The device's own icon first, to undo a choice.
+              tile(null, _model.icon),
+              for (final e in cardIcons.entries) tile(e.key, e.value),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _boxPanel(LeColors c, CardModel model) {
     final path = _sel!;
@@ -487,7 +744,7 @@ class _PanelHeader extends StatelessWidget {
         if (onBack != null)
           IconButton(
             onPressed: onBack,
-            tooltip: 'Back to the card list',
+            tooltip: 'Back',
             icon: const Icon(Icons.arrow_back),
           )
         else

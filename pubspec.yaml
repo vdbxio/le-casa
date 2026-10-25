@@ -30,3 +30,11 @@ flutter:
           weight: 600
         - asset: assets/fonts/LeagueSpartan-Bold.ttf
           weight: 700
+    # Clock faces. JetBrains Mono and DM Serif Display, both SIL Open Font
+    # License 1.1 (assets/fonts/OFL-*.txt).
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Variable.ttf
+    - family: DMSerifDisplay
+      fonts:
+        - asset: assets/fonts/DMSerifDisplay-Regular.ttf

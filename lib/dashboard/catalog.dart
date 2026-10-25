@@ -10,6 +10,7 @@ import '../platform/tablet.dart';
 import '../ui/format.dart';
 import '../ui/palette.dart';
 import '../weather/weather.dart';
+import 'cards/card_icons.dart';
 import 'cards/card_model.dart';
 import 'history.dart';
 import 'layout.dart';
@@ -35,8 +36,11 @@ class CardSources {
   /// [modelFor], remembered for as long as these sources live. The
   /// dashboard makes new sources when live data changes, so dragging a
   /// handle redraws cards without rebuilding every model each frame.
-  CardModel model(CardSpec spec) =>
-      _models.putIfAbsent(spec.key, () => modelFor(spec, this));
+  CardModel model(CardSpec spec) {
+    final m = _models.putIfAbsent(spec.key, () => modelFor(spec, this));
+    if (spec.title == null && spec.icon == null) return m;
+    return m.relabel(title: spec.title, icon: cardIcons[spec.icon]);
+  }
 }
 
 /// How the first-run layout places a card.

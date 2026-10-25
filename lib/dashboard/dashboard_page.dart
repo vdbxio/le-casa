@@ -15,6 +15,7 @@ import '../ui/scan_page.dart';
 import 'auto_layout.dart';
 import 'card_picker.dart';
 import 'cards/card_view.dart';
+import 'cards/clock.dart';
 import 'cards/fit.dart';
 import 'cards/template_view.dart';
 import 'card_options.dart';
@@ -652,7 +653,7 @@ class _SlotView extends StatelessWidget {
   switch (spec.type) {
     case 'clock':
       final s = spec.pinned ?? _clockSize(space);
-      return (ClockCard(s), s);
+      return (ClockCard(s, style: spec.clock ?? const ClockStyle()), s);
     case 'chips':
       return (
         ChipRow([for (final i in spec.items) sources.model(i)]),

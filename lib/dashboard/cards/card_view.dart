@@ -2,7 +2,6 @@
 // Copyright (C) 2026 Chloe Madison and contributors.
 // SPDX-License-Identifier: GPL-3.0-or-later WITH App-Store-Exception
 
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -1150,110 +1149,4 @@ class ChipRow extends StatelessWidget {
       );
     },
   );
-}
-
-/// The clock widget. The time fills whatever space the slot gives it.
-class ClockCard extends StatefulWidget {
-  final CardSize size;
-  const ClockCard(this.size, {super.key});
-
-  @override
-  State<ClockCard> createState() => _ClockCardState();
-}
-
-class _ClockCardState extends State<ClockCard> {
-  late Timer _t;
-  DateTime _now = DateTime.now();
-
-  @override
-  void initState() {
-    super.initState();
-    _t = Timer.periodic(const Duration(seconds: 5), (_) {
-      final n = DateTime.now();
-      if (n.minute != _now.minute) setState(() => _now = n);
-    });
-  }
-
-  @override
-  void dispose() {
-    _t.cancel();
-    super.dispose();
-  }
-
-  static const _days = [
-    'Monday',
-    'Tuesday',
-    'Wednesday',
-    'Thursday',
-    'Friday',
-    'Saturday',
-    'Sunday',
-  ];
-  static const _months = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final c = LeColors.of(context);
-    final time =
-        '${_now.hour.toString().padLeft(2, '0')}:${_now.minute.toString().padLeft(2, '0')}';
-    final day = _days[_now.weekday - 1], month = _months[_now.month - 1];
-    final long = '$day ${_now.day} $month';
-    final short = '${day.substring(0, 3)} ${_now.day} ${month.substring(0, 3)}';
-    if (widget.size == CardSize.pill) {
-      return Center(
-        child: Pill(
-          CardModel(
-            title: 'Clock',
-            icon: Icons.schedule,
-            headline: Metric('Time', time),
-            pillLabel: short,
-          ),
-        ),
-      );
-    }
-    return DecoratedBox(
-      decoration: BoxDecoration(color: c.card, borderRadius: _radius),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: FittedBox(
-                fit: BoxFit.contain,
-                alignment: Alignment.bottomLeft,
-                child: Text(time, style: numberStyle(160, c.ink)),
-              ),
-            ),
-            if (widget.size != CardSize.small) ...[
-              const SizedBox(height: 6),
-              Text(
-                widget.size == CardSize.large ? long : short,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: widget.size == CardSize.large ? 22 : 17,
-                  fontWeight: FontWeight.w600,
-                  color: c.muted,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
 }

@@ -197,7 +197,23 @@ void main() {
         ..writeAsBytesSync(bytes!.buffer.asUint8List());
     }
 
-    await shot('options-cards');
+    await shot('options-settings');
+
+    // Card settings come first: rename the card and give it another icon.
+    expect(find.text('Card settings'), findsOneWidget);
+    await t.enterText(find.byType(TextField), 'Roof');
+    await t.tap(find.byTooltip('Change icon'));
+    await t.pumpAndSettle();
+    await shot('options-icons');
+    await t.tap(find.byIcon(Icons.ev_station_outlined));
+    await t.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byType(TemplateCard),
+        matching: find.text('Roof'),
+      ),
+      findsOneWidget,
+    );
 
     // Tap the big number.
     await t.tap(
@@ -230,6 +246,10 @@ void main() {
     expect(big.point, 'm:battery');
     expect(big.align, PartAlign.center);
     expect(parts.where((p) => p.isEmpty), hasLength(1));
+    expect(spec.title, 'Roof');
+    expect(spec.icon, 'ev');
+    expect(sources.model(spec).title, 'Roof');
+    expect(sources.model(spec).icon, Icons.ev_station_outlined);
     current = spec;
 
     // Reset goes back to the automatic layout.
@@ -239,6 +259,35 @@ void main() {
     await t.tap(find.text('Done'));
     await t.pumpAndSettle();
     expect((result as PickCard).spec.template, isNull);
+    expect((result as PickCard).spec.title, isNull);
+    expect((result as PickCard).spec.icon, isNull);
+  });
+
+  testWidgets('change card is one level down from the card settings', (
+    t,
+  ) async {
+    t.view.physicalSize = const Size(1280, 800);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(
+      MaterialApp(
+        theme: leCasaTheme(Brightness.dark),
+        home: CardOptionsPage(
+          spec: const CardSpec('solar'),
+          slotSize: const Size(420, 300),
+          sources: sources,
+          entries: catalog(sources),
+          onDashboard: const {'solar'},
+        ),
+      ),
+    );
+    expect(find.text('THIS CARD'), findsNothing);
+    await t.tap(find.text('Change card'));
+    await t.pumpAndSettle();
+    expect(find.text('THIS CARD'), findsOneWidget);
+    await t.tap(find.byTooltip('Back'));
+    await t.pumpAndSettle();
+    expect(find.text('Card settings'), findsOneWidget);
   });
 
   testWidgets('a templated card draws at many sizes without overflow', (

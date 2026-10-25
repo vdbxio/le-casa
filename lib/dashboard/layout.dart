@@ -17,6 +17,7 @@ library;
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'cards/clock.dart';
 import 'cards/template.dart';
 
 /// The four sizes every card knows how to draw.
@@ -59,6 +60,14 @@ class CardSpec {
   /// automatic layouts.
   final CardTemplate? template;
 
+  /// The user's own title and icon (a [cardIcons] name) for the card, or
+  /// null for the device's.
+  final String? title;
+  final String? icon;
+
+  /// The clock's choices, for [type] `clock`; null for the defaults.
+  final ClockStyle? clock;
+
   const CardSpec(
     this.type, {
     this.device,
@@ -66,6 +75,9 @@ class CardSpec {
     this.pinned,
     this.name,
     this.template,
+    this.title,
+    this.icon,
+    this.clock,
   });
   const CardSpec.device(String id, {String? name})
     : this('device', device: id, name: name);
@@ -81,6 +93,10 @@ class CardSpec {
     String? name,
     CardTemplate? template,
     bool clearTemplate = false,
+    String? title,
+    String? icon,
+    bool clearLabel = false,
+    ClockStyle? clock,
   }) => CardSpec(
     type,
     device: device,
@@ -88,6 +104,9 @@ class CardSpec {
     pinned: unpin ? null : (pinned ?? this.pinned),
     name: name ?? this.name,
     template: clearTemplate ? null : (template ?? this.template),
+    title: clearLabel ? null : (title ?? this.title),
+    icon: clearLabel ? null : (icon ?? this.icon),
+    clock: clock == null ? this.clock : (clock.isDefault ? null : clock),
   );
 
   Map<String, Object?> toJson() => {
@@ -97,6 +116,9 @@ class CardSpec {
     if (pinned != null) 'p': pinned!.name,
     if (name != null) 'n': name,
     if (template != null) 'x': template!.toJson(),
+    if (title != null) 'ti': title,
+    if (icon != null) 'ic': icon,
+    if (clock != null) 'ck': clock!.toJson(),
   };
 
   static CardSpec fromJson(Map<String, Object?> j) => CardSpec(
@@ -111,6 +133,11 @@ class CardSpec {
     template: j['x'] == null
         ? null
         : CardTemplate.fromJson((j['x'] as Map).cast<String, Object?>()),
+    title: j['ti'] as String?,
+    icon: j['ic'] as String?,
+    clock: j['ck'] == null
+        ? null
+        : ClockStyle.fromJson((j['ck'] as Map).cast<String, Object?>()),
   );
 
   @override
@@ -120,6 +147,9 @@ class CardSpec {
       other.device == device &&
       other.pinned == pinned &&
       _sameTemplate(other.template, template) &&
+      other.title == title &&
+      other.icon == icon &&
+      other.clock == clock &&
       other.items.length == items.length &&
       [for (var i = 0; i < items.length; i++) other.items[i] == items[i]]
           .every((x) => x);

@@ -78,6 +78,8 @@ void main() {
   );
   final specs = <String, CardSpec>{
     for (final e in catalog(sources)) e.spec.key: e.spec,
+    // Placed but not heard since the restart: a sentence-only card.
+    'waiting': CardSpec.device('00:00:00:00:00:01', name: 'Xiaomi LYWSD03MMC'),
   };
 
   for (final MapEntry(key: name, value: spec) in specs.entries) {

@@ -488,24 +488,78 @@ class DashCard extends StatelessWidget {
 
   /// A card with nothing to show but a sentence (needs setup, offline,
   /// listening): the sentence wraps over as many lines as fit.
+  /// A card with only a sentence to say (waiting, needs setup). The
+  /// sentence sits in the middle of the card under a large icon, so a tall
+  /// slot does not read as a header over an empty gap.
   Widget _message(BuildContext context, LeColors c, Size box) {
     final note = model.note ?? '';
     final fontSize = size == CardSize.small ? 13.0 : 15.0;
-    final lines = math.max(
-      1,
-      ((box.height - CardMetrics.header - CardMetrics.gap) / (fontSize * 1.35))
-          .floor(),
+    final lineHeight = fontSize * 1.3;
+    final body = box.height - CardMetrics.header - CardMetrics.gap;
+    // A tall card lets the title take a second line instead of cutting it.
+    final titleLines = body >= lineHeight * 6 ? 2 : 1;
+    final style = TextStyle(fontSize: fontSize, height: 1.3, color: c.muted);
+    final textHeight = (TextPainter(
+      text: TextSpan(text: note, style: style),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: box.width)).height;
+    final iconSize = (body - textHeight - 12 - (titleLines - 1) * 20).clamp(
+      0.0,
+      56.0,
     );
+    final lines = math.max(1, (body / lineHeight).floor());
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _header(context, c, showSubtitle: size == CardSize.large),
-        const Spacer(),
-        Text(
-          note,
-          maxLines: lines,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: fontSize, height: 1.3, color: c.muted),
+        if (titleLines == 1)
+          _header(context, c, showSubtitle: size == CardSize.large)
+        else
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(model.icon, size: 20, color: _tone(c)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  model.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                    color: c.ink,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        const SizedBox(height: CardMetrics.gap),
+        Expanded(
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (iconSize >= 28) ...[
+                  Icon(
+                    model.icon,
+                    size: iconSize,
+                    color: _tone(c).withValues(alpha: 0.35),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                Flexible(
+                  child: Text(
+                    note,
+                    maxLines: lines,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: style,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );

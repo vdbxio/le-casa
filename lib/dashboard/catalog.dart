@@ -29,6 +29,14 @@ class CardSources {
     this.weather,
     DateTime Function()? now,
   }) : now = now ?? DateTime.now;
+
+  final Map<String, CardModel> _models = {};
+
+  /// [modelFor], remembered for as long as these sources live. The
+  /// dashboard makes new sources when live data changes, so dragging a
+  /// handle redraws cards without rebuilding every model each frame.
+  CardModel model(CardSpec spec) =>
+      _models.putIfAbsent(spec.key, () => modelFor(spec, this));
 }
 
 /// How the first-run layout places a card.

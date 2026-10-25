@@ -124,6 +124,7 @@ class _LeCasaAppState extends State<LeCasaApp> {
     const Duration(seconds: 1),
   );
   Dimmer? _dimmer;
+  late final AppLifecycleListener _lifecycle;
 
   @override
   void initState() {
@@ -138,6 +139,8 @@ class _LeCasaAppState extends State<LeCasaApp> {
     });
     autostart.start();
     history.start();
+    // Android may kill a backgrounded app without warning: save on the way.
+    _lifecycle = AppLifecycleListener(onHide: history.save);
     tablet.start();
     settings.load().then((_) {
       weather.start();
@@ -147,6 +150,7 @@ class _LeCasaAppState extends State<LeCasaApp> {
 
   @override
   void dispose() {
+    _lifecycle.dispose();
     _dimmer?.dispose();
     liveData.dispose();
     weather.dispose();

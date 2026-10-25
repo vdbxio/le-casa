@@ -47,6 +47,7 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void dispose() {
     _firstRun?.cancel();
+    _live?.removeListener(_dropSources);
     super.dispose();
   }
 
@@ -65,7 +66,24 @@ class _DashboardPageState extends State<DashboardPage> {
     _lockLandscape();
   }
 
-  CardSources _sources(AppServices s) => CardSources(
+  CardSources? _cached;
+  Listenable? _live;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final live = AppServices.of(context).liveData;
+    if (!identical(live, _live)) {
+      _live?.removeListener(_dropSources);
+      _live = live..addListener(_dropSources);
+    }
+  }
+
+  void _dropSources() => _cached = null;
+
+  /// Card data for this frame. Kept until live data changes, so edits and
+  /// drags reuse the same card models.
+  CardSources _sources(AppServices s) => _cached ??= CardSources(
     tracker: s.tracker,
     history: s.history,
     tablet: s.tablet,
@@ -196,35 +214,39 @@ class _Board extends StatelessWidget {
           for (final b in g.slots)
             Positioned.fromRect(
               rect: b.rect,
-              child: _SlotView(
-                key: ValueKey(b.path.join('.')),
-                box: b,
-                editing: editing,
-                selected: selBox == b,
-                sources: sources,
-                onSelect: () => dash.select(b.path),
-                onPick: () => _pick(context, b),
-                onRemove: () {
-                  page.remove(b.path);
-                  dash.selected = null;
-                  dash.changed();
-                },
-                onCycleSize: (current) {
-                  final card = b.slot.card!;
-                  const order = [
-                    null,
-                    CardSize.large,
-                    CardSize.medium,
-                    CardSize.small,
-                    CardSize.pill,
-                  ];
-                  final next =
-                      order[(order.indexOf(card.pinned) + 1) % order.length];
-                  b.slot.card = next == null
-                      ? card.copyWith(unpin: true)
-                      : card.copyWith(pinned: next);
-                  dash.changed();
-                },
+              // Each slot paints on its own layer, so resizing two slots
+              // does not repaint every card on the screen.
+              child: RepaintBoundary(
+                child: _SlotView(
+                  key: ValueKey(b.path.join('.')),
+                  box: b,
+                  editing: editing,
+                  selected: selBox == b,
+                  sources: sources,
+                  onSelect: () => dash.select(b.path),
+                  onPick: () => _pick(context, b),
+                  onRemove: () {
+                    page.remove(b.path);
+                    dash.selected = null;
+                    dash.changed();
+                  },
+                  onCycleSize: (current) {
+                    final card = b.slot.card!;
+                    const order = [
+                      null,
+                      CardSize.large,
+                      CardSize.medium,
+                      CardSize.small,
+                      CardSize.pill,
+                    ];
+                    final next =
+                        order[(order.indexOf(card.pinned) + 1) % order.length];
+                    b.slot.card = next == null
+                        ? card.copyWith(unpin: true)
+                        : card.copyWith(pinned: next);
+                    dash.changed();
+                  },
+                ),
               ),
             ),
           if (editing) ...[
@@ -576,11 +598,11 @@ class _SlotView extends StatelessWidget {
       return (ClockCard(s), s);
     case 'chips':
       return (
-        ChipRow([for (final i in spec.items) modelFor(i, sources)]),
+        ChipRow([for (final i in spec.items) sources.model(i)]),
         CardSize.pill,
       );
     default:
-      final m = modelFor(spec, sources);
+      final m = sources.model(spec);
       final s = spec.pinned ?? fitSize(m, space);
       return (DashCard(m, s), s);
   }

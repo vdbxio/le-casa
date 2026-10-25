@@ -105,7 +105,7 @@ class _PickerSheet extends StatelessWidget {
     Widget tile(CatalogEntry e, {bool move = false}) => _Tile(
       preview: e.spec.type == 'clock'
           ? _clockPill()
-          : Pill(modelFor(e.spec, sources)),
+          : Pill(sources.model(e.spec)),
       title: e.title,
       subtitle: move ? 'On the dashboard · tap to move it here' : e.subtitle,
       faded: move || e.needsSetup,

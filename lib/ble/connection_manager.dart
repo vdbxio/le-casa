@@ -83,7 +83,7 @@ SessionOpener scannerOpener(BleScanner scanner) => (id) async {
   final wasScanning = scanner.scanning;
   if (wasScanning) await scanner.stop();
   try {
-    final link = await GattLink.open(scanner.central, p);
+    final link = await GattLink.open(scanner.central, p, address: id);
     return _ScanPausingSession(link, wasScanning ? scanner : null);
   } catch (_) {
     if (wasScanning) unawaited(scanner.start());

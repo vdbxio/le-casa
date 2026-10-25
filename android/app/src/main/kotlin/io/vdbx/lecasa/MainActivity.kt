@@ -12,8 +12,9 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
-/// Hosts the Flutter app and a small channel for the tablet's own sensors
-/// and screen: battery, ambient light, brightness, keep-screen-on.
+/// Hosts the Flutter app and small channels for the tablet's own sensors
+/// and screen (battery, ambient light, brightness, keep-screen-on) and for
+/// tuning Bluetooth links (GattTuning.kt).
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -45,6 +46,19 @@ class MainActivity : FlutterActivity() {
                     }
                     result.success(null)
                 }
+                else -> result.notImplemented()
+            }
+        }
+        MethodChannel(messenger, "io.vdbx.lecasa/gatt").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "tuneLink" -> result.success(
+                    GattTuning.tune(
+                        flutterEngine,
+                        call.argument<String>("address") ?: "",
+                        call.argument<String>("priority"),
+                        call.argument<Boolean>("phy1m") ?: false,
+                    )
+                )
                 else -> result.notImplemented()
             }
         }

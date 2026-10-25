@@ -50,6 +50,10 @@ class Link {
   String? error;
   int failures = 0;
 
+  /// Polls in a row where the link came up and then the device dropped
+  /// it before the read finished.
+  int drops = 0;
+
   Link(this.id, this.driver, {bool enabled = true})
     : nextDue = DateTime.now(),
       phase = enabled ? LinkPhase.scheduled : LinkPhase.off;
@@ -57,6 +61,15 @@ class Link {
   bool get busy => phase == LinkPhase.connecting || phase == LinkPhase.reading;
 
   bool get enabled => phase != LinkPhase.off && phase != LinkPhase.unsupported;
+
+  /// This device keeps cutting the link a few seconds after connecting. Seen
+  /// with a Daly module and the PRITOM M10 tablet: the module asks for new
+  /// link parameters and the tablet's radio loses the link four seconds
+  /// later, whatever the app does. Nothing to fix in the app, so tell the
+  /// user instead of retrying in silence.
+  bool get keepsDropping => drops >= dropsToWarn;
+
+  static const dropsToWarn = 3;
 
   String get statusText => switch (phase) {
     LinkPhase.scheduled => 'Waiting to connect',
@@ -83,7 +96,7 @@ SessionOpener scannerOpener(BleScanner scanner) => (id) async {
   final wasScanning = scanner.scanning;
   if (wasScanning) await scanner.stop();
   try {
-    final link = await GattLink.open(scanner.central, p, address: id);
+    final link = await GattLink.open(scanner.central, p);
     return _ScanPausingSession(link, wasScanning ? scanner : null);
   } catch (_) {
     if (wasScanning) unawaited(scanner.start());
@@ -106,6 +119,8 @@ class _ScanPausingSession implements ClosableSession {
       _link.write(c, data, withResponse: withResponse);
   @override
   Future<Stream<Uint8List>> subscribe(GattChar c) => _link.subscribe(c);
+  @override
+  bool get droppedByDevice => _link.droppedByDevice;
   @override
   Future<void> close() async {
     await _link.close();
@@ -268,6 +283,7 @@ class ConnectionManager extends ChangeNotifier {
       l
         ..phase = LinkPhase.ok
         ..failures = 0
+        ..drops = 0
         ..lastOk = DateTime.now()
         ..nextDue = DateTime.now().add(l.driver.interval);
     } on UnsupportedDeviceException catch (e) {
@@ -277,7 +293,9 @@ class ConnectionManager extends ChangeNotifier {
         ..error = e.message;
     } catch (e) {
       debugPrint('poll: ${l.id} failed: $e');
-      _fail(l, _describe(e));
+      final dropped = link?.droppedByDevice ?? false;
+      l.drops = dropped ? l.drops + 1 : 0;
+      _fail(l, dropped ? 'The device dropped the connection' : _describe(e));
     } finally {
       await link?.close();
       _busy = null;

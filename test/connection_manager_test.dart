@@ -118,6 +118,34 @@ void main() {
     m.dispose();
   });
 
+  test('a device that keeps dropping the link is flagged', () async {
+    final driver = ScriptedDriver(error: TimeoutException('no answer'));
+    var drop = true;
+    final m = manager(
+      driver,
+      open: (id) async {
+        final s = FakeSession(characteristics: const [])
+          ..droppedByDevice = drop;
+        opened.add(s);
+        return s;
+      },
+    );
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    for (var i = 0; i < Link.dropsToWarn; i++) {
+      expect(m[testAdv.id]!.keepsDropping, isFalse);
+      await m.readNow(testAdv.id);
+    }
+    final l = m[testAdv.id]!;
+    expect(l.keepsDropping, isTrue);
+    expect(l.error, 'The device dropped the connection');
+    // A failure of another kind, or a good read, clears it.
+    drop = false;
+    await m.readNow(testAdv.id);
+    expect(l.keepsDropping, isFalse);
+    m.dispose();
+  });
+
   test('unsupported devices are parked, not retried', () async {
     final driver = ScriptedDriver(
       error: const UnsupportedDeviceException('no such characteristic'),

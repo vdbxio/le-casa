@@ -14,6 +14,8 @@ class FakeSession implements ClosableSession {
   final List<Uint8List> writes = [];
   final Map<String, StreamController<Uint8List>> _streams = {};
   bool closed = false;
+  @override
+  bool droppedByDevice = false;
 
   FakeSession({
     required this.characteristics,

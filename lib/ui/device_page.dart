@@ -347,6 +347,20 @@ class _ConnectionSection extends StatelessWidget {
               ? null
               : (v) => connections.setDeviceEnabled(link.id, v),
         ),
+        if (link.keepsDropping)
+          Card(
+            color: theme.colorScheme.tertiaryContainer,
+            child: const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text(
+                'This device keeps dropping the connection a few seconds '
+                'after it connects. Its radio and this tablet\'s Bluetooth '
+                'chip do not get along, and no setting in Le\'Casa changes '
+                'that. Another phone or tablet usually reads it fine. '
+                'Le\'Casa keeps trying in the background.',
+              ),
+            ),
+          ),
         if (!connections.enabled)
           Text(
             'Connections are paused globally (see the scan screen menu).',

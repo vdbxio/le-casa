@@ -46,10 +46,12 @@ The app currently
   - Each device has a "Read over connection" switch and a "Read now"
     button on its page; the link icon on the scan screen pauses all
     connections at once (handy when you want to use the vendor app).
-  - The PRITOM M10 test tablet used to lose every Daly link 4 s after the
-    module's connection-parameter update. Le'Casa now asks for high
-    connection priority and the 1M PHY right after connecting (logcat tag
-    `LeCasaGatt`); whether that is enough is being tested.
+  - Known issue: the PRITOM M10 test tablet loses every link to the Daly
+    module about 4 s after the module's connection-parameter update.
+    Asking Android for other link parameters or the 1M PHY changes
+    nothing (tested 2026-10-25), and the same module reads fine on a Mac
+    and on the iPad. When a device drops the link three polls in a row,
+    its page now says so instead of retrying in silence.
 
 Not yet: dashboard layout, controlling two-way devices (Alpicool, Hcalory),
 tablet-to-tablet sync, phone relay, voice. See the roadmap below.

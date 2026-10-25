@@ -68,6 +68,10 @@ abstract interface class GattSession {
 /// A session the connection manager can also close.
 abstract interface class ClosableSession implements GattSession {
   Future<void> close();
+
+  /// True once the device or the radio ended the link by itself, rather
+  /// than through [close].
+  bool get droppedByDevice;
 }
 
 extension GattSessionLookup on GattSession {

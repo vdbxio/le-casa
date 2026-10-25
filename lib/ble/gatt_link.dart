@@ -10,7 +10,6 @@ import 'package:bluetooth_low_energy/bluetooth_low_energy.dart';
 import 'package:flutter/foundation.dart';
 
 import 'gatt_session.dart';
-import 'link_tuning.dart';
 
 class GattLink implements ClosableSession {
   final CentralManager _central;
@@ -65,6 +64,9 @@ class GattLink implements ClosableSession {
   /// Completes when the peripheral drops the link on its own.
   Future<void> get onDisconnected => _disconnected.future;
 
+  @override
+  bool get droppedByDevice => _disconnected.isCompleted;
+
   /// Connects and discovers services. Throws on failure or after
   /// [timeout]; the caller does not need to disconnect in that case.
   static Future<GattLink> open(
@@ -73,13 +75,11 @@ class GattLink implements ClosableSession {
     // Android gives up on its own after 30 s; a Daly module in a battery
     // box has been seen to take 22 s, so do not cut it shorter than that.
     Duration timeout = const Duration(seconds: 32),
-    String? address,
   }) async {
     debugPrint('gatt: connecting ${peripheral.uuid}');
     await central.connect(peripheral).timeout(timeout);
     debugPrint('gatt: connected ${peripheral.uuid}, discovering services');
     try {
-      if (address != null) await LinkTuning.tune(address);
       // Ask for a big MTU first, like iOS and macOS do on every connection.
       // A Daly module answered a Mac (MTU 512) in one 129-byte notification
       // but dropped the tablet, which never asked, so some firmware may

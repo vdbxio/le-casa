@@ -46,6 +46,9 @@ import 'drivers/saftkiste.dart';
 import 'drivers/saihang.dart';
 import 'drivers/seplos.dart';
 import 'drivers/seplos_v2.dart';
+import 'drivers/superb.dart';
+import 'drivers/superb_v2.dart';
+import 'drivers/tianpwr.dart';
 import 'drivers/topband.dart';
 import 'drivers/vatrer.dart';
 import 'spec.dart';
@@ -94,6 +97,9 @@ final List<BmsSpec> bmsSpecs = [
   SaihangBms.spec,
   SeplosBms.spec,
   SeplosV2Bms.spec,
+  SuperbBms.spec,
+  SuperbV2Bms.spec,
+  TianpwrBms.spec,
   TopbandBms.spec,
   VatrerBms.spec,
 ];

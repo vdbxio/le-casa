@@ -120,17 +120,21 @@ void main() {
           await t.pump();
           await shot('edit');
 
-          // The picker opens, hides cards already placed, and cancels cleanly.
-          await t.tap(find.byTooltip('Change card'));
-          await t.pumpAndSettle();
-          expect(
-            find.text('Already on the dashboard'.toUpperCase()),
-            findsOneWidget,
+          // Card options open from the gear, list the cards that can take
+          // the slot, and cancel cleanly.
+          await t.tap(
+            find.descendant(
+              of: find.byKey(const ValueKey('2.1')),
+              matching: find.byTooltip('Card options'),
+            ),
           );
-          await shot('picker');
+          await t.pumpAndSettle();
+          expect(find.text('Change card'), findsOneWidget);
+          expect(find.text('This card'.toUpperCase()), findsOneWidget);
+          await shot('options');
           await t.tap(find.text('Cancel'));
           await t.pumpAndSettle();
-          expect(find.text('Cancel'), findsNothing);
+          expect(find.text('Change card'), findsNothing);
 
           // Rows instead of columns still lays out without overflow.
           await t.tap(find.text('Rows'));

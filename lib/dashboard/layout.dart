@@ -14,7 +14,10 @@
 /// - Sizes are proportions ([Split.weights]), so a layout fills any screen.
 library;
 
+import 'dart:convert';
 import 'dart:math' as math;
+
+import 'cards/template.dart';
 
 /// The four sizes every card knows how to draw.
 enum CardSize {
@@ -52,12 +55,17 @@ class CardSpec {
   /// heard again after a restart.
   final String? name;
 
+  /// The user's own arrangement from card options, or null for the
+  /// automatic layouts.
+  final CardTemplate? template;
+
   const CardSpec(
     this.type, {
     this.device,
     this.items = const [],
     this.pinned,
     this.name,
+    this.template,
   });
   const CardSpec.device(String id, {String? name})
     : this('device', device: id, name: name);
@@ -70,12 +78,16 @@ class CardSpec {
     List<CardSpec>? items,
     CardSize? pinned,
     bool unpin = false,
+    String? name,
+    CardTemplate? template,
+    bool clearTemplate = false,
   }) => CardSpec(
     type,
     device: device,
     items: items ?? this.items,
     pinned: unpin ? null : (pinned ?? this.pinned),
-    name: name,
+    name: name ?? this.name,
+    template: clearTemplate ? null : (template ?? this.template),
   );
 
   Map<String, Object?> toJson() => {
@@ -84,6 +96,7 @@ class CardSpec {
     if (items.isNotEmpty) 'i': [for (final c in items) c.toJson()],
     if (pinned != null) 'p': pinned!.name,
     if (name != null) 'n': name,
+    if (template != null) 'x': template!.toJson(),
   };
 
   static CardSpec fromJson(Map<String, Object?> j) => CardSpec(
@@ -95,6 +108,9 @@ class CardSpec {
     ],
     pinned: CardSize.values.asNameMap()[j['p']],
     name: j['n'] as String?,
+    template: j['x'] == null
+        ? null
+        : CardTemplate.fromJson((j['x'] as Map).cast<String, Object?>()),
   );
 
   @override
@@ -103,12 +119,19 @@ class CardSpec {
       other.type == type &&
       other.device == device &&
       other.pinned == pinned &&
+      _sameTemplate(other.template, template) &&
       other.items.length == items.length &&
       [for (var i = 0; i < items.length; i++) other.items[i] == items[i]]
           .every((x) => x);
 
   @override
   int get hashCode => Object.hash(type, device, pinned, items.length);
+
+  static bool _sameTemplate(CardTemplate? a, CardTemplate? b) =>
+      identical(a, b) ||
+      (a != null &&
+          b != null &&
+          jsonEncode(a.toJson()) == jsonEncode(b.toJson()));
 }
 
 enum SplitAxis {
@@ -235,7 +258,7 @@ class DashboardLayout {
       final n = c.device == null ? null : nameOf(c.device!);
       if (n == null || n == c.name) return c;
       changed = true;
-      return CardSpec(c.type, device: c.device, pinned: c.pinned, name: n);
+      return c.copyWith(name: n);
     }
 
     for (final (_, s) in slots) {

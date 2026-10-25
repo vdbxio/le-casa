@@ -9,12 +9,15 @@ import 'package:flutter/services.dart';
 
 import '../app.dart';
 import '../settings/settings_page.dart';
+import '../ui/dashed_outline.dart';
 import '../ui/palette.dart';
 import '../ui/scan_page.dart';
 import 'auto_layout.dart';
 import 'card_picker.dart';
 import 'cards/card_view.dart';
 import 'cards/fit.dart';
+import 'cards/template_view.dart';
+import 'card_options.dart';
 import 'catalog.dart';
 import 'dashboard_controller.dart';
 import 'geometry.dart';
@@ -241,22 +244,7 @@ class _Board extends StatelessWidget {
                     dash.selected = null;
                     dash.changed();
                   },
-                  onCycleSize: (current) {
-                    final card = b.slot.card!;
-                    const order = [
-                      null,
-                      CardSize.large,
-                      CardSize.medium,
-                      CardSize.small,
-                      CardSize.pill,
-                    ];
-                    final next =
-                        order[(order.indexOf(card.pinned) + 1) % order.length];
-                    b.slot.card = next == null
-                        ? card.copyWith(unpin: true)
-                        : card.copyWith(pinned: next);
-                    dash.changed();
-                  },
+                  onOptions: () => _options(context, b),
                 ),
               ),
             ),
@@ -302,14 +290,21 @@ class _Board extends StatelessWidget {
     return true;
   }
 
-  Future<void> _pick(BuildContext context, SlotBox b) async {
-    final pick = await showCardPicker(
+  Future<void> _options(BuildContext context, SlotBox b) async {
+    final spec = b.slot.card;
+    if (spec == null) return _pick(context, b);
+    final pick = await showCardOptions(
       context,
+      spec: spec,
+      slotSize: b.rect.size,
+      sources: sources,
       entries: catalog(sources),
       onDashboard: page.cardKeys,
-      sources: sources,
-      slotHasCard: b.slot.card != null,
     );
+    _apply(b, pick);
+  }
+
+  void _apply(SlotBox b, Pick? pick) {
     switch (pick) {
       case null:
         return;
@@ -320,6 +315,17 @@ class _Board extends StatelessWidget {
         b.slot.card = spec;
     }
     dash.changed();
+  }
+
+  Future<void> _pick(BuildContext context, SlotBox b) async {
+    final pick = await showCardPicker(
+      context,
+      entries: catalog(sources),
+      onDashboard: page.cardKeys,
+      sources: sources,
+      slotHasCard: b.slot.card != null,
+    );
+    _apply(b, pick);
   }
 
   /// A drag handle on every gap, with a + beside it that inserts a slot.
@@ -495,8 +501,7 @@ class _SlotView extends StatelessWidget {
   final SlotBox box;
   final bool editing, selected;
   final CardSources sources;
-  final VoidCallback onSelect, onPick, onRemove;
-  final void Function(CardSize current) onCycleSize;
+  final VoidCallback onSelect, onPick, onOptions, onRemove;
 
   const _SlotView({
     super.key,
@@ -506,8 +511,8 @@ class _SlotView extends StatelessWidget {
     required this.sources,
     required this.onSelect,
     required this.onPick,
+    required this.onOptions,
     required this.onRemove,
-    required this.onCycleSize,
   });
 
   @override
@@ -523,7 +528,7 @@ class _SlotView extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onSelect,
       child: CustomPaint(
-        foregroundPainter: _DashedOutline(
+        foregroundPainter: DashedOutline(
           selected ? c.accent : c.accent.withValues(alpha: 0.45),
           selected ? 2.5 : 2,
         ),
@@ -561,36 +566,27 @@ class _SlotView extends StatelessWidget {
                   ),
                 ),
               ),
-            if (selected)
+            if (card != null || selected)
               Positioned(
                 top: 8,
                 right: 8,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (card != null &&
-                        card.type != 'chips' &&
-                        size != null) ...[
-                      _SizeBadge(
-                        pinned: card.pinned != null,
-                        size: size,
-                        onTap: () => onCycleSize(size),
-                      ),
-                      const SizedBox(width: 6),
-                    ],
-                    if (card != null) ...[
+                    if (selected) ...[
                       _ToolButton(
-                        icon: Icons.swap_horiz,
-                        label: 'Change card',
-                        onTap: onPick,
+                        icon: Icons.delete_outline,
+                        label: 'Remove slot',
+                        onTap: onRemove,
                       ),
                       const SizedBox(width: 6),
                     ],
-                    _ToolButton(
-                      icon: Icons.delete_outline,
-                      label: 'Remove slot',
-                      onTap: onRemove,
-                    ),
+                    if (card != null)
+                      _ToolButton(
+                        icon: Icons.settings_outlined,
+                        label: 'Card options',
+                        onTap: onOptions,
+                      ),
                   ],
                 ),
               ),
@@ -615,6 +611,9 @@ class _SlotView extends StatelessWidget {
     default:
       final m = sources.model(spec);
       final s = spec.pinned ?? fitSize(m, space);
+      if (spec.template case final t? when s != CardSize.pill) {
+        return (TemplateCard(m, t), s);
+      }
       return (DashCard(m, s), s);
   }
 }
@@ -624,45 +623,6 @@ CardSize _clockSize(Size s) {
   if (s.height < 150) return CardSize.small;
   if (s.height < 260 || s.width < 300) return CardSize.medium;
   return CardSize.large;
-}
-
-class _SizeBadge extends StatelessWidget {
-  final bool pinned;
-  final CardSize size;
-  final VoidCallback onTap;
-  const _SizeBadge({
-    required this.pinned,
-    required this.size,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = LeColors.of(context);
-    return Tooltip(
-      message: 'Tap to pin a size',
-      child: Material(
-        color: c.card,
-        shape: StadiumBorder(side: BorderSide(color: c.accent, width: 1.5)),
-        child: InkWell(
-          customBorder: const StadiumBorder(),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-            child: Text(
-              '${pinned ? 'pinned' : 'auto'} · ${size.short}',
-              style: TextStyle(
-                fontSize: 12,
-                color: c.accent,
-                fontFamily: 'monospace',
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _ToolButton extends StatelessWidget {
@@ -802,32 +762,4 @@ class _MenuButton extends StatelessWidget {
       ),
     );
   }
-}
-
-class _DashedOutline extends CustomPainter {
-  final Color color;
-  final double width;
-  _DashedOutline(this.color, this.width);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rrect = RRect.fromRectAndRadius(
-      (Offset.zero & size).deflate(width / 2),
-      const Radius.circular(20),
-    );
-    final path = Path()..addRRect(rrect);
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = width;
-    for (final m in path.computeMetrics()) {
-      for (double d = 0; d < m.length; d += 14) {
-        canvas.drawPath(m.extractPath(d, d + 8), paint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DashedOutline old) =>
-      old.color != color || old.width != width;
 }

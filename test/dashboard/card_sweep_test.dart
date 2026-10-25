@@ -8,6 +8,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lecasa/dashboard/cards/template.dart';
 import 'package:lecasa/dashboard/catalog.dart';
 import 'package:lecasa/dashboard/dashboard_page.dart';
 import 'package:lecasa/dashboard/history.dart';
@@ -81,6 +82,14 @@ void main() {
     // Placed but not heard since the restart: a sentence-only card.
     'waiting': CardSpec.device('00:00:00:00:00:01', name: 'Xiaomi LYWSD03MMC'),
   };
+  // The same cards arranged by card options, starting from the default
+  // arrangement.
+  for (final e in [...specs.entries]) {
+    if (e.value.type == 'clock' || e.value.type == 'chips') continue;
+    specs['${e.key}-boxes'] = e.value.copyWith(
+      template: defaultTemplate(sources.model(e.value)),
+    );
+  }
 
   for (final MapEntry(key: name, value: spec) in specs.entries) {
     testWidgets('card $name fits every slot size', (t) async {

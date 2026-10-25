@@ -72,46 +72,6 @@ class _PickerSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = LeColors.of(context);
-    final fresh = [
-      for (final e in entries)
-        if (!onDashboard.contains(e.spec.key)) e,
-    ];
-    final devices = [
-      for (final e in fresh)
-        if (e.spec.type == 'device' || e.spec.type == 'solar') e,
-    ];
-    final widgets = [
-      for (final e in fresh)
-        if (e.spec.type != 'device' && e.spec.type != 'solar') e,
-    ];
-    final placed = [
-      for (final e in entries)
-        if (onDashboard.contains(e.spec.key)) e,
-    ];
-    // A chip row starts with whatever readable devices are not placed yet.
-    final chipItems = [
-      for (final e in devices)
-        if (!e.needsSetup && e.spec.type == 'device') e.spec,
-    ].take(6).toList();
-
-    Widget section(String label) => Padding(
-      padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
-      child: Text(
-        label.toUpperCase(),
-        style: TextStyle(fontSize: 12, letterSpacing: 1, color: c.muted),
-      ),
-    );
-
-    Widget tile(CatalogEntry e, {bool move = false}) => _Tile(
-      preview: e.spec.type == 'clock'
-          ? _clockPill()
-          : Pill(sources.model(e.spec)),
-      title: e.title,
-      subtitle: move ? 'On the dashboard · tap to move it here' : e.subtitle,
-      faded: move || e.needsSetup,
-      onTap: () => Navigator.pop(context, PickCard(e.spec, move: move)),
-    );
-
     return Align(
       alignment: Alignment.centerRight,
       child: Material(
@@ -142,57 +102,12 @@ class _PickerSheet extends StatelessWidget {
                   ),
                 ),
                 Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
-                    children: [
-                      section('Found nearby'),
-                      if (devices.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.all(8),
-                          child: Text(
-                            'Everything the tablet can hear is already on the dashboard.',
-                            style: TextStyle(color: c.muted),
-                          ),
-                        ),
-                      for (final e in devices) tile(e),
-                      section('Widgets'),
-                      for (final e in widgets) tile(e),
-                      _Tile(
-                        preview: Pill(
-                          const CardModel(
-                            title: 'Chips',
-                            icon: Icons.view_agenda_outlined,
-                            tone: Tone.accent,
-                            headline: Metric('', 'Chips'),
-                            pillLabel: '',
-                          ),
-                        ),
-                        title: 'Chip row',
-                        subtitle: chipItems.isEmpty
-                            ? 'Needs devices that are not on the dashboard yet'
-                            : 'Several small readings sharing one slot',
-                        faded: chipItems.isEmpty,
-                        onTap: chipItems.isEmpty
-                            ? null
-                            : () => Navigator.pop(
-                                context,
-                                PickCard(CardSpec('chips', items: chipItems)),
-                              ),
-                      ),
-                      if (placed.isNotEmpty) ...[
-                        section('Already on the dashboard'),
-                        for (final e in placed) tile(e, move: true),
-                      ],
-                      if (slotHasCard) ...[
-                        const SizedBox(height: 18),
-                        OutlinedButton.icon(
-                          onPressed: () =>
-                              Navigator.pop(context, const PickEmpty()),
-                          icon: const Icon(Icons.layers_clear_outlined),
-                          label: const Text('Empty this slot'),
-                        ),
-                      ],
-                    ],
+                  child: CardPickerList(
+                    entries: entries,
+                    onDashboard: onDashboard,
+                    sources: sources,
+                    slotHasCard: slotHasCard,
+                    onPick: (p) => Navigator.pop(context, p),
                   ),
                 ),
               ],
@@ -200,6 +115,137 @@ class _PickerSheet extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The cards that can go in a slot: devices found nearby, widgets, a chip
+/// row, and the cards already on the dashboard (which move rather than
+/// duplicate). Used by the picker sheet and by card options.
+class CardPickerList extends StatelessWidget {
+  final List<CatalogEntry> entries;
+  final Set<String> onDashboard;
+  final CardSources sources;
+  final bool slotHasCard;
+  final ValueChanged<Pick> onPick;
+
+  /// The card in the slot, marked as the current one.
+  final String? current;
+
+  const CardPickerList({
+    super.key,
+    required this.entries,
+    required this.onDashboard,
+    required this.sources,
+    required this.slotHasCard,
+    required this.onPick,
+    this.current,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = LeColors.of(context);
+    final fresh = [
+      for (final e in entries)
+        if (!onDashboard.contains(e.spec.key)) e,
+    ];
+    final devices = [
+      for (final e in fresh)
+        if (e.spec.type == 'device' || e.spec.type == 'solar') e,
+    ];
+    final widgets = [
+      for (final e in fresh)
+        if (e.spec.type != 'device' && e.spec.type != 'solar') e,
+    ];
+    final placed = [
+      for (final e in entries)
+        if (onDashboard.contains(e.spec.key) && e.spec.key != current) e,
+    ];
+    final here = [
+      for (final e in entries)
+        if (e.spec.key == current) e,
+    ];
+    // A chip row starts with whatever readable devices are not placed yet.
+    final chipItems = [
+      for (final e in devices)
+        if (!e.needsSetup && e.spec.type == 'device') e.spec,
+    ].take(6).toList();
+
+    Widget section(String label) => Padding(
+      padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
+      child: Text(
+        label.toUpperCase(),
+        style: TextStyle(fontSize: 12, letterSpacing: 1, color: c.muted),
+      ),
+    );
+
+    Widget tile(CatalogEntry e, {bool move = false, bool isCurrent = false}) =>
+        _Tile(
+          preview: e.spec.type == 'clock'
+              ? _clockPill()
+              : Pill(sources.model(e.spec)),
+          title: e.title,
+          subtitle: isCurrent
+              ? 'In this slot now'
+              : move
+              ? 'On the dashboard · tap to move it here'
+              : e.subtitle,
+          faded: move || e.needsSetup,
+          selected: isCurrent,
+          onTap: isCurrent ? null : () => onPick(PickCard(e.spec, move: move)),
+        );
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
+      children: [
+        if (here.isNotEmpty) ...[
+          section('This card'),
+          for (final e in here) tile(e, isCurrent: true),
+        ],
+        section('Found nearby'),
+        if (devices.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: Text(
+              'Everything the tablet can hear is already on the dashboard.',
+              style: TextStyle(color: c.muted),
+            ),
+          ),
+        for (final e in devices) tile(e),
+        section('Widgets'),
+        for (final e in widgets) tile(e),
+        _Tile(
+          preview: Pill(
+            const CardModel(
+              title: 'Chips',
+              icon: Icons.view_agenda_outlined,
+              tone: Tone.accent,
+              headline: Metric('', 'Chips'),
+              pillLabel: '',
+            ),
+          ),
+          title: 'Chip row',
+          subtitle: chipItems.isEmpty
+              ? 'Needs devices that are not on the dashboard yet'
+              : 'Several small readings sharing one slot',
+          faded: chipItems.isEmpty,
+          onTap: chipItems.isEmpty
+              ? null
+              : () => onPick(PickCard(CardSpec('chips', items: chipItems))),
+        ),
+        if (placed.isNotEmpty) ...[
+          section('Already on the dashboard'),
+          for (final e in placed) tile(e, move: true),
+        ],
+        if (slotHasCard) ...[
+          const SizedBox(height: 18),
+          OutlinedButton.icon(
+            onPressed: () => onPick(const PickEmpty()),
+            icon: const Icon(Icons.layers_clear_outlined),
+            label: const Text('Empty this slot'),
+          ),
+        ],
+      ],
     );
   }
 
@@ -222,7 +268,7 @@ class _PickerSheet extends StatelessWidget {
 class _Tile extends StatelessWidget {
   final Widget preview;
   final String title, subtitle;
-  final bool faded;
+  final bool faded, selected;
   final VoidCallback? onTap;
 
   const _Tile({
@@ -230,6 +276,7 @@ class _Tile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     this.faded = false,
+    this.selected = false,
     this.onTap,
   });
 
@@ -240,7 +287,12 @@ class _Tile extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
         color: c.card2,
-        borderRadius: BorderRadius.circular(14),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: selected
+              ? BorderSide(color: c.accent, width: 2)
+              : BorderSide.none,
+        ),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: onTap,

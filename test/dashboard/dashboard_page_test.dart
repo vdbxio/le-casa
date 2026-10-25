@@ -7,7 +7,6 @@ import 'dart:ui' as ui;
 import 'package:bluetooth_low_energy/bluetooth_low_energy.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lecasa/app.dart';
 import 'package:lecasa/ble/ble_scanner.dart';
@@ -26,6 +25,7 @@ import 'package:lecasa/weather/weather.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fake_devices.dart';
+import 'test_fonts.dart';
 
 class _FakeCentral implements CentralManager {
   @override
@@ -36,35 +36,8 @@ class _FakeCentral implements CentralManager {
       i.isGetter ? const Stream<Never>.empty() : Future.value();
 }
 
-Future<void> _loadFonts() async {
-  Future<void> load(String family, List<Future<ByteData>> files) async {
-    final l = FontLoader(family);
-    for (final f in files) {
-      l.addFont(f);
-    }
-    await l.load();
-  }
-
-  await load('LeagueSpartan', [
-    for (final w in ['Regular', 'SemiBold', 'Bold'])
-      rootBundle.load('assets/fonts/LeagueSpartan-$w.ttf'),
-  ]);
-  final root = Platform.environment['FLUTTER_ROOT'];
-  if (root == null) return;
-  final dir = '$root/bin/cache/artifacts/material_fonts';
-  Future<ByteData> file(String name) async =>
-      ByteData.sublistView(await File('$dir/$name').readAsBytes());
-  if (!File('$dir/Roboto-Regular.ttf').existsSync()) return;
-  await load('Roboto', [
-    file('Roboto-Regular.ttf'),
-    file('Roboto-Medium.ttf'),
-    file('Roboto-Bold.ttf'),
-  ]);
-  await load('MaterialIcons', [file('MaterialIcons-Regular.otf')]);
-}
-
 void main() {
-  setUpAll(_loadFonts);
+  setUpAll(loadTestFonts);
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   const sizes = [Size(1280, 800), Size(1024, 600), Size(960, 540)];

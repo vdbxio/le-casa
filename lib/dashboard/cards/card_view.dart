@@ -27,25 +27,54 @@ class DashCard extends StatelessWidget {
     }
     final c = LeColors.of(context);
     final pad = size == CardSize.small ? CardMetrics.padSmall : CardMetrics.pad;
-    return Opacity(
-      opacity: model.stale ? 0.55 : 1,
-      child: DecoratedBox(
-        decoration: BoxDecoration(color: c.card, borderRadius: _radius),
-        child: ClipRRect(
-          borderRadius: _radius,
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: pad + 2, vertical: pad),
-            child: LayoutBuilder(
-              builder: (context, box) => switch (size) {
-                CardSize.small => _small(context, c),
-                CardSize.medium => _medium(context, c, box.maxWidth),
-                _ => _large(context, c, box.maxWidth),
-              },
-            ),
-          ),
+    final card = DecoratedBox(
+      decoration: BoxDecoration(color: c.card, borderRadius: _radius),
+      child: ClipRRect(
+        borderRadius: _radius,
+        child: LayoutBuilder(
+          builder: (context, outer) {
+            final slot = outer.biggest;
+            final side = sideBySide(model, size, slot);
+            final inline = chartInline(model, size, slot);
+            return Stack(
+              children: [
+                // A graph that has no room of its own sits behind the
+                // numbers instead of disappearing.
+                if (hasChart(model) && !inline)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: slot.height * 0.6,
+                    child: IgnorePointer(child: _chart(c, faint: true)),
+                  ),
+                Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: pad + 2,
+                    vertical: pad,
+                  ),
+                  child: LayoutBuilder(
+                    builder: (context, box) => side
+                        ? _side(context, c, box.biggest)
+                        : switch (size) {
+                            CardSize.small => _small(context, c, inline),
+                            CardSize.medium => _medium(
+                              context,
+                              c,
+                              box.biggest,
+                              inline,
+                            ),
+                            _ => _large(context, c, box.maxWidth, inline),
+                          },
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
+    return model.stale ? Opacity(opacity: 0.55, child: card) : card;
   }
 
   Color _tone(LeColors c) => c.tone(model.tone);
@@ -144,26 +173,133 @@ class DashCard extends StatelessWidget {
   Widget _noteOrNothing(LeColors c) =>
       model.note == null ? const SizedBox.shrink() : _line(c, model.note!);
 
-  Widget _small(BuildContext context, LeColors c) {
-    final second =
-        model.note ??
-        model.state ??
-        model.details.where((d) => !d.minor).firstOrNull?.summary;
+  /// The graph: the history line, or the forecast bars.
+  Widget _chart(LeColors c, {bool faint = false}) => model.hours.isNotEmpty
+      ? HourBars(model.hours, c, caption: model.hoursLabel, faint: faint)
+      : CustomPaint(
+          painter: SparkPainter(model.series!, _tone(c), faint: faint),
+          size: Size.infinite,
+        );
+
+  List<Metric> get _major => model.details.where((d) => !d.minor).toList();
+
+  String? get _summary {
+    final m = _major.take(3).map((d) => d.summary).join(' · ');
+    return m.isEmpty ? null : m;
+  }
+
+  /// As many rows of [items] as fit the space it is given, bottom aligned.
+  /// When not even one row fits, [fallback] instead.
+  Widget _fillDetails(LeColors c, List<Metric> items, {Widget? fallback}) =>
+      LayoutBuilder(
+        builder: (context, box) {
+          final cols = CardMetrics.detailColumns(box.maxWidth);
+          final rows =
+              ((box.maxHeight + CardMetrics.detailGap) /
+                      (CardMetrics.detailHeight + CardMetrics.detailGap))
+                  .floor();
+          final shown = rows <= 0
+              ? const <Metric>[]
+              : items.take(rows * cols).toList();
+          return Align(
+            alignment: Alignment.bottomLeft,
+            child: shown.isEmpty
+                ? (fallback ?? const SizedBox.shrink())
+                : _detailGrid(c, shown, box.maxWidth),
+          );
+        },
+      );
+
+  Widget _headlineRow(LeColors c, CardSize s, {double? fontSize}) => Row(
+    crossAxisAlignment: CrossAxisAlignment.end,
+    children: [
+      Flexible(child: _headline(c, fontSize ?? CardMetrics.headlineSize(s))),
+      if (model.state != null && s != CardSize.small) ...[
+        const SizedBox(width: 10),
+        Padding(
+          padding: EdgeInsets.only(bottom: s == CardSize.large ? 8 : 0),
+          child: _chip(c, model.state!),
+        ),
+      ],
+    ],
+  );
+
+  /// The headline grown into the spare height (up to about twice its
+  /// size), so a card without a graph of its own has no empty band.
+  Widget _grownHeadline(LeColors c, CardSize s, {bool withState = true}) =>
+      Expanded(
+        child: LayoutBuilder(
+          builder: (context, box) {
+            final base = CardMetrics.headlineSize(s);
+            final most = switch (s) {
+              CardSize.large => 1.5,
+              CardSize.medium => 1.8,
+              _ => 2.0,
+            };
+            final size = math.min(
+              base * most,
+              math.max(base, box.maxHeight * 0.85),
+            );
+            return Align(
+              alignment: Alignment.bottomLeft,
+              child: withState
+                  ? _headlineRow(c, s, fontSize: size)
+                  : _headline(c, size),
+            );
+          },
+        ),
+      );
+
+  Widget _small(BuildContext context, LeColors c, bool inline) {
+    final second = model.note ?? model.state ?? _major.firstOrNull?.summary;
+    final numbers = [
+      if (model.headline != null)
+        _headline(c, CardMetrics.headlineSize(CardSize.small)),
+      if (second != null) ...[const SizedBox(height: 4), _line(c, second)],
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _header(context, c),
-        const Spacer(),
-        if (model.headline != null)
-          _headline(c, CardMetrics.headlineSize(CardSize.small)),
-        if (second != null) ...[const SizedBox(height: 4), _line(c, second)],
+        if (inline) ...[
+          const SizedBox(height: 6),
+          ...numbers,
+          const SizedBox(height: CardMetrics.gap),
+          Expanded(child: _chart(c)),
+        ] else ...[
+          if (model.headline != null)
+            _grownHeadline(c, CardSize.small, withState: false)
+          else
+            const Spacer(),
+          if (second != null) ...[const SizedBox(height: 4), _line(c, second)],
+        ],
       ],
     );
   }
 
-  Widget _medium(BuildContext context, LeColors c, double w) {
+  /// The bottom line of a medium card: the split of the total, a note, or
+  /// a summary of the main readings.
+  Widget? _mediumFooter(LeColors c) {
+    if (model.shares.isNotEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ShareBar(model.shares, c),
+          const SizedBox(height: 8),
+          ShareLine(model.shares, c),
+        ],
+      );
+    }
+    final text = model.note ?? _summary;
+    return text == null ? null : _line(c, text, size: 14);
+  }
+
+  Widget _medium(BuildContext context, LeColors c, Size box, bool inline) {
+    final w = box.width;
     final showRing = model.ring != null && w >= ringMediumMinWidth;
     if (showRing) {
+      final summary = _summary;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -181,11 +317,10 @@ class DashCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 16),
                 Expanded(
-                  child: _detailGrid(
+                  child: _fillDetails(
                     c,
-                    model.details.take(2).toList(),
-                    w - 112,
-                    maxCols: 1,
+                    model.details,
+                    fallback: summary == null ? null : _line(c, summary),
                   ),
                 ),
               ],
@@ -195,85 +330,132 @@ class DashCard extends StatelessWidget {
         ],
       );
     }
+    final footer = _mediumFooter(c);
+    final top = [
+      _header(context, c),
+      const SizedBox(height: CardMetrics.gap),
+      _headlineRow(c, CardSize.medium),
+    ];
+    if (inline) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ...top,
+          const SizedBox(height: CardMetrics.gap),
+          Expanded(child: _chart(c)),
+          if (footer != null) ...[
+            const SizedBox(height: CardMetrics.gap),
+            footer,
+          ],
+        ],
+      );
+    }
+    // No graph here: spare height goes to more readings, then to a bigger
+    // number, never to a gap.
+    final fillable = model.shares.isEmpty && model.note == null;
+    final spare =
+        box.height -
+        CardMetrics.header -
+        CardMetrics.gap * 2 -
+        CardMetrics.headlineSize(CardSize.medium) * 1.15;
+    final rows = !fillable
+        ? 0
+        : math.max(
+            0,
+            ((spare + CardMetrics.detailGap) /
+                    (CardMetrics.detailHeight + CardMetrics.detailGap))
+                .floor(),
+          );
+    final shown = _major.take(rows * CardMetrics.detailColumns(w)).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _header(context, c),
         const SizedBox(height: CardMetrics.gap),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Flexible(
-              child: _headline(c, CardMetrics.headlineSize(CardSize.medium)),
-            ),
-            if (model.state != null) ...[
-              const SizedBox(width: 10),
-              _chip(c, model.state!),
-            ],
-          ],
-        ),
-        const Spacer(),
-        if (model.shares.isNotEmpty) ...[
-          ShareBar(model.shares, c),
-          const SizedBox(height: 8),
-          ShareLine(model.shares, c),
-        ] else if (model.note != null)
-          _line(c, model.note!)
-        else
-          _line(
-            c,
-            model.details
-                .where((d) => !d.minor)
-                .take(3)
-                .map((d) => d.summary)
-                .join(' · '),
-            size: 14,
-          ),
+        _grownHeadline(c, CardSize.medium),
+        if (shown.isNotEmpty) ...[
+          const SizedBox(height: CardMetrics.gap),
+          _detailGrid(c, shown, w),
+        ] else if (footer != null) ...[
+          const SizedBox(height: CardMetrics.gap),
+          footer,
+        ],
       ],
     );
   }
 
-  Widget _large(BuildContext context, LeColors c, double w) {
+  Widget _large(BuildContext context, LeColors c, double w, bool inline) {
+    final grow = !inline;
     final showRing = model.ring != null && w >= ringLargeMinWidth;
     final top = <Widget>[
       _header(context, c, showSubtitle: true),
       const SizedBox(height: CardMetrics.gap),
     ];
+    final chart = inline
+        ? Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: _chart(c),
+            ),
+          )
+        : const Spacer();
     if (showRing) {
+      Widget ringRow(double ring) => Row(
+        children: [
+          Ring(
+            value: model.ring!,
+            color: _tone(c),
+            track: c.card2,
+            size: ring,
+            label: model.headline,
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (model.state != null) ...[
+                  _chip(c, model.state!),
+                  const SizedBox(height: 10),
+                ],
+                _detailGrid(c, model.details, w - ring - 20, maxCols: 2),
+              ],
+            ),
+          ),
+        ],
+      );
+      if (grow) {
+        // No graph of its own: the ring grows into the spare height.
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ...top,
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, box) => Align(
+                  alignment: Alignment.centerLeft,
+                  // Never so big that the readings beside it lose a column.
+                  child: ringRow(
+                    [
+                      box.maxHeight,
+                      w - 20 - 2 * CardMetrics.detailWidth - 16,
+                      240.0,
+                    ].reduce(math.min).clamp(CardMetrics.ringLarge, 240.0),
+                  ),
+                ),
+              ),
+            ),
+            _noteOrNothing(c),
+          ],
+        );
+      }
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ...top,
-          Row(
-            children: [
-              Ring(
-                value: model.ring!,
-                color: _tone(c),
-                track: c.card2,
-                size: CardMetrics.ringLarge,
-                label: model.headline,
-              ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (model.state != null) ...[
-                      _chip(c, model.state!),
-                      const SizedBox(height: 10),
-                    ],
-                    _detailGrid(
-                      c,
-                      model.details,
-                      w - CardMetrics.ringLarge - 20,
-                      maxCols: 2,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          Expanded(child: _spark(c)),
+          ringRow(CardMetrics.ringLarge),
+          chart,
           _noteOrNothing(c),
         ],
       );
@@ -282,32 +464,17 @@ class DashCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ...top,
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Flexible(
-              child: _headline(c, CardMetrics.headlineSize(CardSize.large)),
-            ),
-            if (model.state != null) ...[
-              const SizedBox(width: 12),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _chip(c, model.state!),
-              ),
-            ],
-          ],
-        ),
+        if (grow)
+          _grownHeadline(c, CardSize.large)
+        else
+          _headlineRow(c, CardSize.large),
         if (model.shares.isNotEmpty) ...[
           const SizedBox(height: 12),
           ShareBar(model.shares, c),
           const SizedBox(height: 6),
           for (final (i, s) in model.shares.indexed) _shareRow(c, s, i),
         ],
-        Expanded(child: _spark(c)),
-        if (model.hours.isNotEmpty) ...[
-          HoursStrip(model.hours, c),
-          const SizedBox(height: CardMetrics.gap),
-        ],
+        if (!grow) chart else const SizedBox(height: CardMetrics.gap),
         _detailGrid(c, model.details, w),
         if (model.note != null) ...[
           const SizedBox(height: 6),
@@ -317,23 +484,50 @@ class DashCard extends StatelessWidget {
     );
   }
 
-  Widget _spark(LeColors c) => LayoutBuilder(
-    builder: (context, box) {
-      final s = model.series;
-      if (s == null || box.maxHeight < 32) return const SizedBox.expand();
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: SizedBox(
-            height: math.min(box.maxHeight - 16, 90),
-            width: double.infinity,
-            child: CustomPaint(painter: SparkPainter(s, _tone(c))),
-          ),
-        ),
-      );
-    },
-  );
+  /// Wide and short: the numbers on the left, the graph (or more
+  /// readings) on the right.
+  Widget _side(BuildContext context, LeColors c, Size box) {
+    final leftW = (box.width * 0.45).clamp(170.0, 300.0);
+    final medium = size == CardSize.medium;
+    // The state gets its own chip on a medium card, so the number keeps
+    // its full size.
+    final chip = medium ? model.state : null;
+    final second = model.shares.isNotEmpty
+        ? null
+        : (model.note ??
+              (medium ? null : model.state) ??
+              _major.firstOrNull?.summary);
+    final left = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _header(context, c),
+        const Spacer(),
+        _headline(c, CardMetrics.headlineSize(size)),
+        if (chip != null) ...[const SizedBox(height: 6), _chip(c, chip)],
+        if (model.shares.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          ShareLine(model.shares, c),
+        ] else if (second != null) ...[
+          const SizedBox(height: 4),
+          _line(c, second),
+        ],
+      ],
+    );
+    final rest = hasChart(model)
+        ? _chart(c)
+        : _fillDetails(
+            c,
+            model.details.where((d) => d.summary != second).toList(),
+          );
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(width: leftW, child: left),
+        const SizedBox(width: 16),
+        Expanded(child: rest),
+      ],
+    );
+  }
 
   Widget _shareRow(LeColors c, Share s, int i) => SizedBox(
     height: CardMetrics.shareRow,
@@ -446,28 +640,51 @@ class ShareBar extends StatelessWidget {
   const ShareBar(this.shares, this.c, {super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => SizedBox(
+    height: 10,
+    width: double.infinity,
+    child: CustomPaint(painter: _ShareBarPainter(shares, c)),
+  );
+}
+
+class _ShareBarPainter extends CustomPainter {
+  final List<Share> shares;
+  final LeColors c;
+  _ShareBarPainter(this.shares, this.c);
+
+  @override
+  void paint(Canvas canvas, Size size) {
     final total = shares.fold(0.0, (a, s) => a + s.amount);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(999),
-      child: SizedBox(
-        height: 10,
-        child: total <= 0
-            ? ColoredBox(color: c.card2)
-            : Row(
-                children: [
-                  for (final (i, s) in shares.indexed) ...[
-                    if (i > 0) const SizedBox(width: 2),
-                    Expanded(
-                      flex: math.max(1, (s.amount / total * 1000).round()),
-                      child: ColoredBox(color: shareColor(c, i)),
-                    ),
-                  ],
-                ],
-              ),
-      ),
-    );
+    final r = Radius.circular(size.height / 2);
+    if (total <= 0) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(Offset.zero & size, r),
+        Paint()..color = c.card2,
+      );
+      return;
+    }
+    const gap = 2.0;
+    final usable = size.width - gap * (shares.length - 1);
+    var x = 0.0;
+    for (final (i, s) in shares.indexed) {
+      final w = usable * s.amount / total;
+      canvas.drawRRect(
+        RRect.fromRectAndCorners(
+          Rect.fromLTWH(x, 0, w, size.height),
+          topLeft: i == 0 ? r : Radius.zero,
+          bottomLeft: i == 0 ? r : Radius.zero,
+          topRight: i == shares.length - 1 ? r : Radius.zero,
+          bottomRight: i == shares.length - 1 ? r : Radius.zero,
+        ),
+        Paint()..color = shareColor(c, i),
+      );
+      x += w + gap;
+    }
   }
+
+  @override
+  bool shouldRepaint(_ShareBarPainter old) =>
+      old.shares != shares || old.c != c;
 }
 
 /// "Luna 50 412 W   Sol 30 236 W" on one line, or nothing at all when it
@@ -528,39 +745,106 @@ class ShareLine extends StatelessWidget {
   }
 }
 
-class HoursStrip extends StatelessWidget {
+/// The forecast as bars, the value and an icon above each, under a caption
+/// for the whole range ("Next 6 hours"). As the space shrinks the icons go
+/// first, then the values, then the caption. [faint] draws just the bars,
+/// for behind the numbers.
+class HourBars extends StatelessWidget {
   final List<HourCell> hours;
   final LeColors c;
-  const HoursStrip(this.hours, this.c, {super.key});
+  final String? caption;
+  final bool faint;
+  const HourBars(
+    this.hours,
+    this.c, {
+    super.key,
+    this.caption,
+    this.faint = false,
+  });
+
+  static const captionHeight = 16.0;
+  static const valueHeight = 18.0;
+  static const iconHeight = 20.0;
+  static const minBar = 14.0;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: CardMetrics.hoursHeight,
-    child: Row(
-      children: [
-        for (final (i, h) in hours.indexed) ...[
-          if (i > 0) const SizedBox(width: 6),
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      final showCaption =
+          !faint && caption != null && box.maxHeight >= captionHeight + minBar;
+      var rest = box.maxHeight - (showCaption ? captionHeight : 0);
+      final showValue = !faint && rest >= valueHeight + minBar;
+      if (showValue) rest -= valueHeight;
+      final showIcon = !faint && rest >= iconHeight + minBar;
+      if (showIcon) rest -= iconHeight;
+      final amounts = [for (final h in hours) h.amount];
+      final hi = amounts.reduce(math.max), lo = amounts.reduce(math.min);
+      // Bars start below the lowest value, so the lowest still has height.
+      final floor = lo - math.max(2.0, (hi - lo) * 0.6);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (showCaption)
+            SizedBox(
+              height: captionHeight,
+              child: Text(
+                caption!,
+                maxLines: 1,
+                style: TextStyle(fontSize: 11, color: c.muted),
+              ),
+            ),
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: c.card2,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(h.label, style: TextStyle(fontSize: 12, color: c.muted)),
-                  const SizedBox(height: 3),
-                  Icon(h.icon, size: 20, color: c.climate),
-                  const SizedBox(height: 3),
-                  Text(h.value, style: numberStyle(17, c.ink)),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (final (i, h) in hours.indexed) ...[
+                  if (i > 0) const SizedBox(width: 6),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        if (showIcon)
+                          SizedBox(
+                            height: iconHeight,
+                            child: Icon(h.icon, size: 17, color: c.climate),
+                          ),
+                        if (showValue)
+                          SizedBox(
+                            height: valueHeight,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                h.value,
+                                style: numberStyle(15, c.ink),
+                              ),
+                            ),
+                          ),
+                        Container(
+                          height: math.max(
+                            3,
+                            math.max(0.0, rest) *
+                                (h.amount - floor) /
+                                (hi - floor),
+                          ),
+                          decoration: BoxDecoration(
+                            color: c.climate.withValues(
+                              alpha: faint ? 0.12 : (i == 0 ? 0.9 : 0.45),
+                            ),
+                            borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(6),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
-              ),
+              ],
             ),
           ),
         ],
-      ],
-    ),
+      );
+    },
   );
 }
 
@@ -651,7 +935,10 @@ class _RingPainter extends CustomPainter {
 class SparkPainter extends CustomPainter {
   final List<double> values;
   final Color color;
-  SparkPainter(this.values, this.color);
+
+  /// Softer, without the end dot, for behind a card's numbers.
+  final bool faint;
+  SparkPainter(this.values, this.color, {this.faint = false});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -670,21 +957,26 @@ class SparkPainter extends CustomPainter {
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
       ..close();
-    canvas.drawPath(area, Paint()..color = color.withValues(alpha: 0.14));
+    canvas.drawPath(
+      area,
+      Paint()..color = color.withValues(alpha: faint ? 0.08 : 0.14),
+    );
     canvas.drawPath(
       line,
       Paint()
-        ..color = color
+        ..color = faint ? color.withValues(alpha: 0.3) : color
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2
         ..strokeJoin = StrokeJoin.round,
     );
-    canvas.drawCircle(pt(values.length - 1), 3.5, Paint()..color = color);
+    if (!faint) {
+      canvas.drawCircle(pt(values.length - 1), 3.5, Paint()..color = color);
+    }
   }
 
   @override
   bool shouldRepaint(SparkPainter old) =>
-      old.values != values || old.color != color;
+      old.values != values || old.color != color || old.faint != faint;
 }
 
 /// The smallest size: icon, one number, a short label.

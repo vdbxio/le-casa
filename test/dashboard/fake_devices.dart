@@ -83,6 +83,13 @@ const heater = Decoded(
   info: {'module': 'BYD-DC32622B4821'},
 );
 
+const fob = Decoded(
+  protocol: 'BTHome',
+  kind: DeviceKind.leDevice,
+  model: "Le'Fob",
+  readings: [Reading('battery', 93, '%')],
+);
+
 /// A tracker that has heard Chloe's gear.
 DeviceTracker chloesGear() {
   final byId = <String, Decoded>{
@@ -94,6 +101,7 @@ DeviceTracker chloesGear() {
     'A4:C1:38:F9:A5:12': climate(18.9, 52),
     'A4:C1:38:DF:07:81': climate(9.6, 71),
     'heater': heater,
+    'fob': fob,
   };
   final names = {
     'luna': 'Luna 50',
@@ -104,6 +112,7 @@ DeviceTracker chloesGear() {
     'A4:C1:38:F9:A5:12': 'LYWSD03MMC',
     'A4:C1:38:DF:07:81': 'LYWSD03MMC',
     'heater': 'BYD-DC32622B4821',
+    'fob': 'le-fob',
   };
   final t = DeviceTracker(DecoderRegistry([FakeDecoder(byId)]));
   for (final id in byId.keys) {

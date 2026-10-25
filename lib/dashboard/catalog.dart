@@ -171,7 +171,12 @@ num? _n(Decoded d, String label) {
   return v is num ? v : null;
 }
 
-String _fmt(num? v, int digits) => v == null ? '–' : v.toStringAsFixed(digits);
+String _fmt(num? v, int digits) {
+  if (v == null) return '–';
+  final t = v.toStringAsFixed(digits);
+  // -0.2 rounds to "-0"; show "0".
+  return RegExp(r'^-0(\.0*)?$').hasMatch(t) ? t.substring(1) : t;
+}
 
 String _signed(num? v, int digits) =>
     v == null ? '–' : '${v > 0 ? '+' : ''}${v.toStringAsFixed(digits)}';
@@ -406,22 +411,29 @@ CardModel _climate(TrackedDevice d, Decoded v, String name, CardSources s) {
 CardModel _buttons(TrackedDevice d, Decoded v, String name, CardSources s) {
   final last = d.events.firstOrNull;
   final now = s.now();
+  final seen = switch (ago(d.lastSeen, now)) {
+    'now' => 'Just now',
+    final a => a,
+  };
   return CardModel(
     title: name,
     subtitle: v.model,
     icon: Icons.settings_remote_outlined,
     tone: Tone.accent,
-    headline: last == null
-        ? const Metric('Last press', 'No presses')
-        : Metric('Last press', last.event.label),
-    state: last?.event.kind.replaceAll('_', ' '),
+    headline: Metric('Last seen', seen),
     details: [
-      if (last != null) Metric('When', ago(last.at, now)),
+      Metric(
+        'Last press',
+        last == null
+            ? 'None yet'
+            : '${last.event.label} ${last.event.kind.replaceAll('_', ' ')}',
+      ),
+      if (last != null) Metric('Pressed', ago(last.at, now)),
       if (_n(v, 'battery') case final b?) Metric('Battery', _fmt(b, 0), '%'),
       if (_n(v, 'voltage') case final volts?)
         Metric('Battery', _fmt(volts, 2), 'V'),
     ],
-    pillLabel: last == null ? name : ago(last.at, now),
+    pillLabel: 'seen',
   );
 }
 
@@ -565,13 +577,14 @@ CardModel _weather(CardSources s) {
           Metric('Feels like', _fmt(n.feelsLike, 0), '°'),
         ],
         hours: [
-          for (final (i, h) in n.hours.indexed)
+          for (final h in n.hours)
             HourCell(
-              i == 0 ? 'Now' : '${h.time.hour.toString().padLeft(2, '0')}:00',
               weatherIcon(h.code, night: h.time.hour < 6 || h.time.hour >= 20),
               '${_fmt(h.temperature, 0)}°',
+              h.temperature,
             ),
         ],
+        hoursLabel: 'Next ${n.hours.length} hours',
         pillLabel: n.condition,
       );
   }

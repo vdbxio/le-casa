@@ -43,10 +43,12 @@ class Share {
 
 /// One column of the weather card's hourly strip.
 class HourCell {
-  final String label;
   final IconData icon;
   final String value;
-  const HourCell(this.label, this.icon, this.value);
+
+  /// The number behind [value], for the bar height.
+  final double amount;
+  const HourCell(this.icon, this.value, this.amount);
 }
 
 /// Everything a card shows, independent of size. One renderer draws every
@@ -76,8 +78,11 @@ class CardModel {
   /// Recent history of the headline for the sparkline.
   final List<double>? series;
 
-  /// Forecast strip (weather).
+  /// Forecast bars (weather).
   final List<HourCell> hours;
+
+  /// What [hours] covers, shown once above the bars: "Next 6 hours".
+  final String? hoursLabel;
 
   /// A sentence instead of data: needs setup, no internet...
   final String? note;
@@ -100,6 +105,7 @@ class CardModel {
     this.ring,
     this.series,
     this.hours = const [],
+    this.hoursLabel,
     this.note,
     this.stale = false,
     String? pillLabel,

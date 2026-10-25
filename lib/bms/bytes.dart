@@ -438,3 +438,20 @@ double pyFloat(String s) {
   }
   return double.parse(t.replaceAll('_', ''));
 }
+
+final List<int> _crc32Table = List.generate(256, (n) {
+  var c = n;
+  for (var k = 0; k < 8; k++) {
+    c = c & 1 != 0 ? 0xEDB88320 ^ (c >> 1) : c >> 1;
+  }
+  return c;
+});
+
+/// zlib.crc32
+int crc32(List<int> data) {
+  var c = 0xFFFFFFFF;
+  for (final b in data) {
+    c = _crc32Table[(c ^ b) & 0xFF] ^ (c >> 8);
+  }
+  return c ^ 0xFFFFFFFF;
+}

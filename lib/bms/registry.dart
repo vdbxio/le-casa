@@ -41,6 +41,9 @@ import 'drivers/pylontech.dart';
 import 'drivers/redodo.dart';
 import 'drivers/renogy.dart';
 import 'drivers/renogy_pro.dart';
+import 'drivers/roypow.dart';
+import 'drivers/saftkiste.dart';
+import 'drivers/saihang.dart';
 import 'drivers/topband.dart';
 import 'drivers/vatrer.dart';
 import 'spec.dart';
@@ -84,6 +87,9 @@ final List<BmsSpec> bmsSpecs = [
   RedodoBms.spec,
   RenogyBms.spec,
   RenogyProBms.spec,
+  RoypowBms.spec,
+  SaftkisteBms.spec,
+  SaihangBms.spec,
   TopbandBms.spec,
   VatrerBms.spec,
 ];

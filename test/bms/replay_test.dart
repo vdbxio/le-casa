@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lecasa/bms/base_bms.dart';
 import 'package:lecasa/bms/registry.dart';
+import 'package:lecasa/bms/drivers/saftkiste.dart';
 
 import 'trace_session.dart';
 
@@ -17,6 +18,22 @@ const _errorTypes = {
   'ValueError': 'FormatException',
   'PermissionError': 'BmsPermissionException',
   'BufferError': 'BufferException',
+  'ConnectionRefusedError': 'BmsPermissionException',
+};
+
+/// Per-module setup from the trace, for drivers that send the time.
+final _setUp = <String, void Function(Map<String, dynamic>)>{
+  'saftkiste_bms': (t) {
+    // the password frame carries the recording's clock
+    for (final e in (t['events'] as List).cast<Map<String, dynamic>>()) {
+      final d = e['d'] as String?;
+      if (e['e'] == 'write' && d != null && d.startsWith('f0ff10')) {
+        final ts = fromHexStr(d).sl(-5, -1);
+        SaftkisteBms.epochSeconds = () => intFrom(ts, little: true);
+        return;
+      }
+    }
+  },
 };
 
 String _errName(Object e) => switch (e) {
@@ -170,6 +187,7 @@ void main() {
       for (final t in traces) {
         final name = (t['tests'] as List).first as String;
         test(name, () async {
+          _setUp[module]?.call(t);
           final r = await replay(t);
           expect(r, isNull, reason: (t['tests'] as List).join(', '));
         }, skip: spec == null ? 'not ported yet' : _skip['$module $name']);

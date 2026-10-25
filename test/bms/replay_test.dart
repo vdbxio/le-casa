@@ -89,14 +89,14 @@ String? diff(Object? got, Object? want, String path) {
   if (want is bool || got is bool) {
     return got == want ? null : '$path: got $got, want $want';
   }
+  if (got is BmsMode && want is int) {
+    return got.code == want ? null : '$path: got $got, want $want';
+  }
   if (want is num) {
     final g = got is TempSensor ? got.value : got;
     if (g is! num) return '$path: got $got, want $want';
     final tol = 1e-6 + 1e-9 * want.abs();
     return (g - want).abs() <= tol ? null : '$path: got $g, want $want';
-  }
-  if (got is BmsMode && want is int) {
-    return got.code == want ? null : '$path: got $got, want $want';
   }
   return got == want ? null : '$path: got $got, want $want';
 }

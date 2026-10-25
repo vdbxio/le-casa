@@ -28,6 +28,7 @@ import 'drivers/gobel.dart';
 import 'drivers/greenway.dart';
 import 'drivers/humsienk.dart';
 import 'drivers/jbd.dart';
+import 'drivers/jikong.dart';
 import 'drivers/lipower.dart';
 import 'drivers/lithionics.dart';
 import 'drivers/myvolta.dart';
@@ -82,6 +83,7 @@ final List<BmsSpec> bmsSpecs = [
   GreenwayBms.spec,
   HumsienkBms.spec,
   JbdBms.spec,
+  JikongBms.spec,
   LipowerBms.spec,
   LithionicsBms.spec,
   MyvoltaBms.spec,

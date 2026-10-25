@@ -7,6 +7,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lecasa/dashboard/card_options.dart';
 import 'package:lecasa/dashboard/card_picker.dart';
+import 'package:lecasa/dashboard/cards/card_model.dart';
 import 'package:lecasa/dashboard/cards/template.dart';
 import 'package:lecasa/dashboard/cards/template_view.dart';
 import 'package:lecasa/dashboard/catalog.dart';
@@ -95,6 +96,40 @@ void main() {
       expect(t.root.children, hasLength(1));
       t.remove(const [0]);
       expect((t.root.children.single as BoxPart).isEmpty, isTrue);
+    });
+
+    test('dragging a box onto another swaps them; onto an empty one moves', () {
+      final t = CardTemplate(
+        BoxSplit(SplitAxis.vertical, [
+          BoxPart(PartKind.big, 'm:solar', PartAlign.center),
+          BoxPart(PartKind.reading, 'm:today'),
+          BoxPart(),
+        ]),
+      );
+      t.movePart(const [0], const [1]);
+      expect((t.at(const [0]) as BoxPart).point, 'm:today');
+      expect((t.at(const [1]) as BoxPart).point, 'm:solar');
+      expect((t.at(const [1]) as BoxPart).align, PartAlign.center);
+      t.movePart(const [1], const [2]);
+      expect((t.at(const [1]) as BoxPart).isEmpty, isTrue);
+      expect((t.at(const [2]) as BoxPart).kind, PartKind.big);
+    });
+
+    test('graph behind the card: on by default for ring cards, saved', () {
+      const ringCard = CardModel(
+        title: 'Lilith',
+        icon: Icons.battery_full,
+        headline: Metric('Charge', '87', '%'),
+        ring: 87,
+        series: [1, 2, 3],
+      );
+      expect(defaultTemplate(ringCard).backdrop, isTrue);
+      expect(defaultTemplate(solar).backdrop, isFalse);
+      final t = defaultTemplate(solar)..backdrop = true;
+      expect(CardTemplate.fromJson(t.toJson()).backdrop, isTrue);
+      // Arrangements saved before the option existed keep their graph.
+      final old = t.toJson()..remove('bg');
+      expect(CardTemplate.fromJson(old).backdrop, isTrue);
     });
 
     test('boxes drop from the end when the slot is too short', () {

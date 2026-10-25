@@ -8,8 +8,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// The tablet's own sensors and screen controls, over a small platform
-/// channel implemented in MainActivity.kt. Everything degrades to "not
-/// available" where the platform side is missing (iOS, tests).
+/// channel implemented in MainActivity.kt (Android) and AppDelegate.swift
+/// (iPad). Everything degrades to "not available" where the platform side
+/// is missing (tests) or has no such sensor.
 class TabletSensors extends ChangeNotifier {
   static const _methods = MethodChannel('io.vdbx.lecasa/tablet');
   static const _light = EventChannel('io.vdbx.lecasa/light');

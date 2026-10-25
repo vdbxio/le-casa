@@ -62,3 +62,19 @@ jobs:
             --prerelease --target "$SHA" \
             --title "Preview build: $BRANCH" \
             --notes "Debug APK built by CI from \`$BRANCH\` at $SHA. Sideload on an Android tablet: download, tap, allow installs from your browser, open Le'Casa, allow Bluetooth."
+
+  ios:
+    name: Build iOS (no signing)
+    runs-on: macos-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.8
+          cache: true
+      - run: flutter pub get
+      # Proves the iPad app compiles and links its plugins. Installing on an
+      # iPad still needs signing in Xcode on the Mac.
+      - run: flutter build ios --no-codesign --debug

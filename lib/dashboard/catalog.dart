@@ -370,6 +370,8 @@ CardModel _battery(TrackedDevice d, Decoded v, String name, CardSources s) {
     details: [
       Metric('Voltage', _fmt(_n(v, 'voltage'), 2), 'V'),
       Metric('Current', _signed(current, 1), 'A'),
+      if (_n(v, 'power') ?? _power(_n(v, 'voltage'), current) case final w?)
+        Metric('Power', _signed(w, 0), 'W'),
       if (isDaly) ...[
         if (_n(v, 'remaining') case final ah?)
           Metric('Remaining', _fmt(ah, 1), 'Ah'),
@@ -389,6 +391,10 @@ CardModel _battery(TrackedDevice d, Decoded v, String name, CardSources s) {
     series: s.history?.of(History.key(d.id, 'state of charge')),
   );
 }
+
+/// Watts in or out, from the battery's own reading or volts times amps.
+num? _power(num? volts, num? amps) =>
+    volts == null || amps == null ? null : volts * amps;
 
 CardModel _climate(TrackedDevice d, Decoded v, String name, CardSources s) {
   final t = _n(v, 'temperature');

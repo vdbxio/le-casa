@@ -197,10 +197,14 @@ class TemplateEditing {
   final NodePath? selected;
   final ValueChanged<NodePath> onSelect;
   final void Function(Seam seam, double delta) onResize;
+
+  /// A box was dragged onto another: [CardTemplate.movePart].
+  final void Function(NodePath from, NodePath to) onMove;
   const TemplateEditing({
     required this.selected,
     required this.onSelect,
     required this.onResize,
+    required this.onMove,
   });
 }
 
@@ -226,11 +230,23 @@ class TemplateCard extends StatelessWidget {
           builder: (context, box) {
             final area = templatePadding.deflateRect(Offset.zero & box.biggest);
             final plan = planTemplate(template, area, keepAll: edit != null);
-            final behind = plan.hidden
+            final shown = {for (final p in plan.parts) p.part.kind};
+            final dropped = plan.hidden
                 .where(
                   (p) => p.kind == PartKind.graph || p.kind == PartKind.bars,
                 )
                 .firstOrNull;
+            // A graph with no room goes behind the rest; so does the
+            // card's graph when the card asks for it as a backdrop.
+            final behind =
+                dropped ??
+                (template.backdrop &&
+                        !shown.contains(PartKind.graph) &&
+                        !shown.contains(PartKind.bars)
+                    ? BoxPart(
+                        model.hours.isNotEmpty ? PartKind.bars : PartKind.graph,
+                      )
+                    : null);
             return Stack(
               children: [
                 if (behind != null)
@@ -249,9 +265,12 @@ class TemplateCard extends StatelessWidget {
                     child: edit == null
                         ? _part(context, c, p.part, points)
                         : _EditableBox(
+                            path: p.path,
+                            label: p.part.kind?.label ?? 'Empty box',
                             selected: _same(edit.selected, p.path),
                             empty: p.part.isEmpty,
                             onTap: () => edit.onSelect(p.path),
+                            onDrop: (from) => edit.onMove(from, p.path),
                             child: _part(context, c, p.part, points),
                           ),
                   ),
@@ -559,34 +578,84 @@ class TemplateCard extends StatelessWidget {
         );
 }
 
+/// A box in card options: tap to pick it, hold and drag it onto another
+/// box to swap the two (or move it, onto an empty box).
 class _EditableBox extends StatelessWidget {
+  final NodePath path;
+  final String label;
   final bool selected, empty;
   final VoidCallback onTap;
+  final ValueChanged<NodePath> onDrop;
   final Widget child;
   const _EditableBox({
+    required this.path,
+    required this.label,
     required this.selected,
     required this.empty,
     required this.onTap,
+    required this.onDrop,
     required this.child,
   });
 
   @override
   Widget build(BuildContext context) {
     final c = LeColors.of(context);
-    return GestureDetector(
+    Widget box(bool hovered) => GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: CustomPaint(
         foregroundPainter: DashedOutline(
-          selected ? c.accent : c.accent.withValues(alpha: empty ? 0.7 : 0.35),
-          selected ? 2.5 : 1.5,
+          selected || hovered
+              ? c.accent
+              : c.accent.withValues(alpha: empty ? 0.7 : 0.35),
+          selected || hovered ? 2.5 : 1.5,
           radius: 8,
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(3),
-          child: IgnorePointer(child: child),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: hovered ? c.accent.withValues(alpha: 0.14) : null,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(3),
+            child: IgnorePointer(child: child),
+          ),
         ),
       ),
     );
+
+    return DragTarget<NodePath>(
+      onWillAcceptWithDetails: (d) => !_samePath(d.data, path),
+      onAcceptWithDetails: (d) => onDrop(d.data),
+      builder: (context, candidates, _) {
+        final hovered = candidates.isNotEmpty;
+        if (empty) return box(hovered);
+        return LongPressDraggable<NodePath>(
+          data: path,
+          delay: const Duration(milliseconds: 250),
+          feedback: Material(
+            color: c.accent,
+            borderRadius: BorderRadius.circular(12),
+            elevation: 6,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+          childWhenDragging: Opacity(opacity: 0.35, child: box(false)),
+          child: box(hovered),
+        );
+      },
+    );
   }
 }
+
+bool _samePath(NodePath a, NodePath b) =>
+    a.length == b.length &&
+    [for (var i = 0; i < a.length; i++) a[i] == b[i]].every((x) => x);

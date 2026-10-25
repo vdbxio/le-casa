@@ -7,6 +7,7 @@ import 'package:flutter/material.dart' hide Split;
 import '../ui/palette.dart';
 import 'card_picker.dart';
 import 'cards/card_model.dart';
+import 'cards/fit.dart' show hasChart;
 import 'cards/template.dart';
 import 'cards/template_view.dart';
 import 'catalog.dart';
@@ -181,7 +182,8 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
     if (!_arrangeable) return 'This card arranges itself.';
     final base = _sel == null
         ? 'Tap a box on the card to choose what it shows.'
-        : 'Drag the handles between boxes to resize them.';
+        : 'Drag the handles between boxes to resize them. Hold a box and '
+              'drag it onto another to swap them.';
     if (hidden == 0) return base;
     return '$base\n${hidden == 1 ? 'One box does' : '$hidden boxes do'} '
         'not fit this slot and will be hidden on the dashboard.';
@@ -199,6 +201,10 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
       editing: TemplateEditing(
         selected: _sel,
         onSelect: (p) => setState(() => _sel = p),
+        onMove: (from, to) => _edit(() {
+          _t.movePart(from, to);
+          _sel = to;
+        }),
         onResize: (seam, d) =>
             _edit(() => _t.resize(seam.split, seam.index, d)),
       ),
@@ -208,6 +214,19 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
   Widget _cards() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
+      // Options for the card as a whole, for what no box can be tapped for.
+      if (_arrangeable && hasChart(_model))
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 10, 8, 0),
+          child: SwitchListTile(
+            title: const Text('Graph behind the card'),
+            subtitle: const Text(
+              'Faintly, when no box on the card shows the graph',
+            ),
+            value: _t.backdrop,
+            onChanged: (v) => _edit(() => _t.backdrop = v),
+          ),
+        ),
       _PanelHeader(title: 'Change card'),
       Expanded(
         child: CardPickerList(

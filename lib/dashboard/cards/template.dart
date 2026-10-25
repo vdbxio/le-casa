@@ -126,16 +126,25 @@ const maxBoxDepth = 4;
 /// A card's arrangement and every edit the card options screen makes.
 class CardTemplate {
   BoxSplit root;
-  CardTemplate(this.root) {
+
+  /// Draw the card's graph faintly behind its boxes, for cards whose graph
+  /// has no box of its own (a battery's ring and readings).
+  bool backdrop;
+
+  CardTemplate(this.root, {this.backdrop = false}) {
     normalize();
   }
 
   factory CardTemplate.fromJson(Map<String, Object?> j) {
     final b = CardBox.fromJson(j);
-    return CardTemplate(b is BoxSplit ? b : BoxSplit(SplitAxis.vertical, [b]));
+    return CardTemplate(
+      b is BoxSplit ? b : BoxSplit(SplitAxis.vertical, [b]),
+      // Arrangements saved before this option drew their graph behind.
+      backdrop: j['bg'] as bool? ?? true,
+    );
   }
 
-  Map<String, Object?> toJson() => root.toJson();
+  Map<String, Object?> toJson() => {...root.toJson(), 'bg': backdrop};
 
   CardTemplate copy() => CardTemplate.fromJson(toJson());
 
@@ -193,6 +202,23 @@ class CardTemplate {
       after ? [old, BoxPart()] : [BoxPart(), old],
     );
     return [...path, after ? 1 : 0];
+  }
+
+  /// Puts what the box at [from] shows into the box at [to], and what [to]
+  /// showed into [from]: a swap, or a move when [to] was empty. The boxes
+  /// themselves stay where they are.
+  void movePart(NodePath from, NodePath to) {
+    final a = at(from), b = at(to);
+    if (a is! BoxPart || b is! BoxPart || identical(a, b)) return;
+    final (kind, point, align) = (a.kind, a.point, a.align);
+    a
+      ..kind = b.kind
+      ..point = b.point
+      ..align = b.align;
+    b
+      ..kind = kind
+      ..point = point
+      ..align = align;
   }
 
   /// Removes the box at [path]. The last box of a card is emptied instead.
@@ -452,7 +478,12 @@ CardTemplate defaultTemplate(CardModel m) {
     );
     weights.add(1);
   }
-  return CardTemplate(BoxSplit(SplitAxis.vertical, rows, weights));
+  // The ring takes the graph's place, so the graph goes behind, as on the
+  // automatic layout.
+  return CardTemplate(
+    BoxSplit(SplitAxis.vertical, rows, weights),
+    backdrop: ring && m.series != null,
+  );
 }
 
 /// The data points to offer first for the part at [path]: whatever is

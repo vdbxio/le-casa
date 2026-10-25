@@ -41,6 +41,8 @@ void main() {
     expect(m.ring, 87.4);
     expect(m.state, 'Charging');
     expect(m.details.map((d) => d.inline), contains('24h 0m'));
+    // Watts as well as amps: 26.58 V × 18.2 A.
+    expect(m.details.map((d) => d.inline), contains('+484 W'));
   });
 
   test('a device that needs setup says so instead of showing numbers', () {

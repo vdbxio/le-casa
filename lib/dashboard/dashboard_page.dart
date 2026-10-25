@@ -245,6 +245,14 @@ class _Board extends StatelessWidget {
                     dash.changed();
                   },
                   onOptions: () => _options(context, b),
+                  onDropCard: (from) {
+                    final source = page.at(from);
+                    if (source is! Slot) return;
+                    final moved = source.card;
+                    source.card = b.slot.card;
+                    b.slot.card = moved;
+                    dash.changed();
+                  },
                 ),
               ),
             ),
@@ -503,6 +511,9 @@ class _SlotView extends StatelessWidget {
   final CardSources sources;
   final VoidCallback onSelect, onPick, onOptions, onRemove;
 
+  /// The card of the slot at the given path was dropped here.
+  final ValueChanged<NodePath> onDropCard;
+
   const _SlotView({
     super.key,
     required this.box,
@@ -513,6 +524,7 @@ class _SlotView extends StatelessWidget {
     required this.onPick,
     required this.onOptions,
     required this.onRemove,
+    required this.onDropCard,
   });
 
   @override
@@ -524,13 +536,51 @@ class _SlotView extends StatelessWidget {
         : cardContent(card, box.rect.size, sources);
     if (!editing) return content ?? const SizedBox.shrink();
 
+    // Hold a card and drag it onto another slot to swap the two, or onto
+    // an empty slot to move it there.
+    return DragTarget<NodePath>(
+      onWillAcceptWithDetails: (d) => d.data.join('.') != box.path.join('.'),
+      onAcceptWithDetails: (d) => onDropCard(d.data),
+      builder: (context, candidates, _) {
+        final slot = _slot(context, c, card, content, candidates.isNotEmpty);
+        if (card == null || content == null) return slot;
+        final r = box.rect.size;
+        return LongPressDraggable<NodePath>(
+          data: box.path,
+          delay: const Duration(milliseconds: 250),
+          feedback: Material(
+            type: MaterialType.transparency,
+            child: Opacity(
+              opacity: 0.85,
+              child: SizedBox.fromSize(
+                size: r * 0.6,
+                child: FittedBox(
+                  child: SizedBox.fromSize(size: r, child: content),
+                ),
+              ),
+            ),
+          ),
+          childWhenDragging: Opacity(opacity: 0.3, child: slot),
+          child: slot,
+        );
+      },
+    );
+  }
+
+  Widget _slot(
+    BuildContext context,
+    LeColors c,
+    CardSpec? card,
+    Widget? content,
+    bool hovered,
+  ) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onSelect,
       child: CustomPaint(
         foregroundPainter: DashedOutline(
-          selected ? c.accent : c.accent.withValues(alpha: 0.45),
-          selected ? 2.5 : 2,
+          selected || hovered ? c.accent : c.accent.withValues(alpha: 0.45),
+          selected || hovered ? 2.5 : 2,
         ),
         child: Stack(
           children: [

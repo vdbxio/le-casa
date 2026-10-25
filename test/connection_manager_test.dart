@@ -169,6 +169,20 @@ void main() {
     m.dispose();
   });
 
+  test('a status 8 while connecting counts as a drop too', () async {
+    final m = manager(
+      ScriptedDriver(),
+      open: (id) async =>
+          throw Exception('GATT is disconnected with status: 8'),
+    );
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.pump();
+    expect(m[testAdv.id]!.drops, 1);
+    expect(m[testAdv.id]!.error, 'The device dropped the connection');
+    m.dispose();
+  });
+
   test('unsupported devices are parked, not retried', () async {
     final driver = ScriptedDriver(
       error: const UnsupportedDeviceException('no such characteristic'),

@@ -295,7 +295,7 @@ class ConnectionManager extends ChangeNotifier {
         ..error = e.message;
     } catch (e) {
       debugPrint('poll: ${l.id} failed: $e');
-      final dropped = link != null && await _dropped(link, e);
+      final dropped = await _dropped(link, e);
       // Only a good read clears the count: on the M10 every other try at
       // the Daly fails while connecting, between the drops.
       if (dropped) l.drops++;
@@ -309,9 +309,11 @@ class ConnectionManager extends ChangeNotifier {
 
   /// Whether [e] came from the link going down under us. Android fails the
   /// pending request (often "status: 133") before it reports the
-  /// disconnect, so give that event a moment to arrive.
-  static Future<bool> _dropped(ClosableSession link, Object e) async {
+  /// disconnect, so give that event a moment to arrive. A status 8 can also
+  /// come while connecting, before there is a [link].
+  static Future<bool> _dropped(ClosableSession? link, Object e) async {
     if (RegExp(r'status: 8\b|is disconnected').hasMatch('$e')) return true;
+    if (link == null) return false;
     if (!link.droppedByDevice) {
       await link.onDisconnected.timeout(
         const Duration(seconds: 2),

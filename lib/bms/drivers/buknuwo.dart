@@ -65,7 +65,13 @@ class BuknuwoBms extends BaseBms {
     }
     frame.extend(data);
     if (frame.length < 3 || frame.length < frame[2] + _minLen) return;
-    if (!checkIntegrity(frame, crcModbus, (null, -2), (-2, null), little: true)) {
+    if (!checkIntegrity(
+      frame,
+      crcModbus,
+      (null, -2),
+      (-2, null),
+      little: true,
+    )) {
       return;
     }
     _msg = frame.bytes;

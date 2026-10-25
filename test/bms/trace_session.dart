@@ -1,6 +1,8 @@
 // Replays a GATT trace recorded from aiobmsble's own test suite (see
 // tool/aiobmsble/) against a Dart BMS driver.
 
+// ignore_for_file: avoid_print
+
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -19,8 +21,7 @@ class TraceSession implements GattSession {
   final Map<GattChar, int> _handleOf = {};
   final Map<String, StreamController<Uint8List>> _streams = {};
 
-  TraceSession(List<Map<String, dynamic>> events)
-    : io = events {
+  TraceSession(List<Map<String, dynamic>> events) : io = events {
     final connect = events.where((e) => e['e'] == 'connect').toList();
     final svcs = connect.isEmpty
         ? const []
@@ -114,7 +115,12 @@ class TraceSession implements GattSession {
     final bursts = <List<(String, Uint8List)>>[];
     int? lastTask;
     while (_pos < io.length &&
-        const {'rx', 'notify_on', 'connect', 'notify_off'}.contains(io[_pos]['e'])) {
+        const {
+          'rx',
+          'notify_on',
+          'connect',
+          'notify_off',
+        }.contains(io[_pos]['e'])) {
       final e = io[_pos++];
       if (e['e'] != 'rx') continue;
       final spec = e['c'] as String;
@@ -202,10 +208,16 @@ class TraceSession implements GattSession {
   }
 
   @override
-  Future<void> write(GattChar c, Uint8List data, {bool withResponse = true}) async {
+  Future<void> write(
+    GattChar c,
+    Uint8List data, {
+    bool withResponse = true,
+  }) async {
     if (debug) print('W ${hex(data, sep: '')} pos=$_pos');
     final e = _next('write');
-    if (e == null) throw TimeoutException('trace mismatch on write ${hex(data, sep: '')}');
+    if (e == null) {
+      throw TimeoutException('trace mismatch on write ${hex(data, sep: '')}');
+    }
     final want = e['d'] as String;
     final got = hex(data, sep: '');
     if (!_same(c, e['c'] as String) || want != got) {
@@ -223,7 +235,9 @@ class TraceSession implements GattSession {
       case 'TimeoutError':
         throw TimeoutException('recorded write timeout');
       case 'BleakCharacteristicNotFoundError':
-        throw const UnsupportedDeviceException('recorded: no such characteristic');
+        throw const UnsupportedDeviceException(
+          'recorded: no such characteristic',
+        );
       default:
         throw Exception('recorded ${e['raise']}');
     }
@@ -231,7 +245,10 @@ class TraceSession implements GattSession {
 
   @override
   Future<Stream<Uint8List>> subscribe(GattChar c) async {
-    final ctl = _streams.putIfAbsent(c.uuid, () => StreamController<Uint8List>.broadcast(sync: true));
+    final ctl = _streams.putIfAbsent(
+      c.uuid,
+      () => StreamController<Uint8List>.broadcast(sync: true),
+    );
     final pending = _pending.remove(c.uuid);
     if (pending != null) {
       Future<void>(() => _emit([for (final d in pending) (c.uuid, d)]));

@@ -7,8 +7,6 @@
 //
 // Jikong (JK) smart BMS, JK02 protocol (24S and 32S).
 
-import 'dart:typed_data';
-
 import 'package:flutter/foundation.dart';
 
 import '../../ble/gatt_session.dart';
@@ -147,7 +145,9 @@ class JikongBms extends BaseBms {
     try {
       _swVersion = lstr2int(bmsInfo['sw_version'] ?? '0');
     } on FormatException {
-      debugPrint('bms: $name: invalid sw_version ${bmsInfo['sw_version']}, assuming 0');
+      debugPrint(
+        'bms: $name: invalid sw_version ${bmsInfo['sw_version']}, assuming 0',
+      );
       _swVersion = 0;
     }
     _protOffset = _swVersion < 11 ? -32 : 0;
@@ -160,7 +160,13 @@ class JikongBms extends BaseBms {
 
   static Uint8List _cmd(int cmd, [List<int> value = const []]) {
     assert(value.length <= 13);
-    final f = [..._headCmd, cmd, value.length, ...value, ...List.filled(13 - value.length, 0)];
+    final f = [
+      ..._headCmd,
+      cmd,
+      value.length,
+      ...value,
+      ...List.filled(13 - value.length, 0),
+    ];
     return Uint8List.fromList([...f, crcSum(f)]);
   }
 
@@ -205,8 +211,11 @@ class JikongBms extends BaseBms {
   static BmsSample _convData(List<int> data, int offs, int swMajv) {
     final result = BaseBms.decodeData(_fields, data, little: true, start: offs);
     final h = offs >> 1;
-    result['cell_count'] = _bitCount(intFrom(data.sl(70 + h, 74 + h), little: true));
-    result['delta_voltage'] = intFrom(data.sl(76 + h, 78 + h), little: true) / 1000;
+    result['cell_count'] = _bitCount(
+      intFrom(data.sl(70 + h, 74 + h), little: true),
+    );
+    result['delta_voltage'] =
+        intFrom(data.sl(76 + h, 78 + h), little: true) / 1000;
     if (swMajv >= 15) {
       final m = data[280 + offs];
       result['battery_mode'] = BmsMode.values.firstWhere(

@@ -107,7 +107,13 @@ class GobelBms extends BaseBms {
     if (frame.length < expectedLen) return;
     frame.del(expectedLen, frame.length);
 
-    if (!checkIntegrity(frame, crcModbus, (null, -2), (-2, null), little: true)) {
+    if (!checkIntegrity(
+      frame,
+      crcModbus,
+      (null, -2),
+      (-2, null),
+      little: true,
+    )) {
       frame.clear();
       return;
     }

@@ -43,9 +43,8 @@ RawAdvertisement _adv(Map<String, dynamic> v, {required bool withMac}) {
     serviceData: {
       for (final e in (v['service_data'] as Map).entries)
         if ((e.key as String).endsWith(_base))
-          int.parse((e.key as String).substring(4, 8), radix: 16): Uint8List.fromList(
-            fromHexStr(e.value as String),
-          ),
+          int.parse((e.key as String).substring(4, 8), radix: 16):
+              Uint8List.fromList(fromHexStr(e.value as String)),
     },
     manufacturerData: {
       for (final e in (v['manufacturer_data'] as Map).entries)
@@ -60,7 +59,10 @@ void main() {
   ) as List).cast<Map<String, dynamic>>();
 
   test('every upstream BMS has a driver', () {
-    final types = {for (final v in vectors) if (v['kind'] == 'bms') v['type']};
+    final types = {
+      for (final v in vectors)
+        if (v['kind'] == 'bms') v['type'],
+    };
     for (final t in types) {
       expect(bmsSpecByModule(t as String), isNotNull, reason: t);
     }
@@ -69,8 +71,15 @@ void main() {
 
   test('advertisements match like upstream (Android, with MAC)', () {
     for (final v in vectors) {
-      final got = [for (final s in bmsSpecs) if (s.supports(_adv(v, withMac: true))) s.module];
-      expect(got, (v['matches'] as List).cast<String>(), reason: '${v['type']} ${v['name']}');
+      final got = [
+        for (final s in bmsSpecs)
+          if (s.supports(_adv(v, withMac: true))) s.module,
+      ];
+      expect(
+        got,
+        (v['matches'] as List).cast<String>(),
+        reason: '${v['type']} ${v['name']}',
+      );
     }
   });
 
@@ -78,7 +87,10 @@ void main() {
     final ouiOnly = <String>{};
     for (final v in vectors) {
       final want = (v['matches'] as List).cast<String>();
-      final got = [for (final s in bmsSpecs) if (s.supports(_adv(v, withMac: false))) s.module];
+      final got = [
+        for (final s in bmsSpecs)
+          if (s.supports(_adv(v, withMac: false))) s.module,
+      ];
       if (got.isEmpty && want.isNotEmpty) {
         ouiOnly.add(want.single);
       } else {

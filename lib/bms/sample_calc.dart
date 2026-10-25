@@ -19,7 +19,10 @@ const _hrsToSecs = 3600;
 num _n(BmsSample d, String k) => (d[k] as num?) ?? 0;
 
 List<double> _cells(BmsSample d) =>
-    ((d[BmsKeys.cellVoltages] as List?) ?? const []).cast<num>().map((e) => e.toDouble()).toList();
+    ((d[BmsKeys.cellVoltages] as List?) ?? const [])
+        .cast<num>()
+        .map((e) => e.toDouble())
+        .toList();
 
 class _C {
   final String output;
@@ -40,7 +43,8 @@ final List<_C> _registry = [
     return true;
   }),
   _C('cycle_charge', {'design_capacity', 'battery_level'}, (d) {
-    d['cycle_charge'] = (_n(d, 'design_capacity') * _n(d, 'battery_level')) / 100;
+    d['cycle_charge'] =
+        (_n(d, 'design_capacity') * _n(d, 'battery_level')) / 100;
     return true;
   }),
   _C('battery_level', {'design_capacity', 'cycle_charge'}, (d) {
@@ -74,7 +78,8 @@ final List<_C> _registry = [
   _C('runtime', {'current', 'cycle_charge'}, (d) {
     final current = _n(d, 'current');
     if (current >= 0) return false;
-    d['runtime'] = (_n(d, 'cycle_charge') / current.abs() * _hrsToSecs).truncate();
+    d['runtime'] = (_n(d, 'cycle_charge') / current.abs() * _hrsToSecs)
+        .truncate();
     return true;
   }),
   _C('temperature', {'temp_values'}, (d) {

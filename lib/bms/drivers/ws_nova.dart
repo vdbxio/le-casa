@@ -70,7 +70,9 @@ class WsNovaBms extends BaseBms {
     if (data.isNotEmpty && data[0] == _head) frame.clear();
     frame.extend(data);
 
-    if (frame.isEmpty || frame[0] != _head || frame.length > BaseBms.bleMaxAttrSize) {
+    if (frame.isEmpty ||
+        frame[0] != _head ||
+        frame.length > BaseBms.bleMaxAttrSize) {
       frame.clear();
       return;
     }
@@ -84,7 +86,8 @@ class WsNovaBms extends BaseBms {
     }
     final key = int.parse(String.fromCharCodes(frame.sl(7, 9)), radix: 16);
     final dec = Uint8List.fromList([
-      for (final b in fromHexStr(String.fromCharCodes(frame.sl(1, -3)))) b ^ key,
+      for (final b in fromHexStr(String.fromCharCodes(frame.sl(1, -3))))
+        b ^ key,
     ]);
     // incoming frames seem to carry an invalid checksum, so none is checked
     if (!dec.startsWithBytes(const [0x01, 0x54])) {

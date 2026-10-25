@@ -80,7 +80,13 @@ class JbdBms extends BaseBms {
     BmsDp('battery_level', 23, 1, false),
     BmsDp('chrg_mosfet', 24, 1, false, (x) => x & 0x1 != 0),
     BmsDp('dischrg_mosfet', 24, 1, false, (x) => x & 0x2 != 0),
-    BmsDp('cell_count', 25, 1, false, (x) => x < maxCellCount ? x : maxCellCount),
+    BmsDp(
+      'cell_count',
+      25,
+      1,
+      false,
+      (x) => x < maxCellCount ? x : maxCellCount,
+    ),
     BmsDp('temp_sensors', 26, 1, false),
   ];
 
@@ -168,7 +174,12 @@ class JbdBms extends BaseBms {
     final frameEnd = _infoLen + frame[3] - 1;
     if (frame[frameEnd] != _tail) return;
 
-    if (!checkIntegrity(frame, _crc, (2, frameEnd - 2), (frameEnd - 2, frameEnd))) {
+    if (!checkIntegrity(
+      frame,
+      _crc,
+      (2, frameEnd - 2),
+      (frameEnd - 2, frameEnd),
+    )) {
       return;
     }
 

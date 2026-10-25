@@ -35,7 +35,11 @@ class SeplosBms extends BaseBms {
   static const _tempStart = _headLen + 32;
   static final _prbMask = BigInt.parse('FFFF00FF00FF0000FF', radix: 16);
   // fct, address, count
-  static const _query = [(0x4, 0x2000, _eiaLen), (0x4, 0x2100, _eibLen), (0x1, 0x2200, _eicLen)];
+  static const _query = [
+    (0x4, 0x2000, _eiaLen),
+    (0x4, 0x2100, _eibLen),
+    (0x1, 0x2200, _eicLen),
+  ];
   static const _pquery = [(0x4, 0x1000, _piaLen), (0x4, 0x1100, _pibLen)];
   static final _fields = <BmsDp>[
     BmsDp('voltage', 0, 4, false, (x) => swap32(x) / 100, _eiaLen),
@@ -164,7 +168,11 @@ class SeplosBms extends BaseBms {
         _msg[pack << 8 | _piaLen]!,
         start: _headLen,
       );
-      sample['cell_voltages'] = BaseBms.cellVoltages(pib, cells: 16, start: _headLen);
+      sample['cell_voltages'] = BaseBms.cellVoltages(
+        pib,
+        cells: 16,
+        start: _headLen,
+      );
       // 4 cell temperatures, 4 reserved, then ambient and MOSFET
       sample['temp_values'] = [
         ...BaseBms.tempValues(
@@ -174,7 +182,12 @@ class SeplosBms extends BaseBms {
           signed: false,
           offset: 2731,
           divider: 10,
-          types: const [TempType.cell, TempType.cell, TempType.cell, TempType.cell],
+          types: const [
+            TempType.cell,
+            TempType.cell,
+            TempType.cell,
+            TempType.cell,
+          ],
         ),
         ...BaseBms.tempValues(
           pib,

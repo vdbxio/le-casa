@@ -121,8 +121,12 @@ class DalyBms extends BaseBms {
   /// Which protocol generation answered: "D2" or "0x81".
   String get protocol => _proto == _d2 ? 'D2' : '0x81';
 
-  Uint8List _cmd(_Cmd c) =>
-      BaseBms.cmdModbus(devId: _proto, fct: c.fct, addr: c.adr, count: c.length);
+  Uint8List _cmd(_Cmd c) => BaseBms.cmdModbus(
+    devId: _proto,
+    fct: c.fct,
+    addr: c.adr,
+    count: c.length,
+  );
 
   @override
   Future<BmsInfo> fetchDeviceInfo() async {
@@ -165,7 +169,13 @@ class DalyBms extends BaseBms {
         data[2] != data.length - _headLen - _crcLen) {
       return;
     }
-    if (!checkIntegrity(data, crcModbus, (null, -2), (-2, null), little: true)) {
+    if (!checkIntegrity(
+      data,
+      crcModbus,
+      (null, -2),
+      (-2, null),
+      little: true,
+    )) {
       return;
     }
     _msg = Uint8List.fromList(data);
@@ -207,7 +217,8 @@ class DalyBms extends BaseBms {
     result.addAll(BaseBms.decodeData(def.fields, rtMsgs, start: _headLen));
 
     final rt1 = rtMsgs.values.first;
-    final temps = (result['temp_values'] as List<TempSensor>?) ?? <TempSensor>[];
+    final temps =
+        (result['temp_values'] as List<TempSensor>?) ?? <TempSensor>[];
     temps.addAll(
       BaseBms.tempValues(
         rt1,

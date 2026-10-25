@@ -38,8 +38,22 @@ class VatrerBms extends BaseBms {
     BmsDp('battery_level', 9, 2, false, (x) => x, 0x28),
     BmsDp('battery_health', 17, 2, false, (x) => x, 0x28),
     BmsDp('cycle_charge', 11, 2, false, (x) => x / 100, 0x28),
-    BmsDp('cell_count', 3, 2, false, (x) => x < _maxCells ? x : _maxCells, 0x3E),
-    BmsDp('temp_sensors', 3, 2, false, (x) => x < _maxTemp ? x : _maxTemp, 0x24),
+    BmsDp(
+      'cell_count',
+      3,
+      2,
+      false,
+      (x) => x < _maxCells ? x : _maxCells,
+      0x3E,
+    ),
+    BmsDp(
+      'temp_sensors',
+      3,
+      2,
+      false,
+      (x) => x < _maxTemp ? x : _maxTemp,
+      0x24,
+    ),
     BmsDp('cycles', 15, 2, false, (x) => x, 0x28),
     BmsDp('delta_voltage', 29, 2, false, (x) => x / 1000, 0x28),
     BmsDp.bytes('problem', 17, 15, (b) => b.any((v) => v != 0), 0x24),
@@ -68,7 +82,13 @@ class VatrerBms extends BaseBms {
   void notificationHandler(GattChar sender, Uint8List data) {
     if (!data.startsWithBytes(_head)) return;
     if (data.length < _frameLen || data.length != data[2] + _frameLen) return;
-    if (!checkIntegrity(data, crcModbus, (null, -2), (-2, null), little: true)) {
+    if (!checkIntegrity(
+      data,
+      crcModbus,
+      (null, -2),
+      (-2, null),
+      little: true,
+    )) {
       return;
     }
     msg[data[2]] = Uint8List.fromList(data);

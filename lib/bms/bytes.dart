@@ -77,9 +77,13 @@ double pyRound(num x, [int n = 0]) {
   final exact = x.abs().toStringAsFixed(20);
   final dot = exact.indexOf('.');
   final tail = exact.substring(dot + 1 + n);
-  if (n <= 19 && tail.startsWith('5') && tail.substring(1).replaceAll('0', '').isEmpty) {
+  if (n <= 19 &&
+      tail.startsWith('5') &&
+      tail.substring(1).replaceAll('0', '').isEmpty) {
     final lastKept = n == 0 ? exact[dot - 1] : exact[dot + n];
-    final down = double.parse(exact.substring(0, dot + 1 + n).replaceAll(RegExp(r'\.$'), ''));
+    final down = double.parse(
+      exact.substring(0, dot + 1 + n).replaceAll(RegExp(r'\.$'), ''),
+    );
     final m = math.pow(10, n).toDouble();
     final r = int.parse(lastKept).isEven ? down : down + 1 / m;
     final v = double.parse(r.toStringAsFixed(n));
@@ -110,12 +114,8 @@ extension PyBytes on List<int> {
   }
 
   /// Integer from a slice, `int.from_bytes(self[start:end], ...)`.
-  int u(
-    int start,
-    int size, {
-    bool little = false,
-    bool signed = false,
-  }) => intFrom(sl(start, start + size), little: little, signed: signed);
+  int u(int start, int size, {bool little = false, bool signed = false}) =>
+      intFrom(sl(start, start + size), little: little, signed: signed);
 
   bool startsWithBytes(List<int> prefix, [int start = 0]) {
     if (start < 0) start = math.max(0, length + start);
@@ -174,7 +174,8 @@ Uint8List fromHexStr(String s) {
   final out = Uint8List(t.length ~/ 2);
   for (var i = 0; i < out.length; i++) {
     final v = int.tryParse(t.substring(2 * i, 2 * i + 2), radix: 16);
-    if (v == null || t.substring(2 * i, 2 * i + 2).contains(RegExp(r'[^0-9a-fA-F]'))) {
+    if (v == null ||
+        t.substring(2 * i, 2 * i + 2).contains(RegExp(r'[^0-9a-fA-F]'))) {
       throw FormatException('non-hex digit in "$s"');
     }
     out[i] = v;
@@ -422,7 +423,10 @@ int pyInt(String s, [int radix = 10]) {
   return m[1] == '-' ? -v : v;
 }
 
-final _pyFloatSpecial = RegExp(r'^([+-]?)(inf|infinity|nan)$', caseSensitive: false);
+final _pyFloatSpecial = RegExp(
+  r'^([+-]?)(inf|infinity|nan)$',
+  caseSensitive: false,
+);
 
 /// Python `float(text)`. Throws [FormatException].
 double pyFloat(String s) {
@@ -432,7 +436,8 @@ double pyFloat(String s) {
     final v = m[2]!.toLowerCase() == 'nan' ? double.nan : double.infinity;
     return m[1] == '-' ? -v : v;
   }
-  if (!RegExp(r'^[+-]?(\d(_?\d)*)?(\.(\d(_?\d)*)?)?([eE][+-]?\d(_?\d)*)?$').hasMatch(t) ||
+  if (!RegExp(r'^[+-]?(\d(_?\d)*)?(\.(\d(_?\d)*)?)?([eE][+-]?\d(_?\d)*)?$')
+          .hasMatch(t) ||
       !RegExp(r'\d').hasMatch(t.split(RegExp('[eE]')).first)) {
     throw FormatException('could not convert string to float: $s');
   }

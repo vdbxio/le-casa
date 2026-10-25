@@ -9,7 +9,6 @@
 // comes from the device name.
 
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
@@ -21,7 +20,9 @@ class OgtBms extends BaseBms {
   static const spec = BmsSpec(
     module: 'ogt_bms',
     info: {'manufacturer': 'Offgridtec', 'model': 'LiFePo4 Smart Pro'},
-    matchers: [MatcherPattern(localName: 'SmartBat-[AB]*', serviceUuid: 'fff0')],
+    matchers: [
+      MatcherPattern(localName: 'SmartBat-[AB]*', serviceUuid: 'fff0'),
+    ],
     create: OgtBms.new,
   );
 
@@ -57,9 +58,12 @@ class OgtBms extends BaseBms {
 
   OgtBms(super.device, [super.config]) {
     final id = name.length > 10 ? name.substring(10) : '';
-    _type = name.length > 10 && RegExp(r'^[0-9]+$').hasMatch(id) ? name[9] : '?';
+    _type = name.length > 10 && RegExp(r'^[0-9]+$').hasMatch(id)
+        ? name[9]
+        : '?';
     final ab = _type == 'A' || _type == 'B';
-    _key = (ab
+    _key =
+        (ab
             ? int.parse(id)
                   .toRadixString(16)
                   .toUpperCase()

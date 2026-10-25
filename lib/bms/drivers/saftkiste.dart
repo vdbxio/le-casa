@@ -7,8 +7,6 @@
 //
 // Batterieschmiede Saftkiste BMS. Takes a six character password.
 
-import 'dart:typed_data';
-
 import 'package:flutter/foundation.dart';
 
 import '../../ble/gatt_session.dart';

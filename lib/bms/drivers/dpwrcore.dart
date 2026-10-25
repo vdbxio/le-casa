@@ -44,7 +44,14 @@ class DpwrcoreBms extends BaseBms {
       (x) => [TempSensor(pyRound(x / 10 - 273.15, 3))],
       _legInfo2,
     ),
-    BmsDp('cell_count', 6, 1, false, (x) => x < _maxCells ? x : _maxCells, _cellVolt),
+    BmsDp(
+      'cell_count',
+      6,
+      1,
+      false,
+      (x) => x < _maxCells ? x : _maxCells,
+      _cellVolt,
+    ),
     BmsDp('cycles', 8, 2, false, (x) => x, _legInfo2),
     BmsDp('problem_code', 15, 1, false, (x) => x & 0xFF, _legInfo1),
   ];
@@ -103,7 +110,10 @@ class DpwrcoreBms extends BaseBms {
     final tail = ascii(name.substring(name.length - 4));
     if (!isHexDigits(tail)) return;
     final pwd = hexInt(tail);
-    await awaitMsg(_cmd(_unlock, [(pwd >> 8) & 0xFF, pwd & 0xFF]), waitForNotify: false);
+    await awaitMsg(
+      _cmd(_unlock, [(pwd >> 8) & 0xFF, pwd & 0xFF]),
+      waitForNotify: false,
+    );
   }
 
   @override

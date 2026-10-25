@@ -107,7 +107,10 @@ Future<String?> replay(Map<String, dynamic> trace) async {
   final events = (trace['events'] as List).cast<Map<String, dynamic>>();
   final session = TraceSession(events);
   final bms = spec.create(
-    BmsDevice((b['name'] as String?) ?? 'MockBLEDevice', b['address'] as String),
+    BmsDevice(
+      (b['name'] as String?) ?? 'MockBLEDevice',
+      b['address'] as String,
+    ),
     BmsConfig(secret: (b['secret'] as String?) ?? ''),
   );
   Object? got;
@@ -149,7 +152,9 @@ Future<String?> replay(Map<String, dynamic> trace) async {
           return 'expected ${e['t']}, got $got'
               '${session.mismatches.isEmpty ? '' : ' (${session.mismatches.first})'}';
         }
-        if (_errName(err) != want) return 'expected $want, threw ${_errName(err)}: $err';
+        if (_errName(err) != want) {
+          return 'expected $want, threw ${_errName(err)}: $err';
+        }
     }
   }
   return null;
@@ -171,12 +176,13 @@ void main() {
   BaseBms.timeScale = 0.01;
   debug = Platform.environment['TRACE_DEBUG'] == '1';
   final dir = Directory('test/bms/vectors');
-  final files = dir
-      .listSync()
-      .whereType<File>()
-      .where((f) => f.path.endsWith('_bms.json'))
-      .toList()
-    ..sort((a, b) => a.path.compareTo(b.path));
+  final files =
+      dir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('_bms.json'))
+          .toList()
+        ..sort((a, b) => a.path.compareTo(b.path));
 
   for (final f in files) {
     final module = f.uri.pathSegments.last.replaceAll('.json', '');

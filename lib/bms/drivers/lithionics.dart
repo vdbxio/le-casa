@@ -142,11 +142,15 @@ class LithionicsBms extends BaseBms {
 
   static BmsSample _decodeModule(List<int> data) {
     final fields = _ascii(data).split(',');
-    List<String> slice(int pos, int size) =>
-        fields.sublist(pos.clamp(0, fields.length), (pos + size).clamp(0, fields.length));
+    List<String> slice(int pos, int size) => fields.sublist(
+      pos.clamp(0, fields.length),
+      (pos + size).clamp(0, fields.length),
+    );
     final result = <String, Object?>{};
     result['cell_count'] = _int(slice(5, 1)[0]);
-    result['temp_values'] = [for (final v in slice(6, 2)) TempSensor(pyFloat(v))];
+    result['temp_values'] = [
+      for (final v in slice(6, 2)) TempSensor(pyFloat(v)),
+    ];
     final dv = slice(8, 2);
     result['delta_voltage'] = (_int(dv[1]) - _int(dv[0])) / 100;
     final cellCount = result['cell_count'] as int;
@@ -170,7 +174,8 @@ class LithionicsBms extends BaseBms {
         result[f.key] = [for (var i = f.pos; i < end; i++) f.fct(_int(msg[i]))];
       } else if (f.key == 'temp_values') {
         result[f.key] = [
-          for (var i = f.pos; i < end; i++) TempSensor(f.fct(_int(msg[i])) as num),
+          for (var i = f.pos; i < end; i++)
+            TempSensor(f.fct(_int(msg[i])) as num),
         ];
       } else {
         result[f.key] = f.fct(_int(msg[f.pos]));

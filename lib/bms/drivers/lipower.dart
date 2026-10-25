@@ -59,7 +59,13 @@ class LipowerBms extends BaseBms {
       return;
     }
     if (data.length != data[2] + _minLen) return;
-    if (!checkIntegrity(data, crcModbus, (null, -2), (-2, null), little: true)) {
+    if (!checkIntegrity(
+      data,
+      crcModbus,
+      (null, -2),
+      (-2, null),
+      little: true,
+    )) {
       return;
     }
     _msg = Uint8List.fromList(data);
@@ -72,7 +78,8 @@ class LipowerBms extends BaseBms {
     for (final head in _heads) {
       try {
         await awaitMsg(BaseBms.cmdModbus(devId: head, addr: 0x400, count: 0x8));
-        if (_heads.length > 1) _heads = [head]; // stick to the one that answered
+        // stick to the one that answered
+        if (_heads.length > 1) _heads = [head];
         found = true;
         break;
       } on TimeoutException {

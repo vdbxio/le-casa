@@ -72,7 +72,13 @@ class Eg4Bms extends BaseBms {
     frame.extend(data);
     if (frame.length < _expLen) return;
     frame.del(_expLen);
-    if (!checkIntegrity(frame, crcModbus, (null, -2), (-2, null), little: true)) {
+    if (!checkIntegrity(
+      frame,
+      crcModbus,
+      (null, -2),
+      (-2, null),
+      little: true,
+    )) {
       return;
     }
     _msg = frame.bytes;
@@ -94,7 +100,12 @@ class Eg4Bms extends BaseBms {
       start: 7,
     );
     result['temp_values'] = [
-      ...BaseBms.tempValues(_msg, values: 1, start: 39, types: const [TempType.pcb]),
+      ...BaseBms.tempValues(
+        _msg,
+        values: 1,
+        start: 39,
+        types: const [TempType.pcb],
+      ),
       ...BaseBms.tempValues(
         _msg,
         values: _maxTemp,

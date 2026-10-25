@@ -60,7 +60,10 @@ class EcoworthyBms extends BaseBms {
 
   late final List<List<int>> _macHead = [
     for (final h in _heads)
-      [...intTo(int.parse(device.address.replaceAll(':', ''), radix: 16), 6), ...h],
+      [
+        ...intTo(int.parse(device.address.replaceAll(':', ''), radix: 16), 6),
+        ...h,
+      ],
   ];
   final Map<int, List<int>> _msg = {};
 
@@ -78,7 +81,13 @@ class EcoworthyBms extends BaseBms {
   @override
   void notificationHandler(GattChar sender, Uint8List data) {
     if (![..._heads, ..._macHead].any(data.startsWithBytes)) return;
-    if (!checkIntegrity(data, crcModbus, (null, -2), (-2, null), little: true)) {
+    if (!checkIntegrity(
+      data,
+      crcModbus,
+      (null, -2),
+      (-2, null),
+      little: true,
+    )) {
       return;
     }
     // drop the MAC prefix and align both protocol versions

@@ -69,7 +69,8 @@ class CbtpwrVbBms extends BaseBms {
     }
     frame.extend(data);
     final need = _expLen + _minLen;
-    if (frame.length < (need < BaseBms.bleMaxAttrSize ? need : BaseBms.bleMaxAttrSize)) {
+    if (frame.length <
+        (need < BaseBms.bleMaxAttrSize ? need : BaseBms.bleMaxAttrSize)) {
       return;
     }
     if (!frame.endsWithBytes(_tail)) {
@@ -119,7 +120,11 @@ class CbtpwrVbBms extends BaseBms {
     f.addAll(intTo(cdat.length * 2 + (lencs(cdat.length * 2) << 12), 2));
     f.addAll(cdat);
     f.addAll(intTo(lrcModbus(ascii(f.hex.toUpperCase())), 2));
-    return Uint8List.fromList([..._head, ...ascii(f.hex.toUpperCase()), ..._tail]);
+    return Uint8List.fromList([
+      ..._head,
+      ...ascii(f.hex.toUpperCase()),
+      ..._tail,
+    ]);
   }
 
   @override

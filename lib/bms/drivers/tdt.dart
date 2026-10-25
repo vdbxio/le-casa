@@ -8,7 +8,6 @@
 // TDT smart BMS.
 
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
@@ -130,7 +129,9 @@ class TdtBms extends BaseBms {
 
   @override
   void notificationHandler(GattChar sender, Uint8List data) {
-    if (data.length > _infoLen && data[0] == _rspHead && frame.length >= _expLen) {
+    if (data.length > _infoLen &&
+        data[0] == _rspHead &&
+        frame.length >= _expLen) {
       final len = _infoLen + data.u(6, 2);
       _expLen = len < BaseBms.maxMsgLen ? len : BaseBms.maxMsgLen;
       frame.clear();
@@ -148,16 +149,31 @@ class TdtBms extends BaseBms {
         // only 0x8D frames are wrong, and only in one byte
         _crcFix = frame.u(frame.length - 3, 2) <= 0xFF;
         if (!_crcFix!) return;
-        debugPrint('bms: $name: disabling CRC check, values might be unreliable');
+        debugPrint(
+          'bms: $name: disabling CRC check, values might be unreliable',
+        );
       }
     }
     _msg[frame[5]] = frame.sl(0, -3);
     msgEvent.set();
   }
 
-  static Uint8List _cmd(int cmd, {List<int> data = const [], int head = _rspHead}) {
+  static Uint8List _cmd(
+    int cmd, {
+    List<int> data = const [],
+    int head = _rspHead,
+  }) {
     assert(const {0x8C, 0x8D, 0x92}.contains(cmd));
-    final f = [head, _cmdVer, 0x1, 0x3, 0x0, cmd, ...intTo(data.length, 2), ...data];
+    final f = [
+      head,
+      _cmdVer,
+      0x1,
+      0x3,
+      0x0,
+      cmd,
+      ...intTo(data.length, 2),
+      ...data,
+    ];
     return Uint8List.fromList([...f, ...intTo(crcModbus(f), 2), _tail]);
   }
 
@@ -216,7 +232,9 @@ class TdtBms extends BaseBms {
     result.addAll(
       BaseBms.decodeData(_activeFields, _msg, start: _cellPos + idx * 2 + 2),
     );
-    result['problem_code'] = intFrom(m8d.sl(_cellPos + idx + 6, _cellPos + idx + 8));
+    result['problem_code'] = intFrom(
+      m8d.sl(_cellPos + idx + 6, _cellPos + idx + 8),
+    );
     final mosfets = m8d[_cellPos + idx + 8];
     result['chrg_mosfet'] = mosfets & 0x2 != 0;
     result['dischrg_mosfet'] = mosfets & 0x4 != 0;

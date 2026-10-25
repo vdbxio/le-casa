@@ -16,7 +16,6 @@
 // task, because Le'Casa connects, reads and lets go.
 
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
@@ -57,7 +56,10 @@ class BmsDevice {
   const BmsDevice(this.name, this.address);
 }
 
-typedef NotifyHandler = FutureOr<void> Function(GattChar sender, Uint8List data);
+typedef NotifyHandler = FutureOr<void> Function(
+  GattChar sender,
+  Uint8List data,
+);
 
 /// A characteristic given by UUID string (any form) or as a [GattChar].
 typedef CharSpec = Object;
@@ -84,8 +86,8 @@ abstract class BaseBms {
 
   final BmsDevice device;
   final BmsConfig cfg;
-  late final String name =
-      (device.name.isEmpty ? 'undefined' : device.name).trimRight();
+  late final String name = (device.name.isEmpty ? 'undefined' : device.name)
+      .trimRight();
 
   GattSession? _client;
   GattSession? _attached;
@@ -480,7 +482,11 @@ abstract class BaseBms {
     for (var idx = 0; idx < values; idx++) {
       final p = start + idx * (size + gap);
       if (data.length < p + size) continue;
-      final v = intFrom(data.sublist(p, p + size), little: little, signed: signed);
+      final v = intFrom(
+        data.sublist(p, p + size),
+        little: little,
+        signed: signed,
+      );
       if (v != 0 || offset == 0) {
         out.add(
           TempSensor(

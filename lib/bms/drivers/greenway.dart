@@ -100,7 +100,12 @@ class GreenwayBms extends BaseBms {
 
   @override
   Future<BmsInfo> fetchDeviceInfo() async {
-    for (final addr in [_MsgT.version, _MsgT.manuf, _MsgT.bmsType, _MsgT.serial]) {
+    for (final addr in [
+      _MsgT.version,
+      _MsgT.manuf,
+      _MsgT.bmsType,
+      _MsgT.serial,
+    ]) {
       _expReply = addr;
       await awaitMsg(_cmd(addr));
     }

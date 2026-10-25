@@ -41,7 +41,11 @@ class RedodoBms extends BaseBms {
         'S-*', // Starry Sea by LiTime
         'SS-*', // Starry Sea
       ])
-        MatcherPattern(localName: p, serviceUuid: 'ffe0', manufacturerId: 0x585A),
+        MatcherPattern(
+          localName: p,
+          serviceUuid: 'ffe0',
+          manufacturerId: 0x585A,
+        ),
     ],
     create: RedodoBms.new,
   );

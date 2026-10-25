@@ -48,7 +48,9 @@ class X123smartBms extends BaseBms {
     'B': 5,
   };
   static const _ping = [0x24]; // $
-  static final _replies = [for (final r in ['OK', 'NA', 'WRONG', 'KO']) ascii(r)];
+  static final _replies = [
+    for (final r in ['OK', 'NA', 'WRONG', 'KO']) ascii(r),
+  ];
   static const _tOffs = 0x114;
 
   static int _key(String tag) => tag.codeUnitAt(0) << 8;
@@ -136,8 +138,11 @@ class X123smartBms extends BaseBms {
       if (_replies.any((r) => bytesEq(r, line)) ||
           (second != _sep &&
               line.sl(-2).every(_hexUpper) &&
-              line.every((c) => _hexUpper(c) || c == 0x2B || c == 0x2D || c == _sep) &&
-              _crcSum(line.sl(0, -2)) == pyInt(String.fromCharCodes(line.sl(-2)), 16))) {
+              line.every(
+                (c) => _hexUpper(c) || c == 0x2B || c == 0x2D || c == _sep,
+              ) &&
+              _crcSum(line.sl(0, -2)) ==
+                  pyInt(String.fromCharCodes(line.sl(-2)), 16))) {
         _msg[_lmsg] = line;
         msgEvent.set();
         return;
@@ -147,7 +152,10 @@ class X123smartBms extends BaseBms {
       if (line.where((c) => c == _sep).length + 1 < _msgFmt[msgT]!) continue;
       if (msgT == 'C') {
         final n1 = line.sl(2, 4), n2 = line.sl(5, 7);
-        if (!(n1.isNotEmpty && n1.every(_isDigit) && n2.isNotEmpty && n2.every(_isDigit))) {
+        if (!(n1.isNotEmpty &&
+            n1.every(_isDigit) &&
+            n2.isNotEmpty &&
+            n2.every(_isDigit))) {
           continue;
         }
         _cells[pyInt(String.fromCharCodes(n1))] = line;

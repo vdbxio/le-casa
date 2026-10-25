@@ -40,7 +40,14 @@ class CbtpwrBms extends BaseBms {
     BmsDp('battery_level', 4, 1, false, (x) => x, 0x0A),
     BmsDp('design_capacity', 4, 2, false, (x) => x, 0x15),
     BmsDp('cycles', 6, 2, false, (x) => x, 0x15),
-    BmsDp('runtime', 14, 2, false, (x) => floorDiv(x * BaseBms.hrsToSecs, 100), 0x0C),
+    BmsDp(
+      'runtime',
+      14,
+      2,
+      false,
+      (x) => floorDiv(x * BaseBms.hrsToSecs, 100),
+      0x0C,
+    ),
     BmsDp('problem_code', 4, 4, false, (x) => x, 0x21),
   ];
   // upstream iterates a frozenset; this is its order
@@ -79,7 +86,11 @@ class CbtpwrBms extends BaseBms {
 
   static Uint8List _cmd(int cmd, [List<int> value = const []]) {
     final f = [..._head, cmd, value.length, ...value];
-    return Uint8List.fromList([...f, crcSum(f.sublist(_head.length)), ..._tailTx]);
+    return Uint8List.fromList([
+      ...f,
+      crcSum(f.sublist(_head.length)),
+      ..._tailTx,
+    ]);
   }
 
   @override
@@ -97,7 +108,12 @@ class CbtpwrBms extends BaseBms {
       if (!_msg.containsKey(cmd)) {
         throw const FormatException('BMS data incomplete.');
       }
-      final cells = BaseBms.cellVoltages(_msg[cmd]!, cells: 5, start: 4, little: true);
+      final cells = BaseBms.cellVoltages(
+        _msg[cmd]!,
+        cells: 5,
+        start: 4,
+        little: true,
+      );
       voltages.addAll(cells);
       if (voltages.length % 5 != 0 || cells.isEmpty) break;
     }

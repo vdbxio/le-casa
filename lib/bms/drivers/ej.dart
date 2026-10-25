@@ -29,7 +29,10 @@ class EjBms extends BaseBms {
       // LiTime, by serial number
       for (final id in [33384, 22618])
         MatcherPattern(localName: 'LT-12???BG-A0[0-6]*', manufacturerId: id),
-      const MatcherPattern(localName: 'LT-24???B-A00[0-2]*', manufacturerId: 22618),
+      const MatcherPattern(
+        localName: 'LT-24???B-A00[0-2]*',
+        manufacturerId: 22618,
+      ),
       // Chins/MOBILEKTRO "G-{voltage}V{capacity}Ah-{serial}"
       const MatcherPattern(localName: 'G-[0-5][2-8]V[0-9]*A[Hh]-[0-9]*'),
     ],
@@ -45,7 +48,14 @@ class EjBms extends BaseBms {
   static const cellPos = 12;
   static const maxCells = 16;
   static final _fields = <BmsDp>[
-    BmsDp('current', 44, 4, false, (x) => ((x >> 16) - (x & 0xFFFF)) / 100, cmdRt),
+    BmsDp(
+      'current',
+      44,
+      4,
+      false,
+      (x) => ((x >> 16) - (x & 0xFFFF)) / 100,
+      cmdRt,
+    ),
     BmsDp('battery_level', 61, 1, false, (x) => x, cmdRt),
     BmsDp('cycle_charge', 7, 2, false, (x) => x / 10, cmdCap),
     // only the first sensor is relevant
@@ -121,12 +131,10 @@ class EjBms extends BaseBms {
     final expLen = expFrameLen();
     if (!frameComplete(expLen)) return;
     if (!name.startsWith(_ignoreCrc) &&
-        !checkIntegrity(
-          frame,
-          (x) => crcSum(x) ^ 0xFF,
-          (1, -3),
-          hexInt(frame.sl(-3, -1)),
-        )) {
+        !checkIntegrity(frame, (x) => crcSum(x) ^ 0xFF, (
+          1,
+          -3,
+        ), hexInt(frame.sl(-3, -1)))) {
       frame.clear();
       return;
     }

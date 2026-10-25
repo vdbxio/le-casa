@@ -89,7 +89,11 @@ class PylontechBms extends BaseBms {
   @override
   Future<BmsSample> asyncUpdate() async {
     await awaitMsg(
-      BaseBms.cmdModbus(devId: _devId, addr: _infoBlock.$1, count: _infoBlock.$2),
+      BaseBms.cmdModbus(
+        devId: _devId,
+        addr: _infoBlock.$1,
+        count: _infoBlock.$2,
+      ),
     );
     final result = BaseBms.decodeData(_fields, _msg, start: 3);
     // Modbus only has the lowest and highest cell (0x1018, 0x1019)

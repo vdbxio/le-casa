@@ -62,7 +62,11 @@ class HumsienkBms extends BaseBms {
 
   static Uint8List _cmd(int cmd) {
     final f = [cmd, 0x00];
-    return Uint8List.fromList([_head, ...f, ...intTo(crcSum(f), 2, little: true)]);
+    return Uint8List.fromList([
+      _head,
+      ...f,
+      ...intTo(crcSum(f), 2, little: true),
+    ]);
   }
 
   @override

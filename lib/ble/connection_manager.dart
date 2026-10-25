@@ -149,8 +149,11 @@ class ConnectionManager extends ChangeNotifier {
     _tick = Timer.periodic(tick, (_) => pump());
   }
 
-  ConnectionManager.forScanner(BleScanner scanner, DeviceTracker tracker)
-    : this(tracker, open: scannerOpener(scanner));
+  ConnectionManager.forScanner(
+    BleScanner scanner,
+    DeviceTracker tracker, {
+    GattDriverRegistry? drivers,
+  }) : this(tracker, open: scannerOpener(scanner), drivers: drivers);
 
   /// Global switch: when off, nothing connects to anything.
   bool get enabled => _enabled;

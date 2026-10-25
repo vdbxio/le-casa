@@ -52,7 +52,10 @@ class PwrxtremeBms extends TopbandBms {
   @override
   Future<BmsInfo> fetchDeviceInfo() async {
     final bmsInfo = await super.fetchDeviceInfo();
-    for (final (cmd, key) in [('<M:SR>', 'serial_number'), ('<N:NA>', 'model')]) {
+    for (final (cmd, key) in [
+      ('<M:SR>', 'serial_number'),
+      ('<N:NA>', 'model'),
+    ]) {
       try {
         _ctrlProto = ascii(cmd.substring(1, 2));
         await awaitMsg(ascii(cmd));

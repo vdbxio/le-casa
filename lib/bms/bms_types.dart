@@ -55,8 +55,8 @@ enum BmsMode {
 
 /// One sample, keyed like aiobmsble: `voltage` (V), `current` (A, positive
 /// is charging), `battery_level` (%), `cycle_charge` (Ah), `cell_voltages`
-/// (List<double>, V), `temp_values` (List<TempSensor>), `problem_code`
-/// (int), `packs` (List<BmsSample>) and so on. See [BmsKeys].
+/// (`List<double>`, V), `temp_values` (`List<TempSensor>`), `problem_code`
+/// (int), `packs` (`List<BmsSample>`) and so on. See [BmsKeys].
 typedef BmsSample = Map<String, Object?>;
 
 /// Static and fetched information about a BMS: manufacturer, model,
@@ -119,9 +119,14 @@ class BmsDp {
     this.idx = -1,
   ]) : fctBytes = null;
 
-  const BmsDp.bytes(this.key, this.pos, this.size, this.fctBytes, [this.idx = -1])
-    : signed = false,
-      fct = _identity;
+  const BmsDp.bytes(
+    this.key,
+    this.pos,
+    this.size,
+    this.fctBytes, [
+    this.idx = -1,
+  ]) : signed = false,
+       fct = _identity;
 }
 
 Object? _identity(int x) => x;

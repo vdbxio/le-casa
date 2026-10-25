@@ -44,10 +44,15 @@ class SeplosV2Bms extends BaseBms {
     BmsDp('battery_health', 15, 2, false, (x) => x / 10),
   ];
   static final int _gsmdLen =
-      _cellPos + _pfields.map((d) => d.pos + d.size).reduce((a, b) => a > b ? a : b) + 3;
+      _cellPos +
+      _pfields.map((d) => d.pos + d.size).reduce((a, b) => a > b ? a : b) +
+      3;
 
   /// Upstream iterates a frozenset; this is the order it produced.
-  static const _cmds = [(0x51, <int>[]), (0x61, [0x00])];
+  static const _cmds = [
+    (0x51, <int>[]),
+    (0x61, [0x00]),
+  ];
 
   final Map<int, List<int>> _msg = {};
   int _expLen = _minLen;
@@ -115,8 +120,20 @@ class SeplosV2Bms extends BaseBms {
 
   static Uint8List _cmd(int cmd, {int address = 0, List<int> data = const []}) {
     assert(const {0x47, 0x51, 0x61, 0x62, 0x04}.contains(cmd));
-    final f = [_head, _cmdVer, address, 0x46, cmd, ...intTo(data.length, 2), ...data];
-    return Uint8List.fromList([...f, ...intTo(crcXmodem(f.sublist(1)), 2), _tail]);
+    final f = [
+      _head,
+      _cmdVer,
+      address,
+      0x46,
+      cmd,
+      ...intTo(data.length, 2),
+      ...data,
+    ];
+    return Uint8List.fromList([
+      ...f,
+      ...intTo(crcXmodem(f.sublist(1)), 2),
+      _tail,
+    ]);
   }
 
   @override
@@ -142,9 +159,12 @@ class SeplosV2Bms extends BaseBms {
     if (_gsmdLen + ctBlkLen > m61.length) {
       throw const FormatException('BMS data incomplete');
     }
-    result.addAll(BaseBms.decodeData(_pfields, m61, start: _cellPos + ctBlkLen));
+    result.addAll(
+      BaseBms.decodeData(_pfields, m61, start: _cellPos + ctBlkLen),
+    );
 
-    final statesPos = (_cellPos + ctBlkLen) + (cellCount + tempSensors) + (3 + 19);
+    final statesPos =
+        (_cellPos + ctBlkLen) + (cellCount + tempSensors) + (3 + 19);
     final cstAlarmPos = statesPos + 1;
     if (m61.length <= cstAlarmPos) {
       throw const FormatException('BMS data incomplete');
@@ -157,13 +177,19 @@ class SeplosV2Bms extends BaseBms {
 
     final balancePos = cstAlarmPos + 1 + m61[cstAlarmPos];
     final bl = (cellCount + 7) ~/ 8;
-    result['balancer'] = intFrom(m61.sl(balancePos, balancePos + (bl < 8 ? bl : 8)));
+    result['balancer'] = intFrom(
+      m61.sl(balancePos, balancePos + (bl < 8 ? bl : 8)),
+    );
 
     final alarmEvt = m61[cstAlarmPos] < _prbMax ? m61[cstAlarmPos] : _prbMax;
     result['problem_code'] =
         intFrom(m61.sl(cstAlarmPos + 1, cstAlarmPos + 1 + alarmEvt)) & _prbMask;
 
-    result['cell_voltages'] = BaseBms.cellVoltages(m61, cells: m61[_cellPos], start: 10);
+    result['cell_voltages'] = BaseBms.cellVoltages(
+      m61,
+      cells: m61[_cellPos],
+      start: 10,
+    );
     result['temp_values'] = BaseBms.tempValues(
       m61,
       values: tempSensors,
@@ -172,7 +198,10 @@ class SeplosV2Bms extends BaseBms {
       offset: 2731,
       divider: 10,
       types: [
-        ...List.filled(tempSensors - 2 < 0 ? 0 : tempSensors - 2, TempType.cell),
+        ...List.filled(
+          tempSensors - 2 < 0 ? 0 : tempSensors - 2,
+          TempType.cell,
+        ),
         TempType.ambient,
         TempType.mosfet,
       ],

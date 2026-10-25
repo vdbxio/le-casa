@@ -123,8 +123,19 @@ class AntBms extends BaseBms {
     msgEvent.set();
   }
 
-  static Uint8List _cmd(int cmd, int adr, int length, [List<int> data = const []]) {
-    final f = [..._head, cmd & 0xFF, ...intTo(adr, 2, little: true), length & 0xFF, ...data];
+  static Uint8List _cmd(
+    int cmd,
+    int adr,
+    int length, [
+    List<int> data = const [],
+  ]) {
+    final f = [
+      ..._head,
+      cmd & 0xFF,
+      ...intTo(adr, 2, little: true),
+      length & 0xFF,
+      ...data,
+    ];
     final crc = crcModbus(f.sublist(1));
     return Uint8List.fromList([...f, ...intTo(crc, 2, little: true), ..._tail]);
   }
@@ -172,7 +183,12 @@ class AntBms extends BaseBms {
       ],
     );
     result.addAll(
-      BaseBms.decodeData(_fields, _msg, little: true, start: (temps + cells) * 2),
+      BaseBms.decodeData(
+        _fields,
+        _msg,
+        little: true,
+        start: (temps + cells) * 2,
+      ),
     );
     return result;
   }

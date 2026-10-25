@@ -43,7 +43,12 @@ class NeeyBms extends BaseBms {
   static final _fields = <_Fp>[
     _Fp('voltage', 201, true, _r3),
     _Fp('delta_voltage', 209, true, _r3),
-    _Fp('problem_code', 216, false, (x) => const {1, 3, 7, 8, 9, 10, 11}.contains(x) ? x : 0),
+    _Fp(
+      'problem_code',
+      216,
+      false,
+      (x) => const {1, 3, 7, 8, 9, 10, 11}.contains(x) ? x : 0,
+    ),
     _Fp('balancer', 216, false, (x) => x == 0x5),
     _Fp('balance_current', 218, true, _r3),
     _Fp('current', 222, true, _r3),
@@ -124,18 +129,29 @@ class NeeyBms extends BaseBms {
 
   static Uint8List _cmd(int cmd, [int reg = 0, List<int> value = const []]) {
     assert(value.length <= 11);
-    final f = [..._headCmd, cmd, reg & 0xFF, 0x14, ...value, ...List.filled(11 - value.length, 0)];
+    final f = [
+      ..._headCmd,
+      cmd,
+      reg & 0xFF,
+      0x14,
+      ...value,
+      ...List.filled(11 - value.length, 0),
+    ];
     return Uint8List.fromList([...f, crcSum(f), _tail]);
   }
 
   /// struct.unpack_from; throws [RangeError] where Python raises struct.error.
   static double _f32(Uint8List d, int pos) {
-    if (pos < 0 || pos + 4 > d.length) throw RangeError('unpack_from out of range');
+    if (pos < 0 || pos + 4 > d.length) {
+      throw RangeError('unpack_from out of range');
+    }
     return ByteData.sublistView(d).getFloat32(pos, Endian.little);
   }
 
   static int _u8(Uint8List d, int pos) {
-    if (pos < 0 || pos + 1 > d.length) throw RangeError('unpack_from out of range');
+    if (pos < 0 || pos + 1 > d.length) {
+      throw RangeError('unpack_from out of range');
+    }
     return d[pos];
   }
 
@@ -158,7 +174,8 @@ class NeeyBms extends BaseBms {
       final data = _convData(_proto == 'v2' ? _fields : _fieldsV1, _msg);
       final (n, start) = _proto == 'v2' ? (4, 226) : (2, 221);
       data['temp_values'] = [
-        for (var i = 0; i < n; i++) TempSensor(pyRound(_f32(_msg, start + i * 4), 2)),
+        for (var i = 0; i < n; i++)
+          TempSensor(pyRound(_f32(_msg, start + i * 4), 2)),
       ];
       data['cell_voltages'] = [
         for (var i = 0; i < 24; i++)

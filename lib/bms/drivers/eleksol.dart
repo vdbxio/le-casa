@@ -17,7 +17,13 @@ class EleksolBms extends JbdBms {
     module: 'eleksol_bms',
     info: const {'manufacturer': 'Jiabaida', 'model': 'Eleksol BMS'},
     matchers: [
-      for (final oui in ['A4:C1:37', 'A4:C1:38', 'A5:C2:37', 'A5:C2:39', 'AA:C2:37'])
+      for (final oui in [
+        'A4:C1:37',
+        'A4:C1:38',
+        'A5:C2:37',
+        'A5:C2:39',
+        'AA:C2:37',
+      ])
         MatcherPattern(oui: oui, serviceUuid: 'ff06'),
     ],
     create: EleksolBms.new,

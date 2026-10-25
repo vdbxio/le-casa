@@ -49,7 +49,14 @@ class DometicBms extends BaseBms {
     ),
     BmsDp('design_capacity', 4, 4, false, (x) => x, 0x7),
     BmsDp('battery_level', 4, 1, false, (x) => x, 0xB),
-    BmsDp('temp_values', 4, 2, false, (x) => [TempSensor((x - 500) / 10)], 0x0C),
+    BmsDp(
+      'temp_values',
+      4,
+      2,
+      false,
+      (x) => [TempSensor((x - 500) / 10)],
+      0x0C,
+    ),
     BmsDp('cycle_capacity', 4, 2, false, (x) => x, 0x36),
     BmsDp('battery_health', 4, 1, false, (x) => x, 0xE),
   ];
@@ -141,7 +148,9 @@ class DometicBms extends BaseBms {
     if (!data.startsWithBytes(_head)) return;
     if (data.length != _frameLen) return;
 
-    _dataFinal.putIfAbsent(data[2], () => {})[data[3]] = Uint8List.fromList(data);
+    _dataFinal.putIfAbsent(data[2], () => {})[data[3]] = Uint8List.fromList(
+      data,
+    );
     final complete = {
       for (final e in _dataFinal.entries)
         if (_cmds.every(e.value.containsKey)) e.key,
@@ -157,10 +166,11 @@ class DometicBms extends BaseBms {
     }
   }
 
-  static List<double> _cellV(Map<int, List<int>> data, {required int cells}) => [
-    for (var i = 0; i < cells ~/ 2; i++)
-      ...BaseBms.cellVoltages(data[0x56 + i]!, cells: 2, start: 4),
-  ];
+  static List<double> _cellV(Map<int, List<int>> data, {required int cells}) =>
+      [
+        for (var i = 0; i < cells ~/ 2; i++)
+          ...BaseBms.cellVoltages(data[0x56 + i]!, cells: 2, start: 4),
+      ];
 
   @override
   Future<BmsSample> asyncUpdate() async {

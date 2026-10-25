@@ -72,6 +72,9 @@ abstract interface class ClosableSession implements GattSession {
   /// True once the device or the radio ended the link by itself, rather
   /// than through [close].
   bool get droppedByDevice;
+
+  /// Completes when the link drops by itself; never completes otherwise.
+  Future<void> get onDisconnected;
 }
 
 extension GattSessionLookup on GattSession {

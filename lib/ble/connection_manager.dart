@@ -122,6 +122,8 @@ class _ScanPausingSession implements ClosableSession {
   @override
   bool get droppedByDevice => _link.droppedByDevice;
   @override
+  Future<void> get onDisconnected => _link.onDisconnected;
+  @override
   Future<void> close() async {
     await _link.close();
     final r = _resume;
@@ -293,7 +295,7 @@ class ConnectionManager extends ChangeNotifier {
         ..error = e.message;
     } catch (e) {
       debugPrint('poll: ${l.id} failed: $e');
-      final dropped = link?.droppedByDevice ?? false;
+      final dropped = link != null && await _dropped(link, e);
       l.drops = dropped ? l.drops + 1 : 0;
       _fail(l, dropped ? 'The device dropped the connection' : _describe(e));
     } finally {
@@ -301,6 +303,20 @@ class ConnectionManager extends ChangeNotifier {
       _busy = null;
       notifyListeners();
     }
+  }
+
+  /// Whether [e] came from the link going down under us. Android fails the
+  /// pending request (often "status: 133") before it reports the
+  /// disconnect, so give that event a moment to arrive.
+  static Future<bool> _dropped(ClosableSession link, Object e) async {
+    if (RegExp(r'status: 8\b|is disconnected').hasMatch('$e')) return true;
+    if (!link.droppedByDevice) {
+      await link.onDisconnected.timeout(
+        const Duration(seconds: 2),
+        onTimeout: () {},
+      );
+    }
+    return link.droppedByDevice;
   }
 
   void _fail(Link l, String error) {

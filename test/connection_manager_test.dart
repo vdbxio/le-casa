@@ -119,13 +119,17 @@ void main() {
   });
 
   test('a device that keeps dropping the link is flagged', () async {
-    final driver = ScriptedDriver(error: TimeoutException('no answer'));
+    // The pending write fails first and the disconnect event follows, the
+    // order Android reports them in.
+    final driver = ScriptedDriver(
+      error: Exception('Write descriptor failed with status: 133.'),
+    );
     var drop = true;
     final m = manager(
       driver,
       open: (id) async {
-        final s = FakeSession(characteristics: const [])
-          ..droppedByDevice = drop;
+        final s = FakeSession(characteristics: const []);
+        if (drop) Timer(const Duration(milliseconds: 50), s.drop);
         opened.add(s);
         return s;
       },
@@ -143,6 +147,18 @@ void main() {
     drop = false;
     await m.readNow(testAdv.id);
     expect(l.keepsDropping, isFalse);
+    m.dispose();
+  });
+
+  test('a status 8 error counts as a drop straight away', () async {
+    final driver = ScriptedDriver(
+      error: Exception('GATT is disconnected with status: 8'),
+    );
+    final m = manager(driver);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.pump();
+    expect(m[testAdv.id]!.drops, 1);
     m.dispose();
   });
 

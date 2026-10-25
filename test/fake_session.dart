@@ -16,6 +16,16 @@ class FakeSession implements ClosableSession {
   bool closed = false;
   @override
   bool droppedByDevice = false;
+  final _dropped = Completer<void>();
+
+  /// Simulates the device ending the link.
+  void drop() {
+    droppedByDevice = true;
+    if (!_dropped.isCompleted) _dropped.complete();
+  }
+
+  @override
+  Future<void> get onDisconnected => _dropped.future;
 
   FakeSession({
     required this.characteristics,

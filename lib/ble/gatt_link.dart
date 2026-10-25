@@ -61,7 +61,7 @@ class GattLink implements ClosableSession {
     });
   }
 
-  /// Completes when the peripheral drops the link on its own.
+  @override
   Future<void> get onDisconnected => _disconnected.future;
 
   @override

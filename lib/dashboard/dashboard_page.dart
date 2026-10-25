@@ -79,7 +79,18 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  void _dropSources() => _cached = null;
+  void _dropSources() {
+    _cached = null;
+    if (!mounted) return;
+    final s = context.getInheritedWidgetOfExactType<AppServices>()!;
+    final dash = s.dashboard;
+    if (!dash.hasLayout) return;
+    final named = dash.page.rememberNames((id) {
+      final d = s.tracker[id];
+      return d?.view == null ? null : deviceName(d!);
+    });
+    if (named) dash.changed();
+  }
 
   /// Card data for this frame. Kept until live data changes, so edits and
   /// drags reuse the same card models.

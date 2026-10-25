@@ -97,7 +97,7 @@ List<CatalogEntry> catalog(CardSources s) {
     if (v == null || _hiddenKinds.contains(v.kind)) continue;
     out.add(
       CatalogEntry(
-        CardSpec.device(d.id),
+        CardSpec.device(d.id, name: deviceName(d)),
         deviceName(d),
         v.model,
         switch (v.kind) {
@@ -154,7 +154,7 @@ String deviceName(TrackedDevice d) {
 /// Builds what a card shows. Clocks and chip rows are drawn by their own
 /// widgets; chip rows call this for each of their items.
 CardModel modelFor(CardSpec spec, CardSources s) => switch (spec.type) {
-  'device' => _device(spec.device!, s),
+  'device' => _device(spec.device!, s, spec.name),
   'solar' => _solarTotal(s),
   'tablet' => _tablet(s),
   'weather' => _weather(s),
@@ -187,16 +187,19 @@ String _quiet(TrackedDevice d, DateTime now) =>
 
 // ---------------------------------------------------------------- devices
 
-CardModel _device(String id, CardSources s) {
+CardModel _device(String id, CardSources s, String? savedName) {
   final d = s.tracker[id];
-  if (d == null) {
-    return const CardModel(
-      title: 'Not found yet',
-      icon: Icons.bluetooth_searching,
-      note: 'Listening for this device…',
-      stale: true,
-    );
-  }
+  // Right after a restart a placed device may not have been heard, or its
+  // first packet may not carry readings yet (Victron sends its name in a
+  // separate scan response). Show the name it had when placed.
+  CardModel waiting(String? name) => CardModel(
+    title: savedName ?? name ?? 'Not found yet',
+    icon: Icons.bluetooth_searching,
+    note: 'Listening for this device…',
+    pillLabel: 'listening',
+    stale: true,
+  );
+  if (d == null) return waiting(null);
   final v = d.view;
   final name = deviceName(d);
   final now = s.now();
@@ -204,9 +207,7 @@ CardModel _device(String id, CardSources s) {
       ? (d.polledAt!.isAfter(d.lastSeen) ? d.polledAt! : d.lastSeen)
       : d.lastSeen;
   final stale = now.difference(heard) > staleAfter;
-  if (v == null) {
-    return CardModel(title: name, icon: Icons.sensors, note: 'Not recognised');
-  }
+  if (v == null) return waiting(name);
   if (!v.isReadable) {
     return CardModel(
       title: name,

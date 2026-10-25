@@ -49,6 +49,28 @@ void main() {
     expect(m.note, contains('connection'));
   });
 
+  test('a placed device not heard since restart shows its saved name', () {
+    final m = modelFor(const CardSpec.device('gone', name: 'Lilith'), sources);
+    expect(m.title, 'Lilith');
+    expect(m.note, 'Listening for this device…');
+  });
+
+  test('cards remember device names for after a restart', () {
+    final layout = DashboardLayout(
+      Split(SplitAxis.horizontal, [
+        Slot(const CardSpec.device('luna')),
+        Slot(const CardSpec('chips', items: [CardSpec.device('sol')])),
+      ]),
+    );
+    final byId = {'luna': 'Luna 50', 'sol': 'Sol 30'};
+    expect(layout.rememberNames((id) => byId[id]), isTrue);
+    final restored = DashboardLayout.fromJson(layout.toJson());
+    final cards = [for (final (_, s) in restored.slots) s.card!];
+    expect(cards[0].name, 'Luna 50');
+    expect(cards[1].items.single.name, 'Sol 30');
+    expect(layout.rememberNames((id) => byId[id]), isFalse);
+  });
+
   test('weather without the service asks for internet or the companion', () {
     final m = modelFor(const CardSpec('weather'), sources);
     expect(

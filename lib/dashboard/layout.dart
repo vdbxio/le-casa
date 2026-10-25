@@ -48,8 +48,19 @@ class CardSpec {
   /// A size the user pinned, or null for "largest that fits".
   final CardSize? pinned;
 
-  const CardSpec(this.type, {this.device, this.items = const [], this.pinned});
-  const CardSpec.device(String id) : this('device', device: id);
+  /// The device's name when the card was placed, shown until the device is
+  /// heard again after a restart.
+  final String? name;
+
+  const CardSpec(
+    this.type, {
+    this.device,
+    this.items = const [],
+    this.pinned,
+    this.name,
+  });
+  const CardSpec.device(String id, {String? name})
+    : this('device', device: id, name: name);
 
   /// Identity for "is this already on the dashboard?". Chip rows have no
   /// identity of their own; their items do.
@@ -64,6 +75,7 @@ class CardSpec {
     device: device,
     items: items ?? this.items,
     pinned: unpin ? null : (pinned ?? this.pinned),
+    name: name,
   );
 
   Map<String, Object?> toJson() => {
@@ -71,6 +83,7 @@ class CardSpec {
     if (device != null) 'd': device,
     if (items.isNotEmpty) 'i': [for (final c in items) c.toJson()],
     if (pinned != null) 'p': pinned!.name,
+    if (name != null) 'n': name,
   };
 
   static CardSpec fromJson(Map<String, Object?> j) => CardSpec(
@@ -81,6 +94,7 @@ class CardSpec {
         CardSpec.fromJson((c as Map).cast<String, Object?>()),
     ],
     pinned: CardSize.values.asNameMap()[j['p']],
+    name: j['n'] as String?,
   );
 
   @override
@@ -209,6 +223,32 @@ class DashboardLayout {
         if (c.type == 'chips') ...c.items.map((i) => i.key) else c.key,
       ],
   };
+
+  /// Records device names on cards placed before names were saved, or
+  /// whose device was renamed. Returns true if anything changed.
+  bool rememberNames(String? Function(String deviceId) nameOf) {
+    var changed = false;
+    CardSpec named(CardSpec c) {
+      if (c.type == 'chips') {
+        return c.copyWith(items: [for (final i in c.items) named(i)]);
+      }
+      final n = c.device == null ? null : nameOf(c.device!);
+      if (n == null || n == c.name) return c;
+      changed = true;
+      return CardSpec(c.type, device: c.device, pinned: c.pinned, name: n);
+    }
+
+    for (final (_, s) in slots) {
+      final before = changed;
+      changed = false;
+      if (s.card case final c?) {
+        final n = named(c);
+        if (changed) s.card = n;
+      }
+      changed = changed || before;
+    }
+    return changed;
+  }
 
   /// Inserts an empty slot into the split at [splitPath] before child
   /// [index] (`index == length` appends). Between two neighbours it takes a

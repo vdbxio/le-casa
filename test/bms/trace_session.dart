@@ -102,7 +102,8 @@ class TraceSession implements GattSession {
   /// Delivers the notifications that follow the event just consumed.
   /// Those the Python mock sent from inside the BMS's own call (same asyncio
   /// task) arrive before that call returns; those a mock task pushed arrive
-  /// once the driver has gone back to waiting, in bursts per task run.
+  /// together once the driver has gone back to waiting, the way asyncio
+  /// runs every ready task before it resumes a waiter.
   /// [inlineOk] is false where no listener can be attached yet.
   void _deliverFollowing({
     bool spontaneous = false,
@@ -136,9 +137,12 @@ class TraceSession implements GattSession {
       }
     }
     _emit(inline);
-    Future<void> chain = Future<void>.value();
-    for (final b in bursts) {
-      chain = chain.then((_) => Future<void>(() => _emit(b)));
+    if (bursts.isNotEmpty) {
+      Future<void>(() {
+        for (final b in bursts) {
+          _emit(b);
+        }
+      });
     }
   }
 
@@ -218,6 +222,8 @@ class TraceSession implements GattSession {
         return;
       case 'TimeoutError':
         throw TimeoutException('recorded write timeout');
+      case 'BleakCharacteristicNotFoundError':
+        throw const UnsupportedDeviceException('recorded: no such characteristic');
       default:
         throw Exception('recorded ${e['raise']}');
     }

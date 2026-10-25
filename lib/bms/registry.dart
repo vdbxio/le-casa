@@ -48,9 +48,12 @@ import 'drivers/seplos.dart';
 import 'drivers/seplos_v2.dart';
 import 'drivers/superb.dart';
 import 'drivers/superb_v2.dart';
+import 'drivers/tdt.dart';
 import 'drivers/tianpwr.dart';
 import 'drivers/topband.dart';
 import 'drivers/vatrer.dart';
+import 'drivers/ws_nova.dart';
+import 'drivers/x123smart.dart';
 import 'spec.dart';
 
 export 'spec.dart';
@@ -99,9 +102,12 @@ final List<BmsSpec> bmsSpecs = [
   SeplosV2Bms.spec,
   SuperbBms.spec,
   SuperbV2Bms.spec,
+  TdtBms.spec,
   TianpwrBms.spec,
   TopbandBms.spec,
   VatrerBms.spec,
+  WsNovaBms.spec,
+  X123smartBms.spec,
 ];
 
 /// The BMS type an advertisement belongs to, or null.

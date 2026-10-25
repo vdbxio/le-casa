@@ -33,6 +33,15 @@ class CardSources {
 
   final Map<String, CardModel> _models = {};
 
+  /// The same sources with nothing remembered, after live data changed.
+  CardSources fresh() => CardSources(
+    tracker: tracker,
+    history: history,
+    tablet: tablet,
+    weather: weather,
+    now: now,
+  );
+
   /// [modelFor], remembered for as long as these sources live. The
   /// dashboard makes new sources when live data changes, so dragging a
   /// handle redraws cards without rebuilding every model each frame.
@@ -528,24 +537,44 @@ IconData weatherIcon(int code, {bool night = false}) => switch (code) {
 
 CardModel _weather(CardSources s) {
   final w = s.weather;
-  const offline = 'Please connect to the internet or install the companion app';
+  const offline = 'No forecast. Check the tablet is online.';
   if (w == null) {
     return const CardModel(
       title: 'Weather',
       icon: Icons.cloud_outlined,
       tone: Tone.climate,
-      note: offline,
+      note: 'Set up where the forecast comes from',
+      setup: 'Set up weather',
     );
   }
-  final place = w.settings.place;
+  final place = w.place;
   switch (w.status) {
+    case WeatherStatus.noSource:
+      return const CardModel(
+        title: 'Weather',
+        icon: Icons.cloud_outlined,
+        tone: Tone.climate,
+        note: 'Allow internet access or link the companion app',
+        pillLabel: 'set up',
+        setup: 'Set up weather',
+      );
     case WeatherStatus.noPlace:
       return const CardModel(
         title: 'Weather',
         icon: Icons.cloud_outlined,
         tone: Tone.climate,
-        note: 'Choose your location in Settings',
+        note: 'Use the tablet\'s location or set one',
         pillLabel: 'set location',
+        setup: 'Set location',
+      );
+    case WeatherStatus.noLocation:
+      return const CardModel(
+        title: 'Weather',
+        icon: Icons.location_disabled_outlined,
+        tone: Tone.climate,
+        note: 'Could not find this tablet\'s location',
+        pillLabel: 'no location',
+        setup: 'Set location',
       );
     case WeatherStatus.loading:
       return CardModel(

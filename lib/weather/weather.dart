@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../settings/settings_store.dart';
 
@@ -112,19 +113,42 @@ String weatherText(int code) => switch (code) {
   _ => 'Weather $code',
 };
 
-enum WeatherStatus { noPlace, loading, ok, offline }
+enum WeatherStatus {
+  /// Neither the internet nor the phone companion is allowed to bring the
+  /// forecast in.
+  noSource,
+
+  /// No place picked and not following the tablet's location.
+  noPlace,
+
+  /// Following the tablet's location, but it could not be found (no
+  /// permission, location off, or no fix).
+  noLocation,
+  loading,
+  ok,
+  offline,
+}
+
+/// Finds the tablet, or null when it cannot. Swapped out in tests.
+typedef Locate = Future<WeatherPlace?> Function();
 
 /// Fetches the forecast straight from Open-Meteo when the tablet has
-/// internet. Later the phone companion will relay it over Bluetooth for
-/// tablets that are never online.
+/// internet and the user allowed it. Later the phone companion will relay
+/// it over Bluetooth for tablets that are never online.
 class WeatherService extends ChangeNotifier {
   final SettingsStore settings;
+  final Locate _locate;
   WeatherNow? now;
-  WeatherStatus status = WeatherStatus.noPlace;
+  WeatherStatus status = WeatherStatus.noSource;
   Timer? _timer;
-  WeatherPlace? _for;
+  String? _for;
 
-  WeatherService(this.settings) {
+  /// Where the forecast is for: the picked place, or the tablet's own
+  /// location once found.
+  WeatherPlace? place;
+
+  WeatherService(this.settings, {Locate? locate})
+    : _locate = locate ?? locateTablet {
     settings.addListener(_placeChanged);
   }
 
@@ -133,10 +157,18 @@ class WeatherService extends ChangeNotifier {
     _timer = Timer.periodic(const Duration(minutes: 30), (_) => refresh());
   }
 
+  String get _source {
+    final p = settings.place;
+    return '${settings.weatherInternet} ${settings.weatherHere} '
+        '${p?.name} ${p?.lat} ${p?.lon}';
+  }
+
   void _placeChanged() {
-    if (identical(settings.place, _for)) return;
-    _for = settings.place;
+    final key = _source;
+    if (key == _for) return;
+    _for = key;
     now = null;
+    place = null;
     refresh();
   }
 
@@ -156,19 +188,28 @@ class WeatherService extends ChangeNotifier {
   );
 
   Future<void> refresh() async {
-    final p = settings.place;
-    if (p == null) {
-      status = WeatherStatus.noPlace;
-      notifyListeners();
-      return;
-    }
-    if (now == null) {
-      status = WeatherStatus.loading;
+    final key = _source;
+    void set(WeatherStatus st) {
+      if (key != _source) return;
+      status = st;
       notifyListeners();
     }
+
+    if (!settings.weatherInternet) return set(WeatherStatus.noSource);
+    if (now == null) set(WeatherStatus.loading);
+    final WeatherPlace? p;
+    if (settings.weatherHere) {
+      p = await _locate() ?? place;
+      if (key != _source) return;
+      if (p == null) return set(WeatherStatus.noLocation);
+    } else {
+      p = settings.place;
+      if (p == null) return set(WeatherStatus.noPlace);
+    }
+    place = p;
     try {
       final j = await getJson(forecastUri(p));
-      if (!identical(p, settings.place)) return;
+      if (key != _source) return;
       now = WeatherNow.parse(j, DateTime.now());
       status = WeatherStatus.ok;
     } catch (e) {
@@ -182,7 +223,39 @@ class WeatherService extends ChangeNotifier {
         status = WeatherStatus.offline;
       }
     }
-    notifyListeners();
+    if (key == _source) notifyListeners();
+  }
+
+  /// The tablet's rough location, asking for permission the first time.
+  /// City-level accuracy is all a forecast needs.
+  static Future<WeatherPlace?> locateTablet() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return null;
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        return null;
+      }
+      Position? pos;
+      try {
+        pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.low,
+            timeLimit: Duration(seconds: 20),
+          ),
+        );
+      } catch (_) {
+        pos = await Geolocator.getLastKnownPosition();
+      }
+      if (pos == null) return null;
+      return WeatherPlace('Your location', pos.latitude, pos.longitude);
+    } catch (e) {
+      debugPrint('Locating the tablet failed: $e');
+      return null;
+    }
   }
 
   /// Looks a place up by name (Open-Meteo geocoding).

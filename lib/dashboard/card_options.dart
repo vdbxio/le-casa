@@ -5,6 +5,8 @@
 import 'package:flutter/material.dart' hide Split;
 
 import '../ui/palette.dart';
+import '../weather/place_search.dart';
+import '../weather/weather.dart';
 import 'card_picker.dart';
 import 'cards/card_icons.dart';
 import 'cards/card_model.dart';
@@ -78,6 +80,12 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
   String? _icon;
   late ClockStyle _clock;
 
+  /// Redrawn when the forecast or its settings change, so the preview
+  /// follows the weather options.
+  late CardSources _sources = widget.sources;
+  WeatherService? get _weather =>
+      spec.type == 'weather' ? widget.sources.weather : null;
+
   CardSpec get spec => widget.spec;
 
   /// Clocks and chip rows draw themselves; only data cards have boxes.
@@ -92,16 +100,20 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
     _title = TextEditingController(text: spec.title ?? '');
     _icon = spec.icon;
     _clock = spec.clock ?? const ClockStyle();
+    _weather?.addListener(_weatherChanged);
   }
+
+  void _weatherChanged() => setState(() => _sources = _sources.fresh());
 
   @override
   void dispose() {
+    _weather?.removeListener(_weatherChanged);
     _title.dispose();
     super.dispose();
   }
 
   /// The card as the device describes it, before the user's title and icon.
-  CardModel get _model => widget.sources.model(spec.copyWith(clearLabel: true));
+  CardModel get _model => _sources.model(spec.copyWith(clearLabel: true));
 
   /// The slot's card with every change made so far.
   CardSpec get _edited {
@@ -137,7 +149,7 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
   @override
   Widget build(BuildContext context) {
     final c = LeColors.of(context);
-    final model = widget.sources.model(_edited);
+    final model = _sources.model(_edited);
     final slot = widget.slotSize;
     final hiddenHere = _arrangeable
         ? planTemplate(
@@ -228,7 +240,7 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
   Widget _preview(CardModel model) {
     if (!_arrangeable) {
       return IgnorePointer(
-        child: cardContent(_edited, widget.slotSize, widget.sources).$1,
+        child: cardContent(_edited, widget.slotSize, _sources).$1,
       );
     }
     return TemplateCard(
@@ -258,7 +270,7 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
         child: CardPickerList(
           entries: widget.entries,
           onDashboard: widget.onDashboard,
-          sources: widget.sources,
+          sources: _sources,
           slotHasCard: true,
           current: spec.key,
           onPick: (p) => Navigator.pop(context, p),
@@ -376,6 +388,7 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
                   ),
                 ],
               ],
+              if (_weather case final w?) ..._weatherSettings(c, w, heading),
               if (_clockCard) ...[
                 heading('Time'),
                 toggle(
@@ -452,6 +465,96 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
         ),
       ],
     );
+  }
+
+  /// Where the forecast is for and how it gets to the tablet. These are
+  /// the tablet's own settings, so they apply straight away.
+  List<Widget> _weatherSettings(
+    LeColors c,
+    WeatherService w,
+    Widget Function(String) heading,
+  ) {
+    final st = w.settings;
+    Widget choice({
+      required IconData icon,
+      required String title,
+      required String subtitle,
+      required bool on,
+      required VoidCallback? onTap,
+      Widget? trailing,
+    }) => Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: on ? c.accent.withValues(alpha: 0.14) : c.card2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: on ? BorderSide(color: c.accent, width: 2) : BorderSide.none,
+        ),
+        child: ListTile(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          enabled: onTap != null,
+          leading: Icon(icon),
+          title: Text(title),
+          subtitle: Text(subtitle),
+          trailing: trailing,
+          onTap: onTap,
+        ),
+      ),
+    );
+
+    final here = st.weatherHere;
+    final found = here ? w.place : null;
+    return [
+      heading('Location'),
+      choice(
+        icon: Icons.my_location,
+        title: 'Use device location',
+        subtitle: !here
+            ? 'Follows the tablet wherever it goes'
+            : w.status == WeatherStatus.noLocation
+            ? 'Could not find the tablet. Check location is on and allowed.'
+            : found == null
+            ? 'Finding the tablet…'
+            : 'Found: ${found.lat.toStringAsFixed(2)}, '
+                  '${found.lon.toStringAsFixed(2)}',
+        on: here,
+        onTap: () => st.setWeather(here: true),
+      ),
+      choice(
+        icon: Icons.search,
+        title: 'Set location',
+        subtitle: st.place?.name ?? 'Search for a town or city',
+        on: !here && st.place != null,
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () async {
+          final p = await showPlaceSearch(context);
+          if (p != null) await st.setPlace(p);
+        },
+      ),
+      heading('Forecast from'),
+      choice(
+        icon: Icons.public,
+        title: 'Allow internet access',
+        subtitle: 'From Open-Meteo, no account. Only the location is sent.',
+        on: st.weatherInternet,
+        onTap: () => st.setWeather(internet: !st.weatherInternet),
+        trailing: Switch(
+          value: st.weatherInternet,
+          onChanged: (v) => st.setWeather(internet: v),
+        ),
+      ),
+      choice(
+        icon: Icons.phone_iphone,
+        title: 'Link companion app',
+        subtitle:
+            'Coming with the Le\'Casa phone app, which will pass the '
+            'forecast over Bluetooth',
+        on: false,
+        onTap: null,
+      ),
+    ];
   }
 
   Widget _icons(LeColors c) {

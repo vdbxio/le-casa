@@ -1,8 +1,20 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lecasa/dashboard/card_options.dart';
+import 'package:lecasa/dashboard/cards/card_view.dart';
+import 'package:lecasa/dashboard/catalog.dart';
+import 'package:lecasa/dashboard/layout.dart';
 import 'package:lecasa/settings/settings_store.dart';
+import 'package:lecasa/ui/palette.dart';
 import 'package:lecasa/weather/weather.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'fake_devices.dart';
+import 'test_fonts.dart';
 
 void main() {
+  setUpAll(loadTestFonts);
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   test('parses an Open-Meteo forecast from the current hour on', () {
     final hours = [
       for (var h = 0; h < 48; h++)
@@ -55,5 +67,122 @@ void main() {
     expect(u.host, 'api.open-meteo.com');
     expect(u.queryParameters['timezone'], 'auto');
     expect(u.queryParameters['latitude'], '45.5000');
+  });
+
+  group('where the forecast comes from', () {
+    test('nothing is fetched until internet access is allowed', () async {
+      final st = SettingsStore()..place = const WeatherPlace('Here', 1, 2);
+      final w = WeatherService(st);
+      await w.refresh();
+      expect(w.status, WeatherStatus.noSource);
+    });
+
+    test('allowed but no place asks for one', () async {
+      final st = SettingsStore();
+      await st.setWeather(internet: true);
+      final w = WeatherService(st);
+      await w.refresh();
+      expect(w.status, WeatherStatus.noPlace);
+    });
+
+    test('following the tablet that cannot be found says so', () async {
+      final st = SettingsStore();
+      await st.setWeather(internet: true, here: true);
+      var asked = 0;
+      final w = WeatherService(
+        st,
+        locate: () async {
+          asked++;
+          return null;
+        },
+      );
+      await w.refresh();
+      expect(asked, 1);
+      expect(w.status, WeatherStatus.noLocation);
+      // Picking a place by name stops following the tablet.
+      await st.setPlace(const WeatherPlace('Bend', 44, -121));
+      expect(st.weatherHere, isFalse);
+    });
+
+    test('tablets that already had a place keep fetching', () async {
+      SharedPreferences.setMockInitialValues({
+        'settings:placeName': 'Bend',
+        'settings:placeLat': 44.0,
+        'settings:placeLon': -121.0,
+      });
+      final st = SettingsStore();
+      await st.load();
+      expect(st.weatherInternet, isTrue);
+    });
+  });
+
+  testWidgets('an unset weather card has a button to its options', (t) async {
+    final st = SettingsStore();
+    final w = WeatherService(st);
+    await w.refresh();
+    final sources = CardSources(tracker: chloesGear(), weather: w);
+    final m = sources.model(const CardSpec('weather'));
+    expect(m.setup, 'Set up weather');
+    var opened = 0;
+    for (final size in const [
+      Size(460, 380),
+      Size(300, 220),
+      Size(280, 170),
+      Size(210, 130),
+    ]) {
+      await t.pumpWidget(
+        MaterialApp(
+          theme: leCasaTheme(Brightness.dark),
+          home: Center(
+            child: SizedBox.fromSize(
+              size: size,
+              child: CardSetupScope(
+                onSetup: () => opened++,
+                child: DashCard(m, CardSize.medium),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(t.takeException(), isNull, reason: '$size');
+      if (size.height >= 220) {
+        await t.tap(find.text('Set up weather'));
+        expect(opened, greaterThan(0));
+      }
+    }
+  });
+
+  testWidgets('weather options set the location and internet access', (
+    t,
+  ) async {
+    t.view.physicalSize = const Size(1280, 800);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.reset);
+    final st = SettingsStore();
+    final w = WeatherService(st, locate: () async => null);
+    final sources = CardSources(tracker: chloesGear(), weather: w);
+    await t.pumpWidget(
+      MaterialApp(
+        theme: leCasaTheme(Brightness.dark),
+        home: CardOptionsPage(
+          spec: const CardSpec('weather'),
+          slotSize: const Size(420, 300),
+          sources: sources,
+          entries: catalog(sources),
+          onDashboard: const {'weather'},
+        ),
+      ),
+    );
+    expect(find.text('Use device location'), findsOneWidget);
+    expect(find.text('Set location'), findsOneWidget);
+    expect(find.text('Link companion app'), findsOneWidget);
+    await t.tap(find.text('Allow internet access'));
+    await t.pumpAndSettle();
+    expect(st.weatherInternet, isTrue);
+    await t.tap(find.text('Use device location'));
+    await t.pumpAndSettle();
+    expect(st.weatherHere, isTrue);
+    expect(w.status, WeatherStatus.noLocation);
+    expect(find.textContaining('Could not find the tablet'), findsOneWidget);
   });
 }

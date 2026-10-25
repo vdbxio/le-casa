@@ -535,7 +535,10 @@ class _SlotView extends StatelessWidget {
     final (content, size) = card == null
         ? (null, null)
         : cardContent(card, box.rect.size, sources);
-    if (!editing) return content ?? const SizedBox.shrink();
+    if (!editing) {
+      if (content == null) return const SizedBox.shrink();
+      return CardSetupScope(onSetup: onOptions, child: content);
+    }
 
     // Hold a card and drag it onto another slot to swap the two, or onto
     // an empty slot to move it there.

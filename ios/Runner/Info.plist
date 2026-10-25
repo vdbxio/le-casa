@@ -4,6 +4,8 @@
 <dict>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Le'Casa listens for your sensors, solar chargers and Le' devices over Bluetooth.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Le'Casa uses the iPad's rough location for the weather forecast, only if you choose "Use device location".</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>Le'Casa listens for your sensors, solar chargers and Le' devices over Bluetooth.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>

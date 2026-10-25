@@ -73,12 +73,9 @@ void main() {
     expect(layout.rememberNames((id) => byId[id]), isFalse);
   });
 
-  test('weather without the service asks for internet or the companion', () {
+  test('weather without the service offers to set it up', () {
     final m = modelFor(const CardSpec('weather'), sources);
-    expect(
-      m.note,
-      'Please connect to the internet or install the companion app',
-    );
+    expect(m.setup, 'Set up weather');
   });
 
   group('fit', () {

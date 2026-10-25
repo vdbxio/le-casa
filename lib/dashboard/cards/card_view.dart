@@ -492,6 +492,7 @@ class DashCard extends StatelessWidget {
   /// slot does not read as a header over an empty gap.
   Widget _message(BuildContext context, LeColors c, Size box) {
     final note = model.note ?? '';
+    const buttonHeight = 52.0;
     final fontSize = size == CardSize.small ? 13.0 : 15.0;
     final lineHeight = fontSize * 1.3;
     final body = box.height - CardMetrics.header - CardMetrics.gap;
@@ -503,11 +504,20 @@ class DashCard extends StatelessWidget {
       textDirection: TextDirection.ltr,
       textScaler: MediaQuery.textScalerOf(context),
     )..layout(maxWidth: box.width)).height;
-    final iconSize = (body - textHeight - 12 - (titleLines - 1) * 20).clamp(
-      0.0,
-      56.0,
+    // A card that needs setting up gets a button to its options, once
+    // there is room for it under the sentence.
+    final setup = model.setup != null && body >= textHeight + buttonHeight + 14;
+    final iconSize =
+        (body -
+                textHeight -
+                12 -
+                (titleLines - 1) * 20 -
+                (setup ? buttonHeight + 14 : 0))
+            .clamp(0.0, 56.0);
+    final lines = math.max(
+      1,
+      ((body - (setup ? buttonHeight + 14 : 0)) / lineHeight).floor(),
     );
-    final lines = math.max(1, (body / lineHeight).floor());
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -556,6 +566,24 @@ class DashCard extends StatelessWidget {
                     style: style,
                   ),
                 ),
+                if (setup) ...[
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    height: buttonHeight,
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 22),
+                        textStyle: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      onPressed: CardSetupScope.of(context) ?? () {},
+                      icon: const Icon(Icons.settings_outlined),
+                      label: Text(model.setup!),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1149,4 +1177,21 @@ class ChipRow extends StatelessWidget {
       );
     },
   );
+}
+
+/// Gives cards on the dashboard a way to open their own options, for the
+/// setup button of a card that cannot show anything yet.
+class CardSetupScope extends InheritedWidget {
+  final VoidCallback onSetup;
+  const CardSetupScope({
+    super.key,
+    required this.onSetup,
+    required super.child,
+  });
+
+  static VoidCallback? of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<CardSetupScope>()?.onSetup;
+
+  @override
+  bool updateShouldNotify(CardSetupScope old) => old.onSetup != onSetup;
 }

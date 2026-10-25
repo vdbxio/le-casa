@@ -12,6 +12,7 @@ dependencies:
   bluetooth_low_energy: ^6.2.1
   pointycastle: ^4.0.0
   shared_preferences: ^2.5.6
+  geolocator: ^14.1.2
 
 dev_dependencies:
   flutter_test:

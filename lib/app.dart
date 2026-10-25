@@ -140,7 +140,12 @@ class _LeCasaAppState extends State<LeCasaApp> {
     autostart.start();
     history.start();
     // Android may kill a backgrounded app without warning: save on the way.
-    _lifecycle = AppLifecycleListener(onHide: history.save);
+    _lifecycle = AppLifecycleListener(
+      onHide: history.save,
+      // Coming back from another app or the lock screen can bring the
+      // system bars back; hide them again.
+      onResume: hideSystemBars,
+    );
     tablet.start();
     settings.load().then((_) {
       weather.start();

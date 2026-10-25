@@ -78,3 +78,19 @@ class TabletSensors extends ChangeNotifier {
     super.dispose();
   }
 }
+
+/// Full screen with no status bar, and on Android no navigation bar
+/// either. Swiping in from an edge shows them for a moment.
+void hideSystemBars() =>
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+/// Hides the system bars now, and again whenever something other than an
+/// edge swipe (the keyboard, a system dialog) brings them back.
+void keepSystemBarsHidden() {
+  hideSystemBars();
+  SystemChrome.setSystemUIChangeCallback((visible) async {
+    if (!visible) return;
+    await Future<void>.delayed(const Duration(seconds: 3));
+    hideSystemBars();
+  });
+}

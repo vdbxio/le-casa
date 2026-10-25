@@ -317,9 +317,9 @@ class _ClockCardState extends State<ClockCard> {
   }
 }
 
-/// The time, sized from the widest it could ever be ("88:88 PM") and drawn
-/// one character per fixed-width cell, so it never grows, shrinks or moves
-/// as the digits change.
+/// The time, sized once from the widest it could ever be (four of the
+/// font's widest digit, plus AM/PM) and then drawn with its normal spacing
+/// at that size, so changing digits never rescale it or move it up or down.
 class ClockFace extends StatelessWidget {
   final String time;
   final String suffix;
@@ -364,7 +364,6 @@ class ClockFace extends StatelessWidget {
       // A hair under the exact fit, so rounding never overflows.
       final scale = math.min(box.maxWidth / full, box.maxHeight / _ref) * 0.995;
       final size = _ref * scale;
-      final cell = digit * scale;
       final st = font.style(size: size, color: color);
 
       return Row(
@@ -372,18 +371,13 @@ class ClockFace extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.baseline,
         textBaseline: TextBaseline.alphabetic,
         children: [
-          for (final ch in time.split(''))
-            SizedBox(
-              width: ch == ':' ? colon * scale : cell,
-              child: Text(
-                ch,
-                textAlign: TextAlign.center,
-                textScaler: TextScaler.noScaling,
-                softWrap: false,
-                overflow: TextOverflow.visible,
-                style: st,
-              ),
-            ),
+          Text(
+            time,
+            textScaler: TextScaler.noScaling,
+            softWrap: false,
+            overflow: TextOverflow.visible,
+            style: st,
+          ),
           if (suffix.isNotEmpty) ...[
             SizedBox(width: gap * scale),
             Text(

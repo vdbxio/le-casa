@@ -82,49 +82,51 @@ void main() {
     });
   });
 
-  testWidgets('the time never moves or resizes as the digits change', (
-    t,
-  ) async {
-    Future<(Rect, double)> measure(DateTime at, ClockStyle style) async {
-      await t.pumpWidget(
-        MaterialApp(
-          theme: leCasaTheme(Brightness.dark),
-          home: Center(
-            child: SizedBox(
-              width: 420,
-              height: 300,
-              child: ClockCard(CardSize.large, style: style, at: at),
+  testWidgets(
+    'the time never moves up or down or rescales as the digits change',
+    (t) async {
+      Future<(Rect, double)> measure(DateTime at, ClockStyle style) async {
+        await t.pumpWidget(
+          MaterialApp(
+            theme: leCasaTheme(Brightness.dark),
+            home: Center(
+              child: SizedBox(
+                width: 420,
+                height: 300,
+                child: ClockCard(CardSize.large, style: style, at: at),
+              ),
             ),
           ),
-        ),
-      );
-      final face = find.byType(ClockFace);
-      final firstDigit = find
-          .descendant(of: face, matching: find.byType(Text))
-          .first;
-      return (t.getRect(face), t.getSize(firstDigit).height);
-    }
+        );
+        final face = find.byType(ClockFace);
+        final firstDigit = find
+            .descendant(of: face, matching: find.byType(Text))
+            .first;
+        return (t.getRect(face), t.getSize(firstDigit).height);
+      }
 
-    for (final font in ClockFont.values) {
-      for (final h24 in [true, false]) {
-        final style = ClockStyle(font: font, h24: h24);
-        final times = [
-          DateTime(2026, 1, 1, 11, 11),
-          DateTime(2026, 1, 1, 10, 48),
-          DateTime(2026, 1, 1, 0, 0),
-          DateTime(2026, 1, 1, 23, 59),
-        ];
-        final first = await measure(times.first, style);
-        for (final at in times.skip(1)) {
-          final m = await measure(at, style);
-          expect(m.$1.bottom, first.$1.bottom, reason: '$font $h24 $at');
-          expect(m.$1.top, first.$1.top, reason: '$font $h24 $at');
-          expect(m.$2, first.$2, reason: '$font $h24 $at');
-          if (h24) expect(m.$1.width, first.$1.width, reason: '$font $at');
+      for (final font in ClockFont.values) {
+        for (final h24 in [true, false]) {
+          final style = ClockStyle(font: font, h24: h24);
+          final times = [
+            DateTime(2026, 1, 1, 11, 11),
+            DateTime(2026, 1, 1, 10, 48),
+            DateTime(2026, 1, 1, 0, 0),
+            DateTime(2026, 1, 1, 23, 59),
+          ];
+          final first = await measure(times.first, style);
+          for (final at in times.skip(1)) {
+            final m = await measure(at, style);
+            expect(m.$1.bottom, first.$1.bottom, reason: '$font $h24 $at');
+            expect(m.$1.top, first.$1.top, reason: '$font $h24 $at');
+            expect(m.$2, first.$2, reason: '$font $h24 $at');
+            // Never wider than the space it was sized for.
+            expect(m.$1.width, lessThanOrEqualTo(384), reason: '$font $at');
+          }
         }
       }
-    }
-  });
+    },
+  );
 
   testWidgets('clock options change the clock in the preview', (t) async {
     t.view.physicalSize = const Size(1280, 800);

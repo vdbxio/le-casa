@@ -37,6 +37,10 @@ import 'drivers/pace.dart';
 import 'drivers/pro.dart';
 import 'drivers/pwrboozt.dart';
 import 'drivers/pwrxtreme.dart';
+import 'drivers/pylontech.dart';
+import 'drivers/redodo.dart';
+import 'drivers/renogy.dart';
+import 'drivers/renogy_pro.dart';
 import 'drivers/topband.dart';
 import 'drivers/vatrer.dart';
 import 'spec.dart';
@@ -76,6 +80,10 @@ final List<BmsSpec> bmsSpecs = [
   ProBms.spec,
   PwrbooztBms.spec,
   PwrxtremeBms.spec,
+  PylontechBms.spec,
+  RedodoBms.spec,
+  RenogyBms.spec,
+  RenogyProBms.spec,
   TopbandBms.spec,
   VatrerBms.spec,
 ];

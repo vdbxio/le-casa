@@ -30,6 +30,7 @@ class TraceSession implements GattSession {
       final p = (s['p'] as List).cast<String>();
       final c = GattChar(
         s['c'] as String,
+        service: s['s'] as String?,
         canRead: p.contains('read'),
         canWrite: p.contains('write'),
         canWriteWithoutResponse: p.contains('write-without-response'),

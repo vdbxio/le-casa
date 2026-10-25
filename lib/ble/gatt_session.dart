@@ -17,8 +17,13 @@ class GattChar {
   final bool canWriteWithoutResponse;
   final bool canNotify;
 
+  /// UUID of the service it belongs to, when known. A few devices repeat a
+  /// characteristic UUID in two services.
+  final String? service;
+
   const GattChar(
     this.uuid, {
+    this.service,
     this.canRead = false,
     this.canWrite = false,
     this.canWriteWithoutResponse = false,

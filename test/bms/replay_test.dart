@@ -31,6 +31,11 @@ String _errName(Object e) => switch (e) {
 String? diff(Object? got, Object? want, String path) {
   if (want is Map && want.containsKey('big')) {
     final w = BigInt.parse(want['big'] as String).toUnsigned(64);
+    if (got is BigInt) {
+      return got == BigInt.parse(want['big'] as String)
+          ? null
+          : '$path: got $got, want ${want['big']}';
+    }
     final g = got is int ? BigInt.from(got).toUnsigned(64) : null;
     return g == w ? null : '$path: got $got, want ${want['big']}';
   }

@@ -50,8 +50,8 @@ class Link {
   String? error;
   int failures = 0;
 
-  /// Polls in a row where the link came up and then the device dropped
-  /// it before the read finished.
+  /// Polls since the last good read where the link came up and then the
+  /// device dropped it before the read finished.
   int drops = 0;
 
   Link(this.id, this.driver, {bool enabled = true})
@@ -296,7 +296,9 @@ class ConnectionManager extends ChangeNotifier {
     } catch (e) {
       debugPrint('poll: ${l.id} failed: $e');
       final dropped = link != null && await _dropped(link, e);
-      l.drops = dropped ? l.drops + 1 : 0;
+      // Only a good read clears the count: on the M10 every other try at
+      // the Daly fails while connecting, between the drops.
+      if (dropped) l.drops++;
       _fail(l, dropped ? 'The device dropped the connection' : _describe(e));
     } finally {
       await link?.close();

@@ -14,7 +14,7 @@ import 'helpers.dart';
 
 /// Driver that returns a canned reading, or throws what it is told to.
 class ScriptedDriver implements GattDriver {
-  final Object? error;
+  Object? error;
   int reads = 0;
   ScriptedDriver({this.error});
 
@@ -125,9 +125,11 @@ void main() {
       error: Exception('Write descriptor failed with status: 133.'),
     );
     var drop = true;
+    var failConnect = false;
     final m = manager(
       driver,
       open: (id) async {
+        if (failConnect) throw Exception('Connect failed with status: 133');
         final s = FakeSession(characteristics: const []);
         if (drop) Timer(const Duration(milliseconds: 50), s.drop);
         opened.add(s);
@@ -139,12 +141,16 @@ void main() {
     for (var i = 0; i < Link.dropsToWarn; i++) {
       expect(m[testAdv.id]!.keepsDropping, isFalse);
       await m.readNow(testAdv.id);
+      // a failed connect in between, as on the M10
+      failConnect = true;
+      await m.readNow(testAdv.id);
+      failConnect = false;
     }
     final l = m[testAdv.id]!;
     expect(l.keepsDropping, isTrue);
-    expect(l.error, 'The device dropped the connection');
-    // A failure of another kind, or a good read, clears it.
+    // Connect failures in between do not clear it; a good read does.
     drop = false;
+    driver.error = null;
     await m.readNow(testAdv.id);
     expect(l.keepsDropping, isFalse);
     m.dispose();
@@ -159,6 +165,7 @@ void main() {
     m.onAdvertisement(testAdv);
     await m.pump();
     expect(m[testAdv.id]!.drops, 1);
+    expect(m[testAdv.id]!.error, 'The device dropped the connection');
     m.dispose();
   });
 

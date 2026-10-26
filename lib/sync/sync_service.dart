@@ -225,19 +225,37 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     switch (home.role) {
       case SyncRole.hub:
         _incoming = radio.incoming.listen(_onIncoming);
-        try {
-          await radio.startHub(home.tag);
-          _hubUp = true;
-        } catch (e) {
-          error = 'Could not start the hub: $e';
-        }
         screens = [home.me];
+        await _startHub();
       case SyncRole.member:
         _nextTry = DateTime.now();
       case SyncRole.alone:
         break;
     }
     notifyListeners();
+  }
+
+  bool _hubStarting = false;
+
+  /// Wait before trying to start the hub again.
+  @visibleForTesting
+  Duration hubRetry = const Duration(seconds: 15);
+
+  /// Starts advertising; on failure [tick] tries again a little later.
+  Future<void> _startHub() async {
+    if (_hubUp || _hubStarting) return;
+    _hubStarting = true;
+    try {
+      await radio.startHub(home.tag);
+      _hubUp = true;
+      error = null;
+    } catch (e) {
+      error = 'Could not start the hub: ${_plainError(e)}. Trying again…';
+      _nextTry = DateTime.now().add(hubRetry);
+    } finally {
+      _hubStarting = false;
+      notifyListeners();
+    }
   }
 
   Future<void> _shutdown() async {
@@ -362,6 +380,9 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     if (addingUntil != null && !adding) {
       addingUntil = null;
       notifyListeners();
+    }
+    if (home.role == SyncRole.hub && !_hubUp && !now.isBefore(_nextTry)) {
+      unawaited(_startHub());
     }
     if (home.role == SyncRole.member &&
         _hub == null &&
@@ -561,7 +582,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
           here: true,
         );
       } catch (e) {
-        err = '$e'.replaceFirst(RegExp(r'^(Bad state|StateError): '), '');
+        err = _plainError(e);
       }
       await _sendTo(from, {'t': 'result', 'req': req, 'err': ?err});
       return;
@@ -629,6 +650,9 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     return id;
   }
 }
+
+String _plainError(Object e) =>
+    '$e'.replaceFirst(RegExp(r'^(Bad state|StateError|Exception): '), '');
 
 int _maxAt(Iterable<KeyRecord> rs) => rs.fold(0, (m, r) => r.at > m ? r.at : m);
 

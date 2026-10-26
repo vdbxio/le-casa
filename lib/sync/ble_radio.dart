@@ -57,11 +57,29 @@ class BleSyncRadio implements SyncRadio {
   @override
   Future<void> startHub(String tag) async {
     final pm = _pm;
-    await pm.authorize();
-    if (pm.state != BluetoothLowEnergyState.poweredOn) {
-      await pm.stateChanged
-          .firstWhere((e) => e.state == BluetoothLowEnergyState.poweredOn)
-          .timeout(const Duration(seconds: 10));
+    for (final sub in _subs) {
+      await sub.cancel();
+    }
+    _subs.clear();
+    // Android asks for the advertise and connect permissions here; on iOS
+    // the plugin has no authorize() and the system asks by itself.
+    try {
+      await pm.authorize();
+    } on UnsupportedError {
+      // iOS
+    }
+    // The manager reports its real state a moment after it is created.
+    // Poll rather than wait for an event: the change can land between a
+    // check and a listen.
+    final until = DateTime.now().add(const Duration(seconds: 10));
+    while (pm.state != BluetoothLowEnergyState.poweredOn) {
+      if (pm.state == BluetoothLowEnergyState.unauthorized) {
+        throw StateError('Bluetooth permission not granted');
+      }
+      if (DateTime.now().isAfter(until)) {
+        throw StateError('Bluetooth is ${pm.state.name}');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 200));
     }
     _info = Uint8List.fromList(utf8.encode(jsonEncode({'v': 1, 'tag': tag})));
     final rx = GATTCharacteristic.mutable(

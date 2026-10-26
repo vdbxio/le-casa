@@ -30,6 +30,9 @@ class FakeRadio implements SyncRadio {
   final _sightings = StreamController<HubSighting>.broadcast();
   String? tag;
 
+  /// How many more startHub calls fail, like iOS before Bluetooth is up.
+  int failStarts = 0;
+
   FakeRadio(this.air, this.id) {
     air.listeners.add(this);
   }
@@ -48,6 +51,10 @@ class FakeRadio implements SyncRadio {
 
   @override
   Future<void> startHub(String tag) async {
+    if (failStarts > 0) {
+      failStarts--;
+      throw StateError('Bluetooth is unknown');
+    }
     this.tag = tag;
     air.hubs[id] = this;
   }
@@ -367,5 +374,20 @@ void main() {
     );
     expect(stranger.home.role, SyncRole.alone);
     expect(stranger.sync.error, contains('not adding screens'));
+  });
+
+  test('a hub that fails to start tries again', () async {
+    final pad = Screen(air, 'pad2', 'Spare iPad');
+    addTearDown(pad.dispose);
+    pad.radio.failStarts = 1;
+    pad.sync.hubRetry = Duration.zero;
+    await settle();
+    await pad.sync.startHome('Cabin');
+    expect(pad.sync.connected, isFalse);
+    expect(pad.sync.error, contains('Bluetooth is unknown'));
+    await pad.sync.tick();
+    await settle();
+    expect(pad.sync.connected, isTrue);
+    expect(pad.sync.error, isNull);
   });
 }

@@ -480,6 +480,9 @@ class ConnectionManager extends ChangeNotifier {
       if (remote?.standAside(l.id) != null) continue;
       final dev = tracker[l.id];
       if (dev == null || now.difference(dev.lastSeen) > staleAfter) continue;
+      // Its broadcasts already carry the readings (a stock Xiaomi with its
+      // bindkey entered): no need to connect.
+      if (dev.decoded?.isReadable ?? false) continue;
       if (pick == null || l.nextDue.isBefore(pick.nextDue)) pick = l;
     }
     return pick == null ? live : Future.wait([live, _poll(pick)]);

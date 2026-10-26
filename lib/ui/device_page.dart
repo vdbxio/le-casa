@@ -89,7 +89,10 @@ class _DevicePageState extends State<DevicePage> {
         final bms = bmsSpecFor(dev.lastRecognised ?? a);
         final isBms = bms != null || (d?.protocol.startsWith('Daly') ?? false);
         // Devices read over a connection wait for it, not for a key.
-        final wantsKey = (d?.needs != null && !isBms && link == null) || hasKey;
+        final wantsKey =
+            (d?.needs != null && !isBms && link == null) ||
+            dev.decoded?.protocol == 'Xiaomi MiBeacon' ||
+            hasKey;
         final hasPin = services.keys.secretFor(widget.id) != null;
         return Scaffold(
           appBar: AppBar(title: Text(dev.title)),
@@ -164,7 +167,10 @@ class _DevicePageState extends State<DevicePage> {
                       ? 'A key is stored for this device.'
                       : 'Paste the 32-character hex key. Victron: VictronConnect > device > '
                             'Settings > Product info > Instant readout via Bluetooth > Show. '
-                            'BTHome: the bindkey from the device firmware.',
+                            'BTHome: the bindkey from the device firmware. '
+                            'Stock Xiaomi: the bindkey from the Xiaomi cloud; '
+                            'once it is in, every screen reads the sensor\'s '
+                            'broadcasts and none needs to connect.',
                   style: theme.textTheme.bodySmall,
                 ),
                 const SizedBox(height: 8),

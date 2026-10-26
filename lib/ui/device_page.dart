@@ -107,6 +107,20 @@ class _DevicePageState extends State<DevicePage> {
               if (link != null) ...[
                 const Divider(height: 32),
                 _ConnectionSection(link: link, device: dev),
+              ] else if (dev.polledBy != null && services.home.inHome) ...[
+                // Known only through another screen: a device that stops
+                // advertising while that screen stays connected to it.
+                // Its settings still belong here.
+                const Divider(height: 32),
+                Text('Connection', style: theme.textTheme.titleMedium),
+                const SizedBox(height: 4),
+                Text(
+                  '${dev.polledBy} is connected to it and shares what it '
+                  'reads. This screen cannot hear the device itself right '
+                  'now.',
+                  style: theme.textTheme.bodySmall,
+                ),
+                _ReadBy(id: widget.id),
               ],
               if (d != null &&
                   d.isReadable &&

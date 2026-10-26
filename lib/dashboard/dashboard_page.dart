@@ -8,10 +8,10 @@ import 'package:flutter/material.dart' hide Split;
 import 'package:flutter/services.dart';
 
 import '../app.dart';
-import '../settings/settings_page.dart';
 import '../ui/dashed_outline.dart';
 import '../ui/palette.dart';
-import '../ui/scan_page.dart';
+import '../platform/form_factor.dart';
+import '../ui/devices_page.dart';
 import 'auto_layout.dart';
 import 'card_picker.dart';
 import 'cards/card_view.dart';
@@ -24,8 +24,8 @@ import 'dashboard_controller.dart';
 import 'geometry.dart';
 import 'layout.dart';
 
-/// The home screen: a full-screen, non-scrolling dashboard. Long-press (or
-/// the faint menu button) to edit it.
+/// The home screen: a full-screen, non-scrolling dashboard. Long-press to
+/// edit it; the faint gear opens settings and devices.
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
 
@@ -42,11 +42,9 @@ const firstRunListen = Duration(seconds: 12);
 class _DashboardPageState extends State<DashboardPage> {
   Timer? _firstRun;
 
-  @override
-  void initState() {
-    super.initState();
-    _lockLandscape();
-  }
+  /// Phones hold the dashboard upright, tablets on their side. Null until
+  /// the screen size is known.
+  bool? _phone;
 
   @override
   void dispose() {
@@ -55,10 +53,14 @@ class _DashboardPageState extends State<DashboardPage> {
     super.dispose();
   }
 
-  void _lockLandscape() => SystemChrome.setPreferredOrientations(const [
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
-  ]);
+  void _lockOrientation() => SystemChrome.setPreferredOrientations(
+    _phone == true
+        ? const [DeviceOrientation.portraitUp]
+        : const [
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+          ],
+  );
 
   Future<void> _open(Widget page) async {
     final dash = AppServices.of(context).dashboard;
@@ -67,7 +69,7 @@ class _DashboardPageState extends State<DashboardPage> {
     if (!mounted) return;
     await Navigator.of(context)
         .push(MaterialPageRoute<void>(builder: (_) => page));
-    _lockLandscape();
+    _lockOrientation();
   }
 
   CardSources? _cached;
@@ -76,6 +78,11 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final phone = isPhoneSize(MediaQuery.sizeOf(context));
+    if (phone != _phone) {
+      _phone = phone;
+      _lockOrientation();
+    }
     final live = AppServices.of(context).liveData;
     if (!identical(live, _live)) {
       _live?.removeListener(_dropSources);
@@ -109,7 +116,9 @@ class _DashboardPageState extends State<DashboardPage> {
     final s = AppServices.of(context);
     _firstRun?.cancel();
     _firstRun = null;
-    s.dashboard.setLayout(autoLayout(catalog(_sources(s))));
+    s.dashboard.setLayout(
+      autoLayout(catalog(_sources(s)), upright: _phone == true),
+    );
   }
 
   @override
@@ -140,8 +149,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 size: box.biggest,
                 dash: dash,
                 sources: _sources(s),
-                onOpenDevices: () => _open(const ScanPage()),
-                onOpenSettings: () => _open(const SettingsPage()),
+                onOpenSettings: () => _open(const DevicesPage()),
               ),
             ),
           );
@@ -192,13 +200,12 @@ class _Board extends StatelessWidget {
   final Size size;
   final DashboardController dash;
   final CardSources sources;
-  final VoidCallback onOpenDevices, onOpenSettings;
+  final VoidCallback onOpenSettings;
 
   const _Board({
     required this.size,
     required this.dash,
     required this.sources,
-    required this.onOpenDevices,
     required this.onOpenSettings,
   });
 
@@ -266,12 +273,13 @@ class _Board extends StatelessWidget {
               bottom: _screenPad + 8,
               child: _EditBar(
                 axis: page.root.axis,
+                // A phone has no room for the label.
+                showLabel: size.width >= 480,
                 onAxis: (a) {
                   page.setRootAxis(a);
                   dash.selected = null;
                   dash.changed();
                 },
-                onDevices: onOpenDevices,
                 onSettings: onOpenSettings,
                 onDone: () => dash.setEditing(false),
               ),
@@ -280,11 +288,7 @@ class _Board extends StatelessWidget {
             Positioned(
               top: 0,
               right: 0,
-              child: _MenuButton(
-                onEdit: () => dash.setEditing(true),
-                onDevices: onOpenDevices,
-                onSettings: onOpenSettings,
-              ),
+              child: _SettingsButton(onSettings: onOpenSettings),
             ),
         ],
       ),
@@ -712,13 +716,14 @@ class _ToolButton extends StatelessWidget {
 
 class _EditBar extends StatelessWidget {
   final SplitAxis axis;
+  final bool showLabel;
   final ValueChanged<SplitAxis> onAxis;
-  final VoidCallback onDevices, onSettings, onDone;
+  final VoidCallback onSettings, onDone;
 
   const _EditBar({
     required this.axis,
+    required this.showLabel,
     required this.onAxis,
-    required this.onDevices,
     required this.onSettings,
     required this.onDone,
   });
@@ -731,15 +736,17 @@ class _EditBar extends StatelessWidget {
       elevation: 8,
       shape: const StadiumBorder(),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 6, 6, 6),
+        padding: EdgeInsets.fromLTRB(showLabel ? 16 : 6, 6, 6, 6),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              'Layout',
-              style: TextStyle(color: c.screen, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(width: 10),
+            if (showLabel) ...[
+              Text(
+                'Layout',
+                style: TextStyle(color: c.screen, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(width: 10),
+            ],
             SegmentedButton<SplitAxis>(
               showSelectedIcon: false,
               style: ButtonStyle(
@@ -765,11 +772,6 @@ class _EditBar extends StatelessWidget {
             ),
             const SizedBox(width: 6),
             IconButton(
-              tooltip: 'Devices',
-              onPressed: onDevices,
-              icon: Icon(Icons.bluetooth_searching, color: c.screen),
-            ),
-            IconButton(
               tooltip: 'Settings',
               onPressed: onSettings,
               icon: Icon(Icons.settings_outlined, color: c.screen),
@@ -790,29 +792,20 @@ class _EditBar extends StatelessWidget {
   }
 }
 
-/// A faint corner button for people who don't know about long-press.
-class _MenuButton extends StatelessWidget {
-  final VoidCallback onEdit, onDevices, onSettings;
-  const _MenuButton({
-    required this.onEdit,
-    required this.onDevices,
-    required this.onSettings,
-  });
+/// A faint corner gear that opens settings and devices.
+class _SettingsButton extends StatelessWidget {
+  final VoidCallback onSettings;
+  const _SettingsButton({required this.onSettings});
 
   @override
   Widget build(BuildContext context) {
     final c = LeColors.of(context);
     return Opacity(
       opacity: 0.45,
-      child: PopupMenuButton<VoidCallback>(
-        tooltip: 'Menu',
-        icon: Icon(Icons.more_horiz, color: c.muted),
-        onSelected: (f) => f(),
-        itemBuilder: (context) => [
-          PopupMenuItem(value: onEdit, child: const Text('Edit dashboard')),
-          PopupMenuItem(value: onDevices, child: const Text('Devices')),
-          PopupMenuItem(value: onSettings, child: const Text('Settings')),
-        ],
+      child: IconButton(
+        tooltip: 'Settings',
+        icon: Icon(Icons.settings_outlined, color: c.muted),
+        onPressed: onSettings,
       ),
     );
   }

@@ -7,15 +7,21 @@ import 'package:flutter/material.dart';
 import '../app.dart';
 import '../sync/sync_page.dart';
 
+/// General settings: the first entry in the devices list.
 class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key});
+  /// Shown beside the devices list instead of as its own page.
+  final bool embedded;
+  const SettingsPage({super.key, this.embedded = false});
 
   @override
   Widget build(BuildContext context) {
     final s = AppServices.of(context);
     final st = s.settings;
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(
+        automaticallyImplyLeading: !embedded,
+        title: const Text('General'),
+      ),
       body: ListenableBuilder(
         listenable: Listenable.merge([st, s.tablet]),
         builder: (context, _) => ListView(
@@ -89,6 +95,17 @@ class SettingsPage extends StatelessWidget {
             ),
             const _Header('Dashboard'),
             ListTile(
+              title: const Text('Edit dashboard'),
+              subtitle: const Text(
+                'Add, move and resize cards. You can also long-press the dashboard.',
+              ),
+              trailing: const Icon(Icons.dashboard_customize_outlined),
+              onTap: () {
+                s.dashboard.setEditing(true);
+                Navigator.popUntil(context, (r) => r.isFirst);
+              },
+            ),
+            ListTile(
               title: const Text('Rebuild from devices'),
               subtitle: const Text(
                 'Replaces the current layout with a fresh one from what the tablet hears',
@@ -116,7 +133,9 @@ class SettingsPage extends StatelessWidget {
                 );
                 if (ok == true && context.mounted) {
                   await s.dashboard.reset();
-                  if (context.mounted) Navigator.pop(context);
+                  if (context.mounted) {
+                    Navigator.popUntil(context, (r) => r.isFirst);
+                  }
                 }
               },
             ),

@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lecasa/ble/device_tracker.dart';
 import 'package:lecasa/decoders/decoded.dart';
 import 'package:lecasa/decoders/registry.dart';
-import 'package:lecasa/ui/group_tiles.dart';
+import 'package:lecasa/ui/device_rows.dart';
 
 import 'helpers.dart';
 
@@ -84,61 +84,46 @@ void main() {
     expect(primaryReading(solar.decoded!)!.display, '19 W');
   });
 
-  testWidgets('group tile shows count, label and a line per device', (
+  testWidgets('a device row shows the name and the reading that sums it up', (
     tester,
   ) async {
     final t = feed();
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: SizedBox(
-            width: 200,
-            height: 200,
-            child: GroupTile(
-              kind: DeviceKind.climate,
-              devices: t.groups[DeviceKind.climate]!,
-            ),
+          body: DeviceRow(
+            device: t.groups[DeviceKind.climate]!.single,
+            onTap: () {},
           ),
         ),
       ),
     );
-    expect(find.text('Climate'), findsOneWidget);
-    expect(find.text('1'), findsOneWidget);
     expect(find.text('ATC_8D18B2'), findsOneWidget);
     expect(find.text('25.06 °C'), findsOneWidget);
   });
 
-  testWidgets('a small tile with many devices does not overflow', (
-    tester,
-  ) async {
+  testWidgets('a narrow device row does not overflow', (tester) async {
     final t = DeviceTracker(DecoderRegistry.standard());
-    for (var i = 0; i < 8; i++) {
-      t.onAdvertisement(
-        adv(
-          id: 'x$i',
-          name: 'ATC_$i',
-          serviceData: {0xFCD2: '40 02 ca 09 03 bf 13'},
-        ),
-      );
-    }
+    t.onAdvertisement(
+      adv(
+        id: 'x',
+        name: 'A rather long advertised name for a thermometer',
+        serviceData: {0xFCD2: '40 02 ca 09 03 bf 13'},
+      ),
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: Center(
             child: SizedBox(
-              width: 150,
-              height: 150,
-              child: GroupTile(
-                kind: DeviceKind.climate,
-                devices: t.groups[DeviceKind.climate]!,
-              ),
+              width: 220,
+              child: DeviceRow(device: t['x']!, onTap: () {}),
             ),
           ),
         ),
       ),
     );
     expect(tester.takeException(), isNull);
-    expect(find.text('8'), findsOneWidget);
   });
 
   test('a packet without a name keeps the name heard earlier', () {

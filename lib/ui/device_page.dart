@@ -18,7 +18,10 @@ import 'fridge_controls.dart';
 /// and the encryption key field for Victron / encrypted BTHome devices.
 class DevicePage extends StatefulWidget {
   final String id;
-  const DevicePage({super.key, required this.id});
+
+  /// Shown beside the devices list instead of as its own page.
+  final bool embedded;
+  const DevicePage({super.key, required this.id, this.embedded = false});
 
   @override
   State<DevicePage> createState() => _DevicePageState();
@@ -77,7 +80,7 @@ class _DevicePageState extends State<DevicePage> {
         final dev = services.tracker[widget.id];
         if (dev == null) {
           return Scaffold(
-            appBar: AppBar(),
+            appBar: AppBar(automaticallyImplyLeading: !widget.embedded),
             body: const Center(child: Text('Device gone')),
           );
         }
@@ -92,7 +95,10 @@ class _DevicePageState extends State<DevicePage> {
         final wantsKey = (d?.needs != null && !isBms && link == null) || hasKey;
         final hasPin = services.keys.secretFor(widget.id) != null;
         return Scaffold(
-          appBar: AppBar(title: Text(dev.title)),
+          appBar: AppBar(
+            automaticallyImplyLeading: !widget.embedded,
+            title: Text(dev.title),
+          ),
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -389,7 +395,7 @@ class _ConnectionSection extends StatelessWidget {
           ),
         if (!connections.enabled)
           Text(
-            'Connections are paused globally (see the scan screen menu).',
+            'Connections are paused for every device (the link button above the devices list).',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.tertiary,
             ),

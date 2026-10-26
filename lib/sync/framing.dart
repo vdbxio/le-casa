@@ -40,6 +40,10 @@ class MessageLink {
   /// Stops a peer from making us buffer without end.
   static const maxMessage = 256 * 1024;
 
+  /// A chunk the other end never acknowledges would hold up every later
+  /// message while the link still looks up. Give up and close instead.
+  static const chunkTimeout = Duration(seconds: 15);
+
   MessageLink(this.link) {
     _sub = link.chunks.listen(_onChunk, onDone: _out.close);
   }
@@ -72,7 +76,12 @@ class MessageLink {
       final chunk = Uint8List(1 + end - i);
       chunk[0] = end == m.length ? _last : 0;
       chunk.setRange(1, chunk.length, m, i);
-      await link.sendChunk(chunk);
+      try {
+        await link.sendChunk(chunk).timeout(chunkTimeout);
+      } on TimeoutException {
+        unawaited(close());
+        rethrow;
+      }
       i = end;
     } while (i < m.length);
   }

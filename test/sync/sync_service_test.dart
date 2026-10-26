@@ -533,6 +533,18 @@ void main() {
     ]);
   });
 
+  test('a link that goes quiet is dropped and dialled again', () async {
+    ipad.sync.linkSilence = Duration.zero;
+    await Future<void>.delayed(const Duration(milliseconds: 2));
+    await ipad.sync.tick();
+    expect(ipad.sync.linked, isEmpty);
+    ipad.sync.linkSilence = const Duration(seconds: 40);
+    await settle();
+    await link(air, [ipad, m10]);
+    expect(ipad.sync.linked.map((s) => s.name), ['M10']);
+    expect(m10.sync.linked.map((s) => s.name), ['Kitchen iPad']);
+  });
+
   test('a screen from another home is not linked', () async {
     final stranger = Screen(air, 'x', 'Neighbour');
     addTearDown(stranger.dispose);

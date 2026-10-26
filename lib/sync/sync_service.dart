@@ -154,6 +154,10 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
   @visibleForTesting
   Duration dialWait = const Duration(seconds: 15);
 
+  /// A link with no message for this long is dropped and dialled again.
+  @visibleForTesting
+  Duration linkSilence = const Duration(seconds: 40);
+
   /// Wait before trying to start the server again; doubles each time.
   @visibleForTesting
   Duration serverRetry = const Duration(seconds: 15);
@@ -211,11 +215,15 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
   /// Every screen in the home heard from lately, this one first.
   List<ScreenId> get screens {
     final now = DateTime.now();
-    return [
+    final out = [
       home.me,
       for (final p in _peers.values)
         if (now.difference(p.heard) < _peerGone) p.screen,
     ];
+    for (final l in _links.values) {
+      if (!out.contains(l.s.peer)) out.add(l.s.peer);
+    }
+    return out;
   }
 
   PeerInfo? peer(String id) => _peers[id];
@@ -648,6 +656,18 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       (_, r) => now.difference(r.$2) > const Duration(minutes: 3),
     );
     _unowned.removeWhere((id, _) => ownerOf(id) != null);
+    for (final l in _links.values.toList()) {
+      if (now.difference(l.heard) > linkSilence) {
+        debugPrint(
+          'sync: nothing from ${l.s.peer.name} for $linkSilence, '
+          'dropping the link',
+        );
+        _links.remove(l.s.peer.id);
+        if (_links.isEmpty) _linkedSince = null;
+        unawaited(l.s.close());
+        notifyListeners();
+      }
+    }
     if (addingUntil != null && !adding) stopAdding();
     if (!home.inHome) return;
     if (!_serverUp && !now.isBefore(_nextServerTry)) {
@@ -824,6 +844,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
 
   void _listen(SyncSession s) {
     s.messages.listen((m) async {
+      _links[s.peer.id]?.heard = DateTime.now();
       try {
         await _onMessage(s, m);
       } catch (e) {
@@ -1048,6 +1069,10 @@ class _Link {
 
   /// This screen opened it.
   final bool mine;
+
+  /// When the last message came in. Beacons arrive every 10 seconds, so a
+  /// link that has gone quiet is stuck even if Bluetooth says it is up.
+  DateTime heard = DateTime.now();
   _Link(this.s, this.mine);
 }
 

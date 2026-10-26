@@ -328,13 +328,26 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     final short = shortScreen(screenId);
     final now = DateTime.now();
     final out = <Hearing>[
-      for (final s in nearby.values)
-        if (s.screen == short && s.tag == home.tag) (by: home.me, rssi: s.rssi),
+      if (_heardScreens()[short] case final rssi?) (by: home.me, rssi: rssi),
       for (final p in _peers.values)
         if (now.difference(p.heard) < _peerGone && p.sees[short] != null)
           (by: p.screen, rssi: p.sees[short]!),
     ];
     return out..sort((a, b) => b.rssi.compareTo(a.rssi));
+  }
+
+  /// Screens of this home this screen hears, by [shortScreen]. A phone
+  /// changes its Bluetooth address now and then, so one screen can sit in
+  /// [nearby] under two ids for a while; the newest sighting counts.
+  Map<String, int> _heardScreens() {
+    final newest = <String, PeerSighting>{};
+    for (final h in nearby.values) {
+      final s = h.screen;
+      if (h.tag != home.tag || s == null) continue;
+      final old = newest[s];
+      if (old == null || h.seen.isAfter(old.seen)) newest[s] = h;
+    }
+    return {for (final e in newest.entries) e.key: e.value.rssi};
   }
 
   // ---- RemoteLinks --------------------------------------------------------
@@ -726,10 +739,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
               fp: _fp(d.id),
             ).toJson(),
       ],
-      's': {
-        for (final h in nearby.values)
-          if (h.tag == home.tag && h.screen != null) h.screen!: h.rssi,
-      },
+      's': _heardScreens(),
       'l': _links.keys.toList(),
     };
   }

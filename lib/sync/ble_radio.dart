@@ -210,6 +210,9 @@ class BleSyncRadio implements SyncRadio {
       pm.characteristicNotifyStateChanged.listen((e) async {
         if (e.characteristic.uuid != tx.uuid) return;
         if (e.state) {
+          // A new subscription is a new link, even when iOS never told us
+          // the last one from this screen went away.
+          _links.remove(e.central.uuid.toString())?._gone();
           await _linkFor(e.central);
         } else {
           _links.remove(e.central.uuid.toString())?._gone();
@@ -248,8 +251,12 @@ class BleSyncRadio implements SyncRadio {
 
   Future<_CentralLink> _linkFor(Central c) async {
     final key = c.uuid.toString();
+    // A link this screen gave up on (silent for too long) stays in the map
+    // on iOS until the other end unsubscribes, which it may never do; its
+    // writes would then go nowhere and the other screen could never link
+    // again.
     final existing = _links[key];
-    if (existing != null) return existing;
+    if (existing != null && !existing.isClosed) return existing;
     var max = 20;
     try {
       max = await _pm.getMaximumNotifyLength(c);
@@ -257,7 +264,7 @@ class BleSyncRadio implements SyncRadio {
       debugPrint('sync server: notify length unknown: $e');
     }
     final again = _links[key];
-    if (again != null) return again;
+    if (again != null && !again.isClosed) return again;
     final link = _links[key] = _CentralLink(_pm, c, _tx!, max.clamp(20, 512));
     debugPrint('sync server: ${c.uuid} linked, chunks of $max');
     _incoming.add(MessageLink(link));
@@ -349,6 +356,8 @@ class _CentralLink implements ChunkLink {
 
   @override
   Future<void> get closed => _closed.future;
+
+  bool get isClosed => _closed.isCompleted;
 
   @override
   Future<void> sendChunk(Uint8List chunk) {

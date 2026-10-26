@@ -142,14 +142,18 @@ List<CatalogEntry> catalog(CardSources s) {
   return out;
 }
 
-/// A readable name. Uses the advertised name where it is a real one (Victron
+/// A readable name: the one the person gave it, if any. Otherwise the
+/// advertised name where it is a real one (Victron
 /// devices carry the name set in VictronConnect), otherwise the model plus
 /// the end of the MAC so identical sensors can be told apart, and read the
 /// same on every screen. iOS hides MACs, so there it is the MAC the device
 /// sends in its broadcasts. Devices whose name carries a serial (Daly,
 /// Alpicool) use the end of that instead, and the rest the end of iOS's own
 /// id, which means something only on that one screen.
-String deviceName(TrackedDevice d) {
+String deviceName(TrackedDevice d) => d.label ?? autoDeviceName(d);
+
+/// The name Le'Casa makes up for [d], ignoring any the person gave it.
+String autoDeviceName(TrackedDevice d) {
   final v = d.view;
   final name = d.latest.name;
   final isModuleId =

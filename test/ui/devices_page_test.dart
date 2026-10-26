@@ -19,6 +19,8 @@ import 'package:lecasa/settings/settings_store.dart';
 import 'package:lecasa/sync/ble_radio.dart';
 import 'package:lecasa/sync/home.dart';
 import 'package:lecasa/sync/sync_service.dart';
+import 'package:lecasa/sync/read_by.dart';
+import 'package:lecasa/ui/bluetooth_gate.dart';
 import 'package:lecasa/ui/device_page.dart';
 import 'package:lecasa/ui/devices_page.dart';
 import 'package:lecasa/ui/palette.dart';
@@ -30,7 +32,8 @@ import '../dashboard/test_fonts.dart';
 
 class _FakeCentral implements CentralManager {
   @override
-  BluetoothLowEnergyState get state => BluetoothLowEnergyState.unknown;
+  final BluetoothLowEnergyState state;
+  _FakeCentral([this.state = BluetoothLowEnergyState.unknown]);
 
   @override
   dynamic noSuchMethod(Invocation i) =>
@@ -38,21 +41,34 @@ class _FakeCentral implements CentralManager {
 }
 
 /// Pumps the page and returns what to call at the end of the test.
-Future<Future<void> Function()> _pump(WidgetTester t, Size size) async {
+Future<Future<void> Function()> _pump(
+  WidgetTester t,
+  Size size, {
+  BluetoothLowEnergyState bluetooth = BluetoothLowEnergyState.unknown,
+}) async {
   t.view.physicalSize = size;
   t.view.devicePixelRatio = 1;
   addTearDown(t.view.reset);
   final tracker = chloesGear();
-  final scanner = BleScanner(_FakeCentral());
+  final scanner = BleScanner(_FakeCentral(bluetooth));
+  final autostart = ScanAutostart(scanner)..start();
   final connections = ConnectionManager.forScanner(scanner, tracker);
   final settings = SettingsStore();
   final keys = KeyStore();
   final home = HomeStore.memory('test', 'Test screen');
+  final sync = SyncService(
+    home: home,
+    tracker: tracker,
+    keys: keys,
+    connections: connections,
+    radio: BleSyncRadio(scanner),
+    readBy: ReadByStore.memory(),
+  )..start();
   await t.pumpWidget(
     RepaintBoundary(
       child: AppServices(
         scanner: scanner,
-        autostart: ScanAutostart(scanner),
+        autostart: autostart,
         keys: keys,
         tracker: tracker,
         connections: connections,
@@ -62,16 +78,11 @@ Future<Future<void> Function()> _pump(WidgetTester t, Size size) async {
         settings: settings,
         weather: WeatherService(settings),
         home: home,
-        sync: SyncService(
-          home: home,
-          tracker: tracker,
-          keys: keys,
-          connections: connections,
-          radio: BleSyncRadio(scanner),
-        ),
+        sync: sync,
         liveData: tracker,
         child: MaterialApp(
           theme: leCasaTheme(Brightness.light),
+          builder: (context, child) => BluetoothGate(child: child!),
           home: const DevicesPage(),
         ),
       ),
@@ -79,6 +90,7 @@ Future<Future<void> Function()> _pump(WidgetTester t, Size size) async {
   );
   await t.pump();
   return () async {
+    sync.dispose();
     connections.dispose();
     await t.pumpWidget(const SizedBox());
   };
@@ -150,6 +162,60 @@ void main() {
     await t.tap(find.text('General'));
     await t.pumpAndSettle();
     expect(find.text('Theme'), findsOneWidget);
+    await done();
+  });
+
+  testWidgets('renaming a device in its header renames it everywhere', (
+    t,
+  ) async {
+    final done = await _pump(t, const Size(1280, 800));
+    await t.tap(find.text('Luna 50'));
+    await t.pump();
+    // The details sit on one line of chips; iOS-style ids go in the header.
+    expect(find.textContaining('Signal'), findsOneWidget);
+    await _shot(t, 'device-header-tablet');
+    await t.tap(find.byTooltip('Rename'));
+    await t.pump();
+    await t.enterText(find.byType(TextField).first, 'Roof 50');
+    await t.testTextInput.receiveAction(TextInputAction.done);
+    await t.pump();
+    // The header and the list both use the new name.
+    expect(find.text('Roof 50'), findsNWidgets(2));
+    // Emptying it goes back to the advertised name.
+    await t.tap(find.byTooltip('Rename'));
+    await t.pump();
+    await t.enterText(find.byType(TextField).first, '');
+    await t.testTextInput.receiveAction(TextInputAction.done);
+    await t.pump();
+    expect(find.text('Roof 50'), findsNothing);
+    expect(find.text('Luna 50'), findsNWidgets(2));
+    await done();
+  });
+
+  testWidgets('a phone shows the platform id with the other details', (
+    t,
+  ) async {
+    final done = await _pump(t, const Size(390, 844));
+    await t.tap(find.text('Luna 50'));
+    await t.pumpAndSettle();
+    expect(find.textContaining('Signal'), findsOneWidget);
+    expect(t.takeException(), isNull);
+    await _shot(t, 'device-header-phone');
+    await done();
+  });
+
+  testWidgets('Bluetooth off dims everything and says so', (t) async {
+    final done = await _pump(
+      t,
+      const Size(1280, 800),
+      bluetooth: BluetoothLowEnergyState.poweredOff,
+    );
+    expect(find.text('Bluetooth is off'), findsOneWidget);
+    await _shot(t, 'bluetooth-off');
+    // Taps do not reach the stale page underneath.
+    await t.tap(find.text('Luna 50'), warnIfMissed: false);
+    await t.pump();
+    expect(find.byType(DevicePage), findsNothing);
     await done();
   });
 }

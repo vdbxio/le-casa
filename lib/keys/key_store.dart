@@ -27,6 +27,10 @@ class KeyRecord {
   final String id;
   final String? name;
   final String? mac;
+
+  /// Manufacturer-data fingerprint, for a device another screen knows by
+  /// neither id, MAC nor name (the Daly: a name on iOS, a MAC on Android).
+  final String? fp;
   final String? value;
 
   /// Milliseconds since the epoch. 0 for entries saved before sync existed.
@@ -37,6 +41,7 @@ class KeyRecord {
     this.id, {
     this.name,
     this.mac,
+    this.fp,
     this.value,
     this.at = 0,
   });
@@ -46,6 +51,7 @@ class KeyRecord {
     'id': id,
     'name': ?name,
     'mac': ?mac,
+    'fp': ?fp,
     'v': value,
     'at': at,
   };
@@ -55,13 +61,17 @@ class KeyRecord {
     '${j['id']}',
     name: j['name'] as String?,
     mac: j['mac'] as String?,
+    fp: j['fp'] as String?,
     value: j['v'] as String?,
     at: (j['at'] as num?)?.toInt() ?? 0,
   );
 }
 
-/// Name and MAC of a device id, as far as this screen knows them.
-typedef DeviceLabel = ({String? name, String? mac}) Function(String id);
+/// Name, MAC and advert fingerprint of a device id, as far as this screen
+/// knows them.
+typedef DeviceLabel = ({String? name, String? mac, String? fp}) Function(
+  String id,
+);
 
 /// Per-device encryption keys (Victron Instant Readout, BTHome bindkeys)
 /// and battery PINs. Keyed by the device id the scanner reports. Screens in
@@ -167,6 +177,7 @@ class KeyStore extends ChangeNotifier {
           r.id,
           name: r.name,
           mac: r.mac,
+          fp: r.fp,
           at: r.at,
           value: r.value == null
               ? null
@@ -201,7 +212,15 @@ class KeyStore extends ChangeNotifier {
       }
     }
     await _put(
-      KeyRecord(r.kind, id, name: r.name, mac: r.mac, value: v, at: r.at),
+      KeyRecord(
+        r.kind,
+        id,
+        name: r.name,
+        mac: r.mac,
+        fp: r.fp,
+        value: v,
+        at: r.at,
+      ),
     );
     return true;
   }
@@ -223,6 +242,7 @@ class KeyStore extends ChangeNotifier {
       r.id,
       name: r.name ?? l.name,
       mac: r.mac ?? l.mac,
+      fp: r.fp ?? l.fp,
       value: r.value,
       at: r.at,
     );
@@ -253,6 +273,7 @@ class KeyStore extends ChangeNotifier {
       r.id,
       name: r.name,
       mac: r.mac,
+      fp: r.fp,
       at: r.at,
       value: v == null ? null : '',
     );

@@ -98,7 +98,8 @@ void main() {
         ),
       ),
     );
-    expect(find.text('ATC_8D18B2'), findsOneWidget);
+    expect(find.textContaining('Climate · '), findsOneWidget);
+    expect(find.textContaining('ATC_8D18B2'), findsOneWidget);
     expect(find.text('25.06 °C'), findsOneWidget);
   });
 

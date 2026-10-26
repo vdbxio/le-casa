@@ -232,6 +232,9 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       addingUntil != null && DateTime.now().isBefore(addingUntil!);
 
   void start() {
+    tracker.labelFor = readBy.labelOf;
+    readBy.addListener(tracker.relabel);
+    tracker.relabel();
     _sightingSub = radio.sightings.listen(_onSighting);
     keys.addListener(_onKeys);
     readBy.addListener(_onReadBy);
@@ -259,6 +262,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     _tick?.cancel();
     _sightingSub?.cancel();
     keys.removeListener(_onKeys);
+    readBy.removeListener(tracker.relabel);
     readBy.removeListener(_onReadBy);
     readBy.removeListener(_applyChoices);
     tracker.removeListener(_applyChoices);
@@ -336,6 +340,20 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       mac: d?.mac,
       fp: _fp(id),
       connect: screen != null ? true : null,
+    );
+  }
+
+  /// Names [id] on every screen in the home, or clears the name with null.
+  /// The name never decides which device is which: the record carries the
+  /// MAC, advertised name and data fingerprint for that, like a lock.
+  Future<void> rename(String id, String? label) {
+    final d = tracker[id];
+    return readBy.setLabel(
+      id,
+      label,
+      name: d?.latest.name,
+      mac: d?.mac,
+      fp: _fp(id),
     );
   }
 
@@ -711,8 +729,11 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     await _publishOwn();
     if (_ticks % 10 == 1) await _beacon();
     if (_ticks % 5 == 0) {
-      await _adoptKeys();
+      // Merge first: a device known only through another screen keeps its
+      // records under that screen's id until it is merged, and then they
+      // move over in the same pass.
       _mergeRemote();
+      await _adoptKeys();
     }
   }
 
@@ -896,7 +917,12 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
         if (id == home.me.id) return;
         final old = _peers[id];
         if (old != null && (m['q'] as num).toInt() <= old.seq) return;
-        _peers[id] = PeerInfo.fromJson(m, DateTime.now());
+        final info = _peers[id] = PeerInfo.fromJson(m, DateTime.now());
+        for (final d in info.hears) {
+          if (d.mac case final mac?) {
+            tracker.learnMac(_resolve(d.id, mac, d.name, d.fp), mac);
+          }
+        }
         await _broadcast(m, skip: from);
         notifyListeners();
       case 'state':
@@ -910,6 +936,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
           fresh.add(r);
           final local = _resolve(r.id, r.mac, r.name, r.fp);
           _ownerSlotOf[local] = r.slot;
+          if (r.mac case final mac?) tracker.learnMac(local, mac);
           tracker.setRemote(
             local,
             decoded: r.decoded,
@@ -931,7 +958,10 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
         try {
           for (final j in (m['k'] as List? ?? const [])) {
             final r = KeyRecord.fromJson((j as Map).cast());
-            if (await keys.apply(r, asId: _resolve(r.id, r.mac, r.name))) {
+            if (await keys.apply(
+              r,
+              asId: _resolve(r.id, r.mac, r.name, r.fp),
+            )) {
               changed.add(r);
             }
           }
@@ -1066,7 +1096,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       }
       for (final r in keys.records) {
         if (r.value == null || tracker[r.id] != null) continue;
-        final local = _resolve(r.id, r.mac, r.name);
+        final local = _resolve(r.id, r.mac, r.name, r.fp);
         if (local != r.id) await keys.apply(r, asId: local);
       }
       for (final r in readBy.records) {

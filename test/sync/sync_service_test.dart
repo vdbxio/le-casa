@@ -15,6 +15,7 @@ import 'package:lecasa/sync/home.dart';
 import 'package:lecasa/sync/radio.dart';
 import 'package:lecasa/sync/read_by.dart';
 import 'package:lecasa/sync/sync_service.dart';
+import 'package:lecasa/sync/wire.dart';
 
 import '../fake_session.dart';
 import 'pipe.dart';
@@ -157,8 +158,11 @@ class Screen {
           )
           ..settleTime = Duration.zero
           ..start();
-    keys.label = (id) =>
-        (name: tracker[id]?.latest.name, mac: tracker[id]?.latest.macString);
+    keys.label = (id) => (
+      name: tracker[id]?.latest.name,
+      mac: tracker[id]?.latest.macString,
+      fp: tracker[id] == null ? null : advertFingerprint(tracker[id]!.latest),
+    );
   }
 
   void hear(
@@ -576,6 +580,200 @@ void main() {
       expect(ipad.driver.commands.single.value, 44);
     },
   );
+
+  group('renaming', () {
+    test('a name given on one screen shows on the other', () async {
+      ipad.hear(ipadFridge, 'AK1-AAFE13156431');
+      m10.hear(m10Fridge, 'AK1-AAFE13156431');
+      await ipad.sync.rename(ipadFridge, 'Galley fridge');
+      await settle();
+      expect(m10.tracker[m10Fridge]!.label, 'Galley fridge');
+      expect(ipad.tracker[ipadFridge]!.label, 'Galley fridge');
+      // Clearing it travels too.
+      await m10.sync.rename(m10Fridge, '  ');
+      await settle();
+      expect(ipad.tracker[ipadFridge]!.label, isNull);
+    });
+
+    test(
+      'a name and a lock chosen at once on two screens both stick',
+      () async {
+        // Each screen made its choice before hearing the other's.
+        final renamed = ReadByStore.memory();
+        final locked = ReadByStore.memory();
+        const name = ReadByRecord(
+          'x',
+          label: 'Galley fridge',
+          labelAt: 100,
+          at: 100,
+        );
+        const lock = ReadByRecord('x', screen: 'm10', choiceAt: 200, at: 200);
+        await renamed.apply(name);
+        await locked.apply(lock);
+        expect(await renamed.apply(lock), isTrue);
+        expect(await locked.apply(name), isTrue);
+        for (final s in [renamed, locked]) {
+          expect(s.labelOf('x'), 'Galley fridge');
+          expect(s.lockOf('x')?.screen, 'm10');
+          expect(s.records.single.at, 200);
+        }
+        // Hearing either again changes nothing, so nothing goes round.
+        expect(await renamed.apply(name), isFalse);
+        expect(await locked.apply(lock), isFalse);
+      },
+    );
+
+    test(
+      'a name for a device the other screen hears later waits for it',
+      () async {
+        const ipadShunt = '0B2D1E77-0000-4000-8000-000000000002';
+        ipad.hear(ipadShunt, 'Lilith');
+        await ipad.sync.rename(ipadShunt, 'House battery');
+        await settle();
+        const m10Shunt = 'D1:22:33:44:55:66';
+        m10.hear(m10Shunt, 'Lilith');
+        for (var i = 0; i < 5; i++) {
+          await m10.sync.tick();
+        }
+        expect(m10.tracker[m10Shunt]!.label, 'House battery');
+      },
+    );
+
+    test('the Daly is renamed across iOS and Android by its data', () async {
+      // A random id and "DL-…" on iOS, its MAC and no name on Android.
+      final mfr = {
+        0x302: Uint8List.fromList([0x16, 0x40, 0x17, 0x10, 0x01, 0x5c]),
+      };
+      const ipadDaly = '7E48D8DF-E13A-24F8-78D4-C05C53494BA3';
+      const m10Daly = 'D2:19:08:01:C5:61';
+      ipad.hear(ipadDaly, 'DL-694201312BA', mfr: mfr);
+      m10.hear(m10Daly, null, mfr: mfr);
+      await m10.sync.rename(m10Daly, 'House bank');
+      await settle();
+      expect(ipad.tracker[ipadDaly]!.label, 'House bank');
+    });
+
+    test('iOS learns a MAC from Android and names the device by it', () async {
+      final mfr = {
+        0x302: Uint8List.fromList([0x16, 0x40, 0x17, 0x10, 0x01, 0x5c]),
+      };
+      const ipadDaly = '7E48D8DF-E13A-24F8-78D4-C05C53494BA3';
+      const m10Daly = 'D2:19:08:01:C5:61';
+      ipad.hear(ipadDaly, 'DL-694201312BA', mfr: mfr);
+      m10.hear(m10Daly, null, mfr: mfr);
+      m10.tracker.setPolled(
+        m10Daly,
+        const Decoded(
+          protocol: 'Daly',
+          model: 'BMS',
+          kind: DeviceKind.battery,
+          readings: [Reading('voltage', 26.5, 'V')],
+        ),
+      );
+      await m10.sync.tick();
+      await settle();
+      expect(ipad.tracker[ipadDaly]!.mac, m10Daly);
+    });
+
+    test('a Daly PIN typed on iOS reaches Android by its data', () async {
+      final mfr = {
+        0x302: Uint8List.fromList([0x16, 0x40, 0x17, 0x10, 0x01, 0x5c]),
+      };
+      const ipadDaly = '7E48D8DF-E13A-24F8-78D4-C05C53494BA3';
+      const m10Daly = 'D2:19:08:01:C5:61';
+      ipad.hear(ipadDaly, 'DL-694201312BA', mfr: mfr);
+      m10.hear(m10Daly, null, mfr: mfr);
+      await ipad.keys.setSecret(ipadDaly, '12345678');
+      await settle();
+      expect(m10.keys.secretFor(m10Daly), '12345678');
+    });
+
+    test(
+      'a device known only through the other screen takes its name',
+      () async {
+        ipad.hear(ipadFridge, 'AK1-AAFE13156431');
+        await ipad.connections.readNow(ipadFridge);
+        await ipad.sync.tick();
+        await settle();
+        final remote = m10.tracker[ipadFridge]!;
+        expect(remote.remoteOnly, isTrue);
+        await m10.sync.rename(ipadFridge, 'Galley fridge');
+        await settle();
+        expect(ipad.tracker[ipadFridge]!.label, 'Galley fridge');
+        // Once the M10 hears the fridge itself, under its MAC, the name
+        // follows it there.
+        m10.hear(m10Fridge, 'AK1-AAFE13156431');
+        for (var i = 0; i < 5; i++) {
+          await m10.sync.tick();
+        }
+        expect(m10.tracker[m10Fridge]!.label, 'Galley fridge');
+      },
+    );
+
+    test(
+      'a name for one of three identical sensors lands on that one only',
+      () async {
+        const warm = 'A4:C1:38:DF:07:81';
+        const cold = 'A4:C1:38:50:6E:3A';
+        const cool = 'A4:C1:38:F9:A5:12';
+        for (final mac in [warm, cold, cool]) {
+          m10.hear(mac, 'LYWSD03MMC');
+        }
+        // The iPad hears two of them, and has learnt only one MAC (from
+        // its broadcasts once its key works).
+        const ipadCold = '8918B170-0000-4000-8000-6D06C31036F5';
+        const ipadCool = '1D2E3F40-0000-4000-8000-000000000003';
+        ipad.hear(ipadCold, 'LYWSD03MMC');
+        ipad.hear(ipadCool, 'LYWSD03MMC');
+        ipad.tracker[ipadCool]!.decoded = Decoded(
+          protocol: 'Xiaomi MiBeacon',
+          model: 'LYWSD03MMC',
+          kind: DeviceKind.climate,
+          readings: const [],
+          info: const {'mac': cool},
+        );
+        await m10.sync.rename(warm, 'Outside');
+        await m10.sync.rename(cool, 'Bedroom');
+        await settle();
+        for (var i = 0; i < 5; i++) {
+          await ipad.sync.tick();
+        }
+        expect(ipad.tracker[ipadCool]!.label, 'Bedroom');
+        // The one whose MAC the iPad does not know is never guessed.
+        expect(ipad.tracker[ipadCold]!.label, isNull);
+      },
+    );
+
+    test('two Victrons with their own names keep their own names', () async {
+      const ipadLuna = '11111111-0000-4000-8000-000000000001';
+      const ipadSol = '22222222-0000-4000-8000-000000000002';
+      const m10Luna = 'C1:00:00:00:00:01';
+      const m10Sol = 'C1:00:00:00:00:02';
+      ipad.hear(ipadLuna, 'Luna 50');
+      ipad.hear(ipadSol, 'Sol 30');
+      m10.hear(m10Luna, 'Luna 50');
+      m10.hear(m10Sol, 'Sol 30');
+      await ipad.sync.rename(ipadSol, 'Roof 30');
+      await settle();
+      expect(m10.tracker[m10Sol]!.label, 'Roof 30');
+      expect(m10.tracker[m10Luna]!.label, isNull);
+    });
+
+    test('a name survives a restart', () async {
+      final store = ReadByStore.memory();
+      await store.setLabel('x', 'Porch');
+      final back = ReadByRecord.fromJson(store.records.single.toJson());
+      expect(back.label, 'Porch');
+      expect(back.labelAt, store.records.single.labelAt);
+    });
+
+    test('a lock from before names existed still merges', () {
+      final old = ReadByRecord.fromJson({'id': 'x', 's': 'm10', 'at': 5});
+      expect(old.choiceAt, 5);
+      expect(old.labelAt, 0);
+      expect(old.label, isNull);
+    });
+  });
 
   test('two screens that dial each other at once keep one link', () async {
     final phone = Screen(air, 'phone', 'iPhone', phone: true);

@@ -39,6 +39,9 @@ class TrackedDevice {
 
   /// True for a device this screen only knows from another screen.
   bool remoteOnly = false;
+
+  /// The name the person gave it, shared by every screen in the home.
+  String? label;
   final DateTime firstSeen;
   int packets = 1;
   String? lastPacketId;
@@ -62,7 +65,14 @@ class TrackedDevice {
   /// broadcast when it carries one (iOS hides MACs; stock Xiaomi and pvvx
   /// send theirs).
   String? get mac =>
-      latest.macString ?? decoded?.info['mac'] ?? polled?.info['mac'];
+      latest.macString ??
+      decoded?.info['mac'] ??
+      polled?.info['mac'] ??
+      learnedMac;
+
+  /// The MAC another screen (Android) knows this device by, once a reading
+  /// from it matched this device. Lets iOS name and match it the same way.
+  String? learnedMac;
 
   String get title => view?.model ?? latest.name ?? 'Unknown device';
 
@@ -85,7 +95,22 @@ class DeviceTracker extends ChangeNotifier {
   final Map<String, TrackedDevice> _devices = {};
   int totalPackets = 0;
 
+  /// The name the person gave a device, from whoever keeps the names.
+  String? Function(String id) labelFor = (_) => null;
+
   DeviceTracker(this.registry);
+
+  /// Picks up renamed devices after [labelFor] changed.
+  void relabel() {
+    var changed = false;
+    for (final d in _devices.values) {
+      final l = labelFor(d.id);
+      if (l == d.label) continue;
+      d.label = l;
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
 
   /// All devices in the order they were first heard. Insertion order of the
   /// map, so a device never moves once it is on screen.
@@ -135,9 +160,18 @@ class DeviceTracker extends ChangeNotifier {
   }) {
     var d = _devices[id];
     if (d == null) {
-      d = TrackedDevice(
-        RawAdvertisement(id: id, rssi: 0, seenAt: at, name: name, mac: mac),
-      )..remoteOnly = true;
+      d =
+          TrackedDevice(
+              RawAdvertisement(
+                id: id,
+                rssi: 0,
+                seenAt: at,
+                name: name,
+                mac: mac,
+              ),
+            )
+            ..remoteOnly = true
+            ..label = labelFor(id);
       _devices[id] = d;
     } else if (d.polledAt != null && !at.isAfter(d.polledAt!)) {
       return;
@@ -146,6 +180,15 @@ class DeviceTracker extends ChangeNotifier {
     d.polled = decoded;
     d.polledAt = at;
     d.polledBy = by;
+    notifyListeners();
+  }
+
+  /// Remembers the MAC another screen knows [id] by, when this screen does
+  /// not know one itself.
+  void learnMac(String id, String mac) {
+    final d = _devices[id];
+    if (d == null || d.mac != null) return;
+    d.learnedMac = mac;
     notifyListeners();
   }
 
@@ -171,6 +214,7 @@ class DeviceTracker extends ChangeNotifier {
     final decoded = registry.decode(adv);
     if (d == null) {
       _devices[adv.id] = TrackedDevice(adv)
+        ..label = labelFor(adv.id)
         ..decoded = decoded
         ..lastRecognised = decoded == null ? null : adv
         ..recent.add(adv)

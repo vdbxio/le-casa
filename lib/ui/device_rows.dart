@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 
 import '../ble/device_tracker.dart';
+import '../dashboard/catalog.dart' show deviceName;
 import '../decoders/decoded.dart';
 import 'device_card.dart';
 import 'format.dart';
@@ -68,22 +69,23 @@ class DeviceRow extends StatelessWidget {
         DateTime.now().difference(device.lastSeen) >
         const Duration(seconds: 30);
     final r = d == null ? null : primaryReading(d);
+    final title = d == null ? a.name ?? device.id : deviceName(device);
     final subtitle = d == null
         ? '${ago(device.lastSeen)} · ${rawSummary(a).split('\n').first}'
         : d.needs != null
         ? 'Needs setup'
-        : {if (a.name != null) d.model, d.protocol}.join(' · ');
+        : {
+            if (a.name != null && a.name != title) a.name,
+            d.model,
+            d.protocol,
+          }.join(' · ');
     return SizedBox(
       height: deviceRowHeight,
       child: ListTile(
         selected: selected,
         selectedTileColor: scheme.secondaryContainer,
         onTap: onTap,
-        title: Text(
-          a.name ?? d?.model ?? device.id,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Text(
           subtitle,
           maxLines: 1,

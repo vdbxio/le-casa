@@ -32,6 +32,12 @@ class BleScanner {
   Peripheral? peripheralFor(String id) => _peripherals[id];
   bool get scanning => _scanning;
 
+  /// The person paused scanning, or it has not started yet. Otherwise a
+  /// scan that is off is only waiting for a connection to open, and comes
+  /// back by itself.
+  bool get paused => _paused;
+  bool _paused = true;
+
   BluetoothLowEnergyState get state => _central.state;
   Stream<BluetoothLowEnergyState> get stateChanges =>
       _central.stateChanged.map((e) => e.state);
@@ -58,6 +64,7 @@ class BleScanner {
   /// Starts scanning. Safe to call from several places at once; a platform
   /// "already started" error is treated as success.
   Future<void> start() => _queue(() async {
+    _paused = false;
     if (_scanning) return;
     await _doStart();
   });
@@ -88,7 +95,10 @@ class BleScanner {
   void _check() {
     final now = DateTime.now();
     final off = _stoppedAt;
-    if (!_scanning && off != null && now.difference(off) > _offTooLong) {
+    if (!_scanning &&
+        !_paused &&
+        off != null &&
+        now.difference(off) > _offTooLong) {
       debugPrint('scan: off since $off, starting again');
       unawaited(start().catchError((Object e) => debugPrint('scan: $e')));
     } else if (_scanning && now.difference(_lastAdvert) > _quietTooLong) {
@@ -115,6 +125,19 @@ class BleScanner {
     final msg = e.toString().toLowerCase();
     return msg.contains('already') ||
         RegExp(r'error ?code[ =:]*1\b').hasMatch(msg);
+  }
+
+  /// Starts again after a pause for a connection, unless the person
+  /// paused scanning meanwhile.
+  Future<void> resume() => _queue(() async {
+    if (_paused || _scanning) return;
+    await _doStart();
+  });
+
+  /// Stops scanning until [start], for the person's pause button.
+  Future<void> pause() {
+    _paused = true;
+    return stop();
   }
 
   Future<void> stop() => _queue(() async {

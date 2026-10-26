@@ -127,6 +127,23 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  test('a device first heard without a name takes the one saved', () {
+    final t = DeviceTracker(DecoderRegistry.standard());
+    t.nameFor = (id) => id == 'daly' ? 'DL-694201312BA' : null;
+    // After a restart, a held-open Daly sends no name at all.
+    t.onAdvertisement(adv(id: 'daly', name: null));
+    expect(t['daly']!.latest.name, 'DL-694201312BA');
+    // A name that arrives from another screen later fills in too.
+    t.onAdvertisement(adv(id: 'xiaomi', name: null));
+    expect(t['xiaomi']!.latest.name, isNull);
+    t.nameFor = (id) => id == 'xiaomi' ? 'LYWSD03MMC' : null;
+    t.relabel();
+    expect(t['xiaomi']!.latest.name, 'LYWSD03MMC');
+    // What the device sends itself wins.
+    t.onAdvertisement(adv(id: 'daly', name: 'DL-NEW'));
+    expect(t['daly']!.latest.name, 'DL-NEW');
+  });
+
   test('a packet without a name keeps the name heard earlier', () {
     final t = DeviceTracker(DecoderRegistry.standard());
     t.onAdvertisement(

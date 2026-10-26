@@ -126,6 +126,9 @@ class ReadByStore extends ChangeNotifier {
   /// The name the person gave [id], or null.
   String? labelOf(String id) => _records[id]?.label;
 
+  /// The name [id] advertised when its record was last saved, or null.
+  String? nameOf(String id) => _records[id]?.name;
+
   /// Names [id], or clears its name with null or an empty one. Keeps its
   /// lock and connect choice.
   Future<void> setLabel(

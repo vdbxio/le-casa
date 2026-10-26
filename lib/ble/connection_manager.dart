@@ -136,7 +136,7 @@ SessionOpener scannerOpener(BleScanner scanner, {bool pauseScan = true}) =>
         final link = await GattLink.open(scanner.central, p);
         return _ScanPausingSession(link, wasScanning ? scanner : null);
       } catch (_) {
-        if (wasScanning) unawaited(scanner.start());
+        if (wasScanning) unawaited(scanner.resume());
         rethrow;
       }
     };

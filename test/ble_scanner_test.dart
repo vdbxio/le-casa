@@ -43,4 +43,27 @@ void main() {
     expect(central.starts, 2);
     await scanner.dispose();
   });
+
+  test('a pause for a connection is not the person pausing', () async {
+    final central = _SlowCentral();
+    final scanner = BleScanner(central);
+    await scanner.start();
+    expect(scanner.paused, isFalse);
+    // A connection stops the scan and resumes it: still not paused.
+    await scanner.stop();
+    expect(scanner.paused, isFalse);
+    await scanner.resume();
+    expect(scanner.scanning, isTrue);
+    // The person pauses while a connection holds the scan: the connection
+    // finishing does not start it again.
+    await scanner.stop();
+    await scanner.pause();
+    await scanner.resume();
+    expect(scanner.scanning, isFalse);
+    expect(scanner.paused, isTrue);
+    await scanner.start();
+    expect(scanner.scanning, isTrue);
+    expect(scanner.paused, isFalse);
+    await scanner.dispose();
+  });
 }

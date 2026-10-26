@@ -42,8 +42,8 @@ class _DevicesPageState extends State<DevicesPage> {
 
   Future<void> _toggle() async {
     final s = AppServices.of(context).scanner;
-    if (s.scanning) {
-      await s.stop();
+    if (!s.paused) {
+      await s.pause();
     } else {
       await AppServices.of(context).autostart.startScan();
     }
@@ -157,7 +157,7 @@ class _DevicesPageState extends State<DevicesPage> {
   }
 
   List<Widget> _actions(AppServices services) {
-    final scanning = services.scanner.scanning;
+    final paused = services.scanner.paused;
     final state = services.autostart.state;
     return [
       IconButton(
@@ -194,8 +194,8 @@ class _DevicesPageState extends State<DevicesPage> {
         },
       ),
       IconButton(
-        tooltip: scanning ? 'Pause' : 'Scan',
-        icon: Icon(scanning ? Icons.pause_circle : Icons.play_circle),
+        tooltip: paused ? 'Scan' : 'Pause',
+        icon: Icon(paused ? Icons.play_circle : Icons.pause_circle),
         onPressed: state == BluetoothLowEnergyState.poweredOn ? _toggle : null,
       ),
     ];
@@ -217,6 +217,7 @@ class _DevicesPageState extends State<DevicesPage> {
             state: autostart.state,
             error: autostart.error,
             scanning: services.scanner.scanning,
+            paused: services.scanner.paused,
             onAllow: autostart.askPermission,
           ),
           Expanded(
@@ -250,11 +251,13 @@ class _StatusBar extends StatelessWidget {
   final BluetoothLowEnergyState state;
   final String? error;
   final bool scanning;
+  final bool paused;
   final VoidCallback onAllow;
   const _StatusBar({
     required this.state,
     required this.error,
     required this.scanning,
+    required this.paused,
     required this.onAllow,
   });
 
@@ -267,7 +270,12 @@ class _StatusBar extends StatelessWidget {
         'Scanning',
         scheme.primary,
       ),
-      BluetoothLowEnergyState.poweredOn => ('Paused', scheme.secondary),
+      BluetoothLowEnergyState.poweredOn when paused => (
+        'Paused',
+        scheme.secondary,
+      ),
+      // Android stops the scan while a connection opens.
+      BluetoothLowEnergyState.poweredOn => ('Connecting…', scheme.primary),
       BluetoothLowEnergyState.poweredOff => ('Bluetooth is off', scheme.error),
       BluetoothLowEnergyState.unauthorized => (
         'Needs Bluetooth permission',

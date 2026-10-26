@@ -233,6 +233,13 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
 
   void start() {
     tracker.labelFor = readBy.labelOf;
+    tracker.nameFor = (id) =>
+        readBy.nameOf(id) ??
+        keys.records
+            .where((r) => r.id == id)
+            .map((r) => r.name)
+            .nonNulls
+            .firstOrNull;
     readBy.addListener(tracker.relabel);
     tracker.relabel();
     _sightingSub = radio.sightings.listen(_onSighting);

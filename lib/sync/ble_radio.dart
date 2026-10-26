@@ -325,7 +325,7 @@ class BleSyncRadio implements SyncRadio {
         }
       }
     } finally {
-      if (wasScanning) unawaited(scanner.start());
+      if (wasScanning) unawaited(scanner.resume());
     }
     final l = link;
     try {

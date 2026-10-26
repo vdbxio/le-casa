@@ -98,12 +98,26 @@ class DeviceTracker extends ChangeNotifier {
   /// The name the person gave a device, from whoever keeps the names.
   String? Function(String id) labelFor = (_) => null;
 
+  /// The name a device advertised before, as this screen or another one
+  /// saved it (with its key, PIN or Read by choice). For a device whose
+  /// adverts carry no name until a scan response comes, or never while it
+  /// is held open, so its automatic name does not change.
+  String? Function(String id) nameFor = (_) => null;
+
   DeviceTracker(this.registry);
 
-  /// Picks up renamed devices after [labelFor] changed.
+  /// Picks up renamed devices after [labelFor] changed, and names learnt
+  /// through [nameFor].
   void relabel() {
     var changed = false;
     for (final d in _devices.values) {
+      if (d.latest.name == null) {
+        final n = nameFor(d.id);
+        if (n != null) {
+          d.latest = d.latest.withName(n);
+          changed = true;
+        }
+      }
       final l = labelFor(d.id);
       if (l == d.label) continue;
       d.label = l;
@@ -208,9 +222,10 @@ class DeviceTracker extends ChangeNotifier {
     var d = _devices[raw.id];
     // Keep the last known name: many devices only send it in every other
     // packet, and a name that flickers makes the list unreadable.
-    final adv = (raw.name == null && d?.latest.name != null)
-        ? raw.withName(d!.latest.name)
-        : raw;
+    // A device heard for the first time since the app started may send
+    // its name later, or not at all while it is held open.
+    final name = raw.name ?? (d == null ? nameFor(raw.id) : d.latest.name);
+    final adv = name == raw.name ? raw : raw.withName(name);
     final decoded = registry.decode(adv);
     if (d == null) {
       _devices[adv.id] = TrackedDevice(adv)

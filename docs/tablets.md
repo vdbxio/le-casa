@@ -25,6 +25,12 @@ Does not work, or not reliably:
   app changes this. Lock the Daly to another screen.
 - **Alpicool fridge:** cannot hold the connection. Lock it to another
   screen.
+- **More than two links:** it holds two links (for example the iPad and
+  an iPhone) while scanning, but a third connect fails with status 133
+  every time. In a 20-minute run (2026-10-26) with both links up, all 3
+  of its device polls (two Xiaomis and the fridge) failed this way. Read
+  devices from their broadcasts where possible (a bindkey for stock
+  Xiaomi firmware), or lock them to another screen.
 - **Several Bluetooth jobs at once:** the chip's firmware can stop
   answering. Seen twice (2026-10-26) when the scan was paused for a
   connect while a write to another screen was stuck: Android logged

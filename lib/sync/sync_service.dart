@@ -93,6 +93,9 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     SyncRole.alone => false,
   };
 
+  @override
+  bool get leavesConnections => !home.holdsDevices && connected;
+
   /// Screens connected to this hub.
   List<ScreenId> get members => [for (final s in _members.values) s.peer];
 

@@ -37,6 +37,10 @@ class HomeStore extends ChangeNotifier {
   /// The hub's name, on a member.
   String hubName = '';
 
+  /// Whether this screen connects to devices while it is in a home. Off
+  /// by default on phones, which come and go and have batteries to save.
+  bool holdsDevices = true;
+
   ScreenId get me => ScreenId(_id, _name);
 
   String get tag => key == null ? '' : homeTag(key!);
@@ -62,6 +66,15 @@ class HomeStore extends ChangeNotifier {
     if (key == null) role = SyncRole.alone;
     homeName = p.getString('${_p}home') ?? '';
     hubName = p.getString('${_p}hub') ?? '';
+    holdsDevices =
+        p.getBool('${_p}holds') ??
+        !((await TabletSensors.deviceName())?.startsWith('iPhone') ?? false);
+    notifyListeners();
+  }
+
+  Future<void> setHoldsDevices(bool v) async {
+    holdsDevices = v;
+    await _prefs?.setBool('${_p}holds', v);
     notifyListeners();
   }
 

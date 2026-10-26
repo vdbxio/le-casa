@@ -337,6 +337,9 @@ class _ConnectionSection extends StatelessWidget {
     final status = elsewhere != null
         ? '${elsewhere.screen} holds this connection and shares what it '
               'reads, so this screen leaves the device alone'
+        : (connections.remote?.leavesConnections ?? false)
+        ? 'This screen leaves device connections to your other screens '
+              '(Settings › Screens and phones)'
         : switch (link.phase) {
             LinkPhase.ok when link.lastOk != null =>
               'Last read ${ago(link.lastOk!)}, next in '

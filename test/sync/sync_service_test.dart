@@ -231,6 +231,17 @@ void main() {
     },
   );
 
+  test('a screen set not to hold connections leaves devices alone', () async {
+    await m10.home.setHoldsDevices(false);
+    m10.hear(m10Fridge, 'AK1-AAFE13156431');
+    await m10.connections.pump();
+    expect(m10.connections[m10Fridge]!.lastAttempt, isNull);
+    // Outside a home it reads everything itself again.
+    await m10.sync.leave();
+    await m10.connections.pump();
+    expect(m10.connections[m10Fridge]!.lastOk, isNotNull);
+  });
+
   test('a device the member never heard still shows up', () async {
     ipad.hear(ipadFridge, 'AK1-AAFE13156431');
     await ipad.connections.readNow(ipadFridge);

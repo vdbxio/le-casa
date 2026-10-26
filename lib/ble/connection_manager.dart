@@ -100,6 +100,10 @@ abstract interface class RemoteLinks {
   /// Asks the owning screen to change a setting. Throws with a message for
   /// the user when it cannot.
   Future<void> control(String id, DeviceCommand command);
+
+  /// True when this screen leaves every device connection to the other
+  /// screens in the home (a phone, or a tablet with poor Bluetooth).
+  bool get leavesConnections;
 }
 
 /// Opens a connected, service-discovered session to a device id, or throws.
@@ -381,6 +385,7 @@ class ConnectionManager extends ChangeNotifier {
     Link? pick;
     for (final l in _links.values) {
       if (!l.enabled || l.busy || l.nextDue.isAfter(now)) continue;
+      if (remote?.leavesConnections ?? false) continue;
       if (heldElsewhere(l.id) != null) continue;
       final dev = tracker[l.id];
       if (dev == null || now.difference(dev.lastSeen) > staleAfter) continue;

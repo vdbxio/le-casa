@@ -93,6 +93,17 @@ class _SyncPageState extends State<SyncPage> {
               trailing: const Icon(Icons.edit_outlined),
               onTap: () => _rename(home),
             ),
+            if (home.role != SyncRole.alone)
+              SwitchListTile(
+                title: const Text('Hold device connections'),
+                subtitle: const Text(
+                  'Connect to fridges, batteries and other connected devices '
+                  'from this screen. Turn off on phones and on tablets with '
+                  'poor Bluetooth; the other screens will read them instead.',
+                ),
+                value: home.holdsDevices,
+                onChanged: home.setHoldsDevices,
+              ),
             if (sync.error != null)
               _Note(sync.error!, color: Theme.of(context).colorScheme.error),
             ...switch (home.role) {

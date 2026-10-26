@@ -26,6 +26,9 @@ class XiaomiStockDecoder implements Decoder {
   /// humidity, then battery); the latest of each, by device id.
   final Map<String, Map<String, Reading>> _last = {};
 
+  /// How each device's key is doing, by device id.
+  final Map<String, _KeyState> _check = {};
+
   XiaomiStockDecoder({this.keyFor = noKeys});
 
   @override
@@ -60,29 +63,46 @@ class XiaomiStockDecoder implements Decoder {
         ].join(':'),
     };
     if (key != null && encrypted) {
+      final k = _check.putIfAbsent(adv.id, () => _KeyState(key));
+      if (!_sameKey(k.key, key)) {
+        // A new key: forget what the old one did or did not decrypt.
+        _check[adv.id] = _KeyState(key);
+        _last.remove(adv.id);
+      }
+      final state = _check[adv.id]!;
       final objects = decryptMiBeacon(d, key, adv.macString);
-      if (objects == null) {
-        // Packets without values (pairing, keep-alive) do not decrypt to
-        // anything; only say the key is wrong when there was something.
-        final last = _last[adv.id];
-        if (last == null) {
-          return Decoded(
-            protocol: 'Xiaomi MiBeacon',
-            kind: DeviceKind.needsSetup,
-            model: model,
-            needs:
-                'Waiting for a broadcast that decrypts with this '
-                'bindkey. If none comes, the key is wrong.',
-            info: info,
-          );
-        }
-      } else {
+      if (objects != null) {
+        state.okAt = adv.seenAt;
         final last = _last.putIfAbsent(adv.id, () => {});
         for (final r in miBeaconReadings(objects)) {
           last[r.label] = r;
         }
+      } else if (frame & 0x0040 != 0 && state.okAt == null) {
+        // It carried readings and they did not decrypt. Packets without
+        // values (pairing, keep-alive) say nothing about the key.
+        state.wrong = true;
       }
-      final last = _last[adv.id]!;
+      final check = state.okAt != null
+          ? KeyCheck.works
+          : state.wrong
+          ? KeyCheck.wrong
+          : KeyCheck.waiting;
+      final last = _last[adv.id];
+      if (last == null || last.isEmpty) {
+        return Decoded(
+          protocol: 'Xiaomi MiBeacon',
+          kind: DeviceKind.needsSetup,
+          model: model,
+          needs: check == KeyCheck.wrong
+              ? 'Its broadcasts do not decrypt with this bindkey. Check '
+                    'that the key is for this MAC.'
+              : 'Waiting for a broadcast with readings to try the bindkey '
+                    'on. Stock firmware sends one every few minutes.',
+          info: info,
+          keyCheck: check,
+          decryptedAt: state.okAt,
+        );
+      }
       return Decoded(
         protocol: 'Xiaomi MiBeacon',
         kind: DeviceKind.climate,
@@ -92,6 +112,8 @@ class XiaomiStockDecoder implements Decoder {
             ?last[l],
         ],
         info: info,
+        keyCheck: check,
+        decryptedAt: state.okAt,
       );
     }
     return Decoded(
@@ -99,10 +121,10 @@ class XiaomiStockDecoder implements Decoder {
       kind: DeviceKind.needsSetup,
       model: model,
       needs: productId == 0x055B
-          ? 'Stock firmware encrypts its broadcasts, so Le\'Casa connects to '
-                'the sensor now and then to read it instead. Waiting for the '
-                'first connection. Enter its bindkey below to read its '
-                'broadcasts instead, or flash pvvx firmware and pick BTHome.'
+          ? 'Stock firmware encrypts its broadcasts. Enter its bindkey '
+                'below to read them, turn on "Connect to this device" to '
+                'read it over a connection now and then, or flash pvvx '
+                'firmware and pick BTHome.'
           : encrypted
           ? 'Stock firmware is encrypted with a bindkey. Enter it below, or '
                 'flash pvvx firmware and pick the BTHome format instead.'
@@ -110,6 +132,21 @@ class XiaomiStockDecoder implements Decoder {
       info: info,
     );
   }
+}
+
+class _KeyState {
+  final Uint8List key;
+  DateTime? okAt;
+  bool wrong = false;
+  _KeyState(this.key);
+}
+
+bool _sameKey(Uint8List a, Uint8List b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
 }
 
 /// Decrypts a MiBeacon v4/v5 frame (service data 0xFE95) with its

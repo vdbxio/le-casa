@@ -126,6 +126,7 @@ class _LeCasaAppState extends State<LeCasaApp> {
     holdLinks:
         defaultTargetPlatform == TargetPlatform.iOS ||
         defaultTargetPlatform == TargetPlatform.macOS,
+    optIn: true,
   );
   late final DashboardController dashboard = DashboardController();
   late final History history = History(tracker);

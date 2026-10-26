@@ -22,6 +22,10 @@ class ReadByRecord {
   final String? screen;
   final String? screenName;
 
+  /// Whether screens may connect to the device: the person added it to
+  /// the home (true) or turned it off (false). Null when nobody has said.
+  final bool? connect;
+
   /// Milliseconds since the epoch.
   final int at;
 
@@ -32,6 +36,7 @@ class ReadByRecord {
     this.fp,
     this.screen,
     this.screenName,
+    this.connect,
     this.at = 0,
   });
 
@@ -42,6 +47,7 @@ class ReadByRecord {
     'fp': ?fp,
     's': ?screen,
     'sn': ?screenName,
+    'c': ?connect,
     'at': at,
   };
 
@@ -52,6 +58,7 @@ class ReadByRecord {
     fp: j['fp'] as String?,
     screen: j['s'] as String?,
     screenName: j['sn'] as String?,
+    connect: j['c'] as bool?,
     at: (j['at'] as num?)?.toInt() ?? 0,
   );
 }
@@ -85,7 +92,11 @@ class ReadByStore extends ChangeNotifier {
     return r?.screen == null ? null : r;
   }
 
-  /// Locks [id] to a screen, or back to automatic with null.
+  /// Whether the person said screens may connect to [id], or null.
+  bool? connectOf(String id) => _records[id]?.connect;
+
+  /// Locks [id] to a screen, or back to automatic with null. [connect]
+  /// left out keeps what was chosen before.
   Future<void> set(
     String id, {
     String? screen,
@@ -93,6 +104,7 @@ class ReadByStore extends ChangeNotifier {
     String? name,
     String? mac,
     String? fp,
+    bool? connect,
   }) => _put(
     ReadByRecord(
       id,
@@ -101,9 +113,30 @@ class ReadByStore extends ChangeNotifier {
       fp: fp,
       screen: screen,
       screenName: screenName,
+      connect: connect ?? _records[id]?.connect,
       at: DateTime.now().millisecondsSinceEpoch,
     ),
   );
+
+  /// Lets screens connect to [id], or not, keeping its lock.
+  Future<void> setConnect(
+    String id,
+    bool connect, {
+    String? name,
+    String? mac,
+    String? fp,
+  }) {
+    final r = _records[id];
+    return set(
+      id,
+      screen: r?.screen,
+      screenName: r?.screenName,
+      name: name ?? r?.name,
+      mac: mac ?? r?.mac,
+      fp: fp ?? r?.fp,
+      connect: connect,
+    );
+  }
 
   /// Takes a choice made on another screen, stored under [asId] (this
   /// screen's id for the device). Returns whether it changed anything.
@@ -119,6 +152,7 @@ class ReadByStore extends ChangeNotifier {
         fp: r.fp,
         screen: r.screen,
         screenName: r.screenName,
+        connect: r.connect ?? mine?.connect,
         at: r.at,
       ),
     );

@@ -446,12 +446,24 @@ void main() {
         isA<StateError>().having(
           (e) => e.message,
           'message',
-          contains('Read over connection'),
+          contains('Connect to this device'),
         ),
       ),
     );
     await settle();
     await check;
+  });
+
+  test('turning a device on or off on one screen does it on all', () async {
+    ipad.hear(ipadFridge, 'AK1-AAFE13156431');
+    m10.hear(m10Fridge, 'AK1-AAFE13156431');
+    await ipad.connections.setDeviceEnabled(ipadFridge, false);
+    await settle();
+    expect(m10.connections.allows(m10Fridge), isFalse);
+    expect(m10.connections[m10Fridge]!.enabled, isFalse);
+    await m10.connections.setDeviceEnabled(m10Fridge, true);
+    await settle();
+    expect(ipad.connections.allows(ipadFridge), isTrue);
   });
 
   test(

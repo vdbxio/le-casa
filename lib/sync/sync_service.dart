@@ -235,9 +235,12 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     _sightingSub = radio.sightings.listen(_onSighting);
     keys.addListener(_onKeys);
     readBy.addListener(_onReadBy);
+    readBy.addListener(_applyChoices);
+    tracker.addListener(_applyChoices);
     _keysSent = _maxAt(keys.records.map((r) => r.at));
     _readBySent = _maxAt(readBy.records.map((r) => r.at));
     connections.remote = this;
+    connections.onChoice = _onChoice;
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => tick());
     unawaited(_applyHome());
   }
@@ -257,6 +260,9 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     _sightingSub?.cancel();
     keys.removeListener(_onKeys);
     readBy.removeListener(_onReadBy);
+    readBy.removeListener(_applyChoices);
+    tracker.removeListener(_applyChoices);
+    if (connections.onChoice == _onChoice) connections.onChoice = null;
     unawaited(_shutdown());
     super.dispose();
   }
@@ -319,6 +325,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
   }
 
   /// Locks [id] to [screen], or with null lets the screens sort it out.
+  /// Picking a screen to read it is also saying it may be read.
   Future<void> lock(String id, ScreenId? screen) {
     final d = tracker[id];
     return readBy.set(
@@ -328,7 +335,31 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       name: d?.latest.name,
       mac: d?.mac,
       fp: _fp(id),
+      connect: screen != null ? true : null,
     );
+  }
+
+  /// The person turned connecting to [id] on or off on this screen: every
+  /// screen in the home follows.
+  void _onChoice(String id, bool on) {
+    if (!home.inHome) return;
+    final d = tracker[id];
+    unawaited(
+      readBy.setConnect(id, on, name: d?.latest.name, mac: d?.mac, fp: _fp(id)),
+    );
+  }
+
+  /// Applies connect choices made on any screen to this one.
+  void _applyChoices() {
+    for (final r in readBy.records) {
+      // A lock from before connecting was opt-in means yes too.
+      final on = r.connect ?? (r.screen != null ? true : null);
+      if (on == null || tracker[r.id] == null) continue;
+      if (connections.hasChoice(r.id) && connections.allows(r.id) == on) {
+        continue;
+      }
+      unawaited(connections.setDeviceEnabled(r.id, on, quiet: true));
+    }
   }
 
   /// The screens that hear [screenId], loudest first: where it is.

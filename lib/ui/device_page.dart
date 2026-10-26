@@ -10,6 +10,7 @@ import '../app.dart';
 import '../ble/connection_manager.dart';
 import '../ble/device_tracker.dart';
 import '../bms/registry.dart';
+import '../decoders/decoded.dart';
 import '../decoders/raw_advertisement.dart';
 import 'format.dart';
 import 'fridge_controls.dart';
@@ -45,11 +46,22 @@ class _DevicePageState extends State<DevicePage> {
   }
 
   Future<void> _saveKey() async {
-    final keys = AppServices.of(context).keys;
+    final services = AppServices.of(context);
+    final messenger = ScaffoldMessenger.of(context);
     try {
-      await keys.set(widget.id, _keyCtl.text);
+      await services.keys.set(widget.id, _keyCtl.text);
       setState(() => _keyError = null);
       _keyCtl.clear();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            services.home.inHome
+                ? 'Key saved and sent to your other screens. Watch the key '
+                      'status below.'
+                : 'Key saved. Watch the key status below.',
+          ),
+        ),
+      );
     } on FormatException catch (e) {
       setState(() => _keyError = e.message);
     }
@@ -144,11 +156,17 @@ class _DevicePageState extends State<DevicePage> {
                 const Divider(height: 32),
                 Text(d.protocol, style: theme.textTheme.titleMedium),
                 const SizedBox(height: 8),
-                if (dev.polled != null && dev.polledAt != null)
+                if (identical(d, dev.polled) && dev.polledAt != null)
                   Text(
                     dev.polledBy == null
                         ? 'Read over connection ${ago(dev.polledAt!)}'
                         : 'Read by ${dev.polledBy} ${ago(dev.polledAt!)}',
+                    style: theme.textTheme.bodySmall,
+                  )
+                else if (d.keyCheck == KeyCheck.works && d.decryptedAt != null)
+                  Text(
+                    'Read from its broadcasts, last decrypted '
+                    '${ago(d.decryptedAt!)}',
                     style: theme.textTheme.bodySmall,
                   ),
                 if (d.needs != null)
@@ -166,17 +184,18 @@ class _DevicePageState extends State<DevicePage> {
                 const Divider(height: 32),
                 Text('Encryption key', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 4),
-                Text(
-                  hasKey
-                      ? 'A key is stored for this device.'
-                      : 'Paste the 32-character hex key. Victron: VictronConnect > device > '
-                            'Settings > Product info > Instant readout via Bluetooth > Show. '
-                            'BTHome: the bindkey from the device firmware. '
-                            'Stock Xiaomi: the bindkey from the Xiaomi cloud; '
-                            'once it is in, every screen reads the sensor\'s '
-                            'broadcasts and none needs to connect.',
-                  style: theme.textTheme.bodySmall,
-                ),
+                if (hasKey)
+                  _KeyStatus(decoded: dev.decoded)
+                else
+                  Text(
+                    'Paste the 32-character hex key. Victron: VictronConnect > device > '
+                    'Settings > Product info > Instant readout via Bluetooth > Show. '
+                    'BTHome: the bindkey from the device firmware. '
+                    'Stock Xiaomi: the bindkey from the Xiaomi cloud; '
+                    'once it is in, every screen reads the sensor\'s '
+                    'broadcasts and none needs to connect.',
+                    style: theme.textTheme.bodySmall,
+                  ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _keyCtl,
@@ -347,6 +366,46 @@ class _DevicePageState extends State<DevicePage> {
   );
 }
 
+/// Whether the stored key works, so entering one gets an answer.
+class _KeyStatus extends StatelessWidget {
+  final Decoded? decoded;
+  const _KeyStatus({required this.decoded});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final c = theme.colorScheme;
+    final d = decoded;
+    final (icon, color, text) = switch (d?.keyCheck) {
+      KeyCheck.works => (
+        Icons.check_circle,
+        c.primary,
+        'Key works. ${d!.decryptedAt == null ? 'Its broadcasts decrypt' : 'Last broadcast decrypted ${ago(d.decryptedAt!)}'}'
+            ', so no screen needs to connect to it.',
+      ),
+      KeyCheck.wrong => (
+        Icons.error,
+        c.error,
+        'This key does not fit: a broadcast with readings did not '
+            'decrypt. Check that it is the key for this MAC.',
+      ),
+      _ => (
+        Icons.hourglass_top,
+        c.tertiary,
+        'Key saved. Waiting for a broadcast with readings to try it on; '
+            'stock Xiaomi sensors send one every few minutes.',
+      ),
+    };
+    return Card(
+      color: c.surfaceContainerHighest,
+      child: ListTile(
+        leading: Icon(icon, color: color),
+        title: Text(text),
+      ),
+    );
+  }
+}
+
 /// Status and controls for a device that is read over a GATT connection.
 class _ConnectionSection extends StatelessWidget {
   final Link link;
@@ -359,7 +418,13 @@ class _ConnectionSection extends StatelessWidget {
     final connections = AppServices.of(context).connections;
     final elsewhere = connections.heldElsewhere(link.id);
     final aside = connections.remote?.standAside(link.id);
-    final status = elsewhere != null
+    final broadcasts = device.decoded?.isReadable ?? false;
+    final status = !link.enabled && link.phase != LinkPhase.unsupported
+        ? 'Off. Le\'Casa only connects to devices you turn on here, so it '
+              'leaves other people\'s devices alone'
+        : broadcasts
+        ? 'Not needed now: its broadcasts carry the readings'
+        : elsewhere != null
         ? '${elsewhere.screen} holds this connection and shares what it '
               'reads, so this screen leaves the device alone'
         : aside != null
@@ -389,7 +454,7 @@ class _ConnectionSection extends StatelessWidget {
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Read over connection'),
+          title: const Text('Connect to this device'),
           subtitle: Text(status),
           value: link.enabled,
           onChanged: link.phase == LinkPhase.unsupported

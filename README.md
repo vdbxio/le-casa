@@ -49,9 +49,13 @@ The app currently
     [aiobmsble](https://github.com/patman15/aiobmsble). Batteries that
     need a PIN get a *Battery PIN* field on their page. Full list, PIN
     notes and iPad limits in [docs/bms.md](docs/bms.md).
-  - Each device has a "Read over connection" switch and a "Read now"
-    button on its page; the link icon on the scan screen pauses all
-    connections at once (handy when you want to use the vendor app).
+  - Le'Casa only connects to devices you turn on: each device has a
+    "Connect to this device" switch (off until you turn it on, so a
+    campground full of other people's batteries and fridges is left
+    alone) and a "Read now" button on its page. Broadcasts are always read.
+    The choice is shared with every screen in the home, and the link icon
+    on the scan screen pauses all connections at once (handy when you want
+    to use the vendor app).
   - Known issue: the PRITOM M10 test tablet loses every link to the Daly
     module about 4 s after the module's connection-parameter update.
     Asking Android for other link parameters or the 1M PHY changes

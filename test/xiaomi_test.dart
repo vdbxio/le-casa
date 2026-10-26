@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lecasa/ble/device_tracker.dart';
 import 'package:lecasa/decoders/decoded.dart';
 import 'package:lecasa/decoders/registry.dart';
 import 'package:lecasa/decoders/xiaomi.dart';
@@ -144,6 +145,47 @@ void main() {
       )!;
       expect(out.isReadable, isFalse);
       expect(out.needs, contains('bindkey'));
+      expect(out.keyCheck, KeyCheck.wrong);
+    });
+
+    test('says whether the key works', () {
+      final reg = DecoderRegistry.standard(keyFor: (_) => key);
+      // A keep-alive without values says nothing about the key.
+      final idle = reg.decode(
+        adv(serviceData: {0xFE95: '18 58 5b 05 01 b2 18 8d 38 c1 a4'}),
+      )!;
+      expect(idle.keyCheck, KeyCheck.waiting);
+      final out = reg.decode(
+        adv(
+          serviceData: {
+            0xFE95: frame([0x04, 0x10, 0x02, 0xd2, 0x00], 2),
+          },
+        ),
+      )!;
+      expect(out.keyCheck, KeyCheck.works);
+      expect(out.decryptedAt, isNotNull);
+    });
+
+    test('broadcast readings replace the connected ones', () {
+      final tracker = DeviceTracker(
+        DecoderRegistry.standard(keyFor: (_) => key),
+      );
+      final a = adv(serviceData: {0xFE95: '18 58 5b 05 01 b2 18 8d 38 c1 a4'});
+      tracker.onAdvertisement(a);
+      tracker.setPolled(
+        a.id,
+        const Decoded(protocol: 'Xiaomi (connected)', model: 'x'),
+      );
+      expect(tracker[a.id]!.view?.protocol, 'Xiaomi (connected)');
+      tracker.onAdvertisement(
+        adv(
+          serviceData: {
+            0xFE95: frame([0x04, 0x10, 0x02, 0xd2, 0x00], 2),
+          },
+        ),
+      );
+      expect(tracker[a.id]!.view?.protocol, 'Xiaomi MiBeacon');
+      expect(tracker[a.id]!.readsBroadcasts, isTrue);
     });
 
     test('object parsing', () {

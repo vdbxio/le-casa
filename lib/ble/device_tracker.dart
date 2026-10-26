@@ -50,6 +50,12 @@ class TrackedDevice {
   /// the broadcast decoder made of the device.
   Decoded? get view => polled ?? decoded;
 
+  /// The device's MAC: from the radio (Android), or from inside its
+  /// broadcast when it carries one (iOS hides MACs; stock Xiaomi and pvvx
+  /// send theirs).
+  String? get mac =>
+      latest.macString ?? decoded?.info['mac'] ?? polled?.info['mac'];
+
   String get title => view?.model ?? latest.name ?? 'Unknown device';
 
   DateTime get lastSeen => latest.seenAt;

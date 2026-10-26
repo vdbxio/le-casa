@@ -128,7 +128,8 @@ SessionOpener scannerOpener(BleScanner scanner, {bool pauseScan = true}) =>
       // left running is the classic cause of GATT status 133 on connect and of
       // links that time out right after they come up. Pause it for the few
       // seconds the link lives.
-      final wasScanning = pauseScan && scanner.scanning;
+      final wasScanning =
+          pauseScan && scanner.scanning && await RadioWrites.settle();
       if (wasScanning) await scanner.stop();
       try {
         final link = await GattLink.open(scanner.central, p);

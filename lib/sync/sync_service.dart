@@ -326,7 +326,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       screen: screen?.id,
       screenName: screen?.name,
       name: d?.latest.name,
-      mac: d?.latest.macString,
+      mac: d?.mac,
       fp: _fp(id),
     );
   }
@@ -434,7 +434,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
         'req': req,
         'o': owner,
         'id': deviceId,
-        'mac': ?tracker[id]?.latest.macString,
+        'mac': ?tracker[id]?.mac,
         'fp': ?_fp(id),
         'name': ?tracker[id]?.latest.name,
         's': command.setting,
@@ -729,7 +729,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     return SharedReading(
       id: d.id,
       name: d.latest.name,
-      mac: d.latest.macString,
+      mac: d.mac,
       fp: _fp(d.id),
       ownerId: home.me.id,
       ownerName: home.me.name,
@@ -758,7 +758,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
               d.id,
               d.latest.rssi,
               name: d.latest.name,
-              mac: d.latest.macString,
+              mac: d.mac,
               fp: _fp(d.id),
             ).toJson(),
       ],
@@ -1070,7 +1070,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     if (heard.any((d) => d.id == id)) return id;
     if (mac != null) {
       for (final d in heard) {
-        if (d.id == mac || d.latest.macString == mac) return d.id;
+        if (d.id == mac || d.mac == mac) return d.id;
       }
     }
     if (name != null) {

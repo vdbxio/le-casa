@@ -92,6 +92,7 @@ class _DevicePageState extends State<DevicePage> {
         final wantsKey =
             (d?.needs != null && !isBms && link == null) ||
             dev.decoded?.protocol == 'Xiaomi MiBeacon' ||
+            dev.polled?.protocol == 'Xiaomi (connected)' ||
             hasKey;
         final hasPin = services.keys.secretFor(widget.id) != null;
         return Scaffold(

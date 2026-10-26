@@ -152,7 +152,7 @@ class _LeCasaAppState extends State<LeCasaApp> {
     super.initState();
     keys.label = (id) {
       final d = tracker[id];
-      return (name: d?.latest.name, mac: d?.latest.macString);
+      return (name: d?.latest.name, mac: d?.mac);
     };
     keys
         .load()

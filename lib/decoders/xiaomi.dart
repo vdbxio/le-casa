@@ -52,6 +52,12 @@ class XiaomiStockDecoder implements Decoder {
     final info = {
       'product id': '0x${productId.toRadixString(16)}',
       'frame': '0x${frame.toRadixString(16)}',
+      // The frame carries the MAC, reversed: the only way iOS learns it.
+      if (frame & 0x0010 != 0 && d.length >= 11)
+        'mac': [
+          for (var i = 10; i >= 5; i--)
+            d[i].toRadixString(16).padLeft(2, '0').toUpperCase(),
+        ].join(':'),
     };
     if (key != null && encrypted) {
       final objects = decryptMiBeacon(d, key, adv.macString);

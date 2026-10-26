@@ -307,7 +307,10 @@ class BleSyncRadio implements SyncRadio {
     if (p == null) throw StateError('Screen not heard yet');
     // Scanning while connecting is the classic cause of status 133 on
     // cheap tablets; pause it for the connect, as device polls do.
-    final wasScanning = scanner.scanning;
+    final wasScanning =
+        !(connections?.holdLinks ?? false) &&
+        scanner.scanning &&
+        await RadioWrites.settle();
     if (wasScanning) await scanner.stop();
     GattLink? link;
     try {

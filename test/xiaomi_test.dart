@@ -125,6 +125,11 @@ void main() {
         'humidity': 45.0,
         'battery': 88,
       });
+      expect(
+        out.info['mac'],
+        'A4:C1:38:8D:18:B2',
+        reason: 'iOS learns it here',
+      );
     });
 
     test('a wrong key reads nothing', () {

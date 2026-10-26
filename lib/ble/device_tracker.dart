@@ -135,6 +135,15 @@ class DeviceTracker extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Forgets a device that only another screen told us about, once it
+  /// turns out to be one this screen hears under its own id.
+  void removeRemote(String id) {
+    if (_devices[id]?.remoteOnly ?? false) {
+      _devices.remove(id);
+      notifyListeners();
+    }
+  }
+
   TrackedDevice? operator [](String id) => _devices[id];
 
   void onAdvertisement(RawAdvertisement raw) {

@@ -679,7 +679,10 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     }
     await _publishOwn();
     if (_ticks % 10 == 1) await _beacon();
-    if (_ticks % 5 == 0) await _adoptKeys();
+    if (_ticks % 5 == 0) {
+      await _adoptKeys();
+      _mergeRemote();
+    }
   }
 
   /// The screen of this home to link to next, if any.
@@ -1033,6 +1036,30 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       }
     } finally {
       _applying = false;
+    }
+  }
+
+  /// A reading that arrived before this screen heard the device sits under
+  /// the other screen's id. Once this screen hears the device itself, move
+  /// the reading over and drop the stand-in, so it does not show twice.
+  void _mergeRemote() {
+    for (final e in _ownerSlotOf.entries.toList()) {
+      if (!(tracker[e.key]?.remoteOnly ?? false)) continue;
+      final r = _shared[e.value];
+      if (r == null) continue;
+      final local = _resolve(r.id, r.mac, r.name, r.fp);
+      if (local == e.key) continue;
+      _ownerSlotOf.remove(e.key);
+      _ownerSlotOf[local] = e.value;
+      tracker.removeRemote(e.key);
+      tracker.setRemote(
+        local,
+        decoded: r.decoded,
+        at: r.at,
+        by: r.ownerName,
+        name: r.name,
+        mac: parseMac(r.mac),
+      );
     }
   }
 

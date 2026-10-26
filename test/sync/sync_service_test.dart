@@ -354,6 +354,34 @@ void main() {
     expect(m10.tracker[ipadDaly], isNull);
   });
 
+  test('a reading that came before the device was heard moves over', () async {
+    final mfr = {
+      0x302: Uint8List.fromList([0x16, 0x40, 0x17, 0x10, 0x01, 0x5c]),
+    };
+    const ipadDaly = '7E48D8DF-E13A-24F8-78D4-C05C53494BA3';
+    const m10Daly = 'D2:19:08:01:C5:61';
+    ipad.hear(ipadDaly, 'DL-694201312BA', mfr: mfr);
+    ipad.tracker.setPolled(
+      ipadDaly,
+      const Decoded(
+        protocol: 'Daly',
+        model: 'BMS',
+        kind: DeviceKind.battery,
+        readings: [Reading('voltage', 26.5, 'V')],
+      ),
+    );
+    await ipad.sync.tick();
+    await settle();
+    expect(m10.tracker[ipadDaly]!.remoteOnly, isTrue);
+    m10.hear(m10Daly, null, mfr: mfr);
+    for (var i = 0; i < 5; i++) {
+      await m10.sync.tick();
+    }
+    expect(m10.tracker[ipadDaly], isNull);
+    expect(m10.tracker[m10Daly]!.polledBy, 'Kitchen iPad');
+    expect(m10.connections.heldElsewhere(m10Daly)?.screen, 'Kitchen iPad');
+  });
+
   test('a phone that got to a device first gives it to a tablet', () async {
     final phone = Screen(air, 'phone', 'iPhone', phone: true);
     addTearDown(phone.dispose);

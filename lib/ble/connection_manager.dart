@@ -342,6 +342,27 @@ class ConnectionManager extends ChangeNotifier {
     }
   }
 
+  /// Runs [f] with the radio to itself: waits for any poll in flight, and
+  /// no poll starts until [f] returns. Cheap tablets (the M10) fail every
+  /// connect with status 133 when two are attempted at once.
+  Future<T> exclusive<T>(String what, Future<T> Function() f) async {
+    final until = DateTime.now().add(const Duration(seconds: 60));
+    while (_busy != null) {
+      if (DateTime.now().isAfter(until)) {
+        throw TimeoutException('Bluetooth is busy with another device');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+    _busy = what;
+    notifyListeners();
+    try {
+      return await f();
+    } finally {
+      _busy = null;
+      notifyListeners();
+    }
+  }
+
   /// Called for every advertisement: the first one from a device a driver
   /// recognises schedules it.
   void onAdvertisement(RawAdvertisement adv) {

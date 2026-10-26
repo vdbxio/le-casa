@@ -104,6 +104,23 @@ void main() {
     m.dispose();
   });
 
+  test('nothing polls while another connect has the radio', () async {
+    final driver = ScriptedDriver();
+    final m = manager(driver);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    final gate = Completer<void>();
+    final held = m.exclusive('sync hub', () => gate.future);
+    await m.pump();
+    expect(driver.reads, 0);
+    expect(m.busyId, 'sync hub');
+    gate.complete();
+    await held;
+    await m.pump();
+    expect(driver.reads, 1);
+    m.dispose();
+  });
+
   test('does not poll again before the interval', () async {
     final driver = ScriptedDriver();
     final m = manager(driver);

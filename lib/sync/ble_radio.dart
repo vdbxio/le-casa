@@ -14,6 +14,7 @@ import 'package:bluetooth_low_energy/bluetooth_low_energy.dart';
 import 'package:flutter/foundation.dart';
 
 import '../ble/ble_scanner.dart';
+import '../ble/connection_manager.dart';
 import '../ble/gatt_link.dart';
 import '../ble/gatt_session.dart';
 import '../decoders/raw_advertisement.dart';
@@ -30,7 +31,10 @@ class BleSyncRadio implements SyncRadio {
   GATTCharacteristic? _tx;
   Uint8List _info = Uint8List(0);
 
-  BleSyncRadio(this.scanner);
+  /// Shares the radio with device polls, when given.
+  final ConnectionManager? connections;
+
+  BleSyncRadio(this.scanner, {this.connections});
 
   PeripheralManager get _pm => _pmInstance ??= PeripheralManager();
 
@@ -221,19 +225,45 @@ class BleSyncRadio implements SyncRadio {
   }
 
   @override
-  Future<MessageLink> connect(HubSighting hub) async {
+  Future<MessageLink> connect(HubSighting hub) {
+    final c = connections;
+    return c == null
+        ? _connect(hub)
+        : c.exclusive('sync hub', () => _connect(hub));
+  }
+
+  Future<MessageLink> _connect(HubSighting hub) async {
     final p = scanner.peripheralFor(hub.id);
     if (p == null) throw StateError('Hub not heard yet');
-    final link = await GattLink.open(scanner.central, p);
+    // Scanning while connecting is the classic cause of status 133 on
+    // cheap tablets; pause it for the connect, as device polls do.
+    final wasScanning = scanner.scanning;
+    if (wasScanning) await scanner.stop();
+    GattLink? link;
     try {
-      final rx = link.require(syncRxUuid, 'sync write');
-      final tx = link.require(syncTxUuid, 'sync notify');
-      final stream = await link.subscribe(tx);
-      final max = await link.maxWriteLength();
+      for (var attempt = 1; ; attempt++) {
+        try {
+          link = await GattLink.open(scanner.central, p);
+          break;
+        } catch (e) {
+          if (attempt >= 3 || !'$e'.contains('133')) rethrow;
+          debugPrint('sync: hub connect got 133, retry $attempt');
+          await Future<void>.delayed(Duration(milliseconds: 700 * attempt));
+        }
+      }
+    } finally {
+      if (wasScanning) unawaited(scanner.start());
+    }
+    final l = link;
+    try {
+      final rx = l.require(syncRxUuid, 'sync write');
+      final tx = l.require(syncTxUuid, 'sync notify');
+      final stream = await l.subscribe(tx);
+      final max = await l.maxWriteLength();
       debugPrint('sync: connected to hub ${hub.id}, chunks of $max');
-      return MessageLink(_GattChunkLink(link, rx, stream, max.clamp(20, 512)));
+      return MessageLink(_GattChunkLink(l, rx, stream, max.clamp(20, 512)));
     } catch (_) {
-      await link.close();
+      await l.close();
       rethrow;
     }
   }

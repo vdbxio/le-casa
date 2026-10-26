@@ -77,7 +77,14 @@ class GattLink implements ClosableSession {
     Duration timeout = const Duration(seconds: 32),
   }) async {
     debugPrint('gatt: connecting ${peripheral.uuid}');
-    await central.connect(peripheral).timeout(timeout);
+    try {
+      await central.connect(peripheral).timeout(timeout);
+    } on TimeoutException {
+      // iOS never gives up on a connect by itself; cancel it, or it stays
+      // pending and the next connect to this device is never answered.
+      await _cancel(central, peripheral);
+      rethrow;
+    }
     debugPrint('gatt: connected ${peripheral.uuid}, discovering services');
     try {
       // Ask for a big MTU first, like iOS and macOS do on every connection.
@@ -115,11 +122,17 @@ class GattLink implements ClosableSession {
       return GattLink._(central, peripheral, chars, serviceOf);
     } catch (e) {
       debugPrint('gatt: discovery on ${peripheral.uuid} failed: $e');
-      try {
-        await central.disconnect(peripheral);
-      } catch (_) {}
+      await _cancel(central, peripheral);
       rethrow;
     }
+  }
+
+  /// Disconnects, without waiting for ever: iOS answers a disconnect only
+  /// when the link actually goes down.
+  static Future<void> _cancel(CentralManager central, Peripheral p) async {
+    try {
+      await central.disconnect(p).timeout(const Duration(seconds: 5));
+    } catch (_) {}
   }
 
   GATTCharacteristic _platform(GattChar c) =>
@@ -184,11 +197,8 @@ class GattLink implements ClosableSession {
       await c.close();
     }
     _notify.clear();
-    try {
-      await _central.disconnect(peripheral).timeout(const Duration(seconds: 5));
-    } catch (_) {
-      // Already gone, or the stack is wedged; nothing more we can do.
-    }
+    // Already gone, or the stack is wedged; nothing more we can do.
+    await _cancel(_central, peripheral);
   }
 }
 

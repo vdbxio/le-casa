@@ -188,6 +188,18 @@ class ConnectionManager extends ChangeNotifier {
   Timer? _tick;
   bool _enabled = true;
   String? _busy;
+  DateTime? _busySince;
+
+  /// Bumped each time something takes the radio, so a call that comes back
+  /// after [stuckAfter] does not free the radio for whoever has it now.
+  int _turn = 0;
+
+  /// Nothing legitimate holds the radio this long (a connect gives up after
+  /// 32 s and a read after its driver's timeout). Past it, the radio is
+  /// taken back: a platform call that never returns must not stop every
+  /// device being read.
+  @visibleForTesting
+  Duration stuckAfter = const Duration(minutes: 2);
 
   /// Screen sync, once it is running.
   RemoteLinks? remote;
@@ -214,6 +226,38 @@ class ConnectionManager extends ChangeNotifier {
 
   /// Id of the device we are connected to right now, if any.
   String? get busyId => _busy;
+
+  int _take(String what) {
+    _busy = what;
+    _busySince = DateTime.now();
+    return ++_turn;
+  }
+
+  void _release(int turn) {
+    if (turn != _turn) return;
+    _busy = null;
+    _busySince = null;
+  }
+
+  /// Takes the radio back from a holder that has been stuck too long.
+  bool _free() {
+    final since = _busySince;
+    if (_busy == null) return true;
+    if (since == null || DateTime.now().difference(since) < stuckAfter) {
+      return false;
+    }
+    debugPrint('radio: $_busy held it since $since, taking it back');
+    final l = _links[_busy];
+    if (l != null && l.busy) {
+      l
+        ..phase = LinkPhase.failed
+        ..error = 'Bluetooth did not answer';
+    }
+    _turn++;
+    _busy = null;
+    _busySince = null;
+    return true;
+  }
 
   List<Link> get links => _links.values.toList();
 
@@ -314,7 +358,7 @@ class ConnectionManager extends ChangeNotifier {
     if (!_enabled) throw StateError('Connections are paused');
     if (!l.enabled) throw StateError('Turn on "Read over connection" first');
     final until = DateTime.now().add(const Duration(seconds: 60));
-    while (_busy != null) {
+    while (!_free()) {
       if (DateTime.now().isAfter(until)) {
         throw TimeoutException('Bluetooth is busy with another device');
       }
@@ -322,7 +366,7 @@ class ConnectionManager extends ChangeNotifier {
     }
     final dev = tracker[id];
     if (dev == null) throw StateError('Device gone');
-    _busy = id;
+    final turn = _take(id);
     l
       ..phase = LinkPhase.connecting
       ..lastAttempt = DateTime.now()
@@ -353,7 +397,7 @@ class ConnectionManager extends ChangeNotifier {
       rethrow;
     } finally {
       await link?.close();
-      _busy = null;
+      _release(turn);
       notifyListeners();
     }
   }
@@ -369,18 +413,18 @@ class ConnectionManager extends ChangeNotifier {
     Duration limit = const Duration(seconds: 60),
   }) async {
     final until = DateTime.now().add(const Duration(seconds: 60));
-    while (_busy != null) {
+    while (!_free()) {
       if (DateTime.now().isAfter(until)) {
         throw TimeoutException('Bluetooth is busy with another device');
       }
       await Future<void>.delayed(const Duration(milliseconds: 200));
     }
-    _busy = what;
+    final turn = _take(what);
     notifyListeners();
     try {
       return await f().timeout(limit);
     } finally {
-      _busy = null;
+      _release(turn);
       notifyListeners();
     }
   }
@@ -398,7 +442,7 @@ class ConnectionManager extends ChangeNotifier {
   /// Starts the most overdue poll if nothing is in flight. Runs on a timer;
   /// public so tests can drive it. Returns when that poll has finished.
   Future<void> pump() {
-    if (!_enabled || _busy != null) return Future.value();
+    if (!_enabled || !_free()) return Future.value();
     final now = DateTime.now();
     Link? pick;
     for (final l in _links.values) {
@@ -415,7 +459,7 @@ class ConnectionManager extends ChangeNotifier {
   Future<void> _poll(Link l) async {
     final dev = tracker[l.id];
     if (dev == null) return;
-    _busy = l.id;
+    final turn = _take(l.id);
     l
       ..phase = LinkPhase.connecting
       ..lastAttempt = DateTime.now()
@@ -449,10 +493,12 @@ class ConnectionManager extends ChangeNotifier {
       // Only a good read clears the count: on the M10 every other try at
       // the Daly fails while connecting, between the drops.
       if (dropped) l.drops++;
-      _fail(l, dropped ? 'The device dropped the connection' : _describe(e));
+      if (turn == _turn) {
+        _fail(l, dropped ? 'The device dropped the connection' : _describe(e));
+      }
     } finally {
       await link?.close();
-      _busy = null;
+      _release(turn);
       notifyListeners();
     }
   }

@@ -70,7 +70,7 @@ class BleScanner {
       _out.add(adv);
     });
     try {
-      await _central.startDiscovery();
+      await _central.startDiscovery().timeout(_platformLimit);
     } catch (e) {
       // Android reports SCAN_FAILED_ALREADY_STARTED (1) when another path
       // got there first; the radio is scanning, so that is not a failure.
@@ -96,7 +96,7 @@ class BleScanner {
       unawaited(
         _queue(() async {
           try {
-            await _central.stopDiscovery();
+            await _central.stopDiscovery().timeout(_platformLimit);
           } catch (_) {}
           _scanning = false;
           await _doStart();
@@ -105,6 +105,9 @@ class BleScanner {
     }
   }
 
+  /// A start or stop that never returns would hold up every later one,
+  /// and every connect waits for the scan to pause.
+  static const _platformLimit = Duration(seconds: 10);
   static const _offTooLong = Duration(seconds: 90);
   static const _quietTooLong = Duration(seconds: 45);
 
@@ -116,7 +119,11 @@ class BleScanner {
 
   Future<void> stop() => _queue(() async {
     if (!_scanning) return;
-    await _central.stopDiscovery();
+    try {
+      await _central.stopDiscovery().timeout(_platformLimit);
+    } on TimeoutException {
+      debugPrint('scan: stop did not answer');
+    }
     _scanning = false;
     _stoppedAt = DateTime.now();
   });

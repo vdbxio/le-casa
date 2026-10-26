@@ -138,6 +138,32 @@ void main() {
     m.dispose();
   });
 
+  test('a connect that never returns gives the radio back', () async {
+    final driver = ScriptedDriver();
+    var hang = true;
+    final m = manager(
+      driver,
+      open: (id) async {
+        if (hang) await Completer<void>().future;
+        return FakeSession(characteristics: const []);
+      },
+    )..stuckAfter = const Duration(milliseconds: 50);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    unawaited(m.pump());
+    await Future<void>.delayed(Duration.zero);
+    expect(m.busyId, testAdv.id);
+    await m.pump();
+    expect(driver.reads, 0, reason: 'still within the limit');
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    hang = false;
+    await m.readNow(testAdv.id);
+    expect(m[testAdv.id]?.error, isNull);
+    expect(driver.reads, 1);
+    expect(m.busyId, isNull);
+    m.dispose();
+  });
+
   test('does not poll again before the interval', () async {
     final driver = ScriptedDriver();
     final m = manager(driver);

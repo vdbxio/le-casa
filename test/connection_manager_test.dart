@@ -399,6 +399,23 @@ void main() {
       m.dispose();
     });
 
+    test('waits while another device connects', () async {
+      final driver = LiveScriptedDriver();
+      final m = manager(driver, holdLinks: true);
+      tracker.onAdvertisement(testAdv);
+      m.onAdvertisement(testAdv);
+      await m.pump();
+      final gate = Completer<void>();
+      final held = m.exclusive('Xiaomi', () => gate.future);
+      await m.pump();
+      expect(driver.reads, 1);
+      gate.complete();
+      await held;
+      await m.pump();
+      expect(driver.reads, 2);
+      m.dispose();
+    });
+
     test('only on screens that hold links', () async {
       final driver = LiveScriptedDriver();
       final m = manager(driver);

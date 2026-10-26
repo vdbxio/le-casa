@@ -499,7 +499,11 @@ class ConnectionManager extends ChangeNotifier {
           heldElsewhere(id) != null ||
           remote?.standAside(id) != null) {
         work.add(_release(id));
-      } else if (!_liveReading.contains(id) && !l.nextDue.isAfter(now)) {
+      } else if (_busy == null &&
+          !_liveReading.contains(id) &&
+          !l.nextDue.isAfter(now)) {
+        // Wait while another device connects: on the iPad a weak Xiaomi
+        // timed out connecting while the Daly was asked every few seconds.
         work.add(_readLive(l, _held[id]!));
       }
     }

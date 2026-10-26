@@ -8,6 +8,7 @@ import 'package:lecasa/decoders/decoded.dart';
 import 'package:lecasa/decoders/raw_advertisement.dart';
 import 'package:lecasa/decoders/registry.dart';
 import 'package:lecasa/drivers/driver.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fake_session.dart';
 import 'helpers.dart';
@@ -40,6 +41,22 @@ class ScriptedDriver implements GattDriver {
   }
 }
 
+class LiveScriptedDriver extends ScriptedDriver implements LiveDriver {
+  @override
+  Duration get liveInterval => Duration.zero;
+}
+
+/// Another screen that wants a device, or not.
+class _Aside implements RemoteLinks {
+  String? why;
+  @override
+  RemoteOwner? ownerOf(String id) => null;
+  @override
+  Future<void> control(String id, DeviceCommand command) async {}
+  @override
+  String? standAside(String id) => why;
+}
+
 class ControlDriver extends ScriptedDriver implements ControllableDriver {
   final commands = <DeviceCommand>[];
 
@@ -63,19 +80,25 @@ void main() {
     opened = [];
   });
 
-  ConnectionManager manager(GattDriver driver, {SessionOpener? open}) =>
-      ConnectionManager(
-        tracker,
-        drivers: GattDriverRegistry([driver]),
-        tick: const Duration(hours: 1),
-        open:
-            open ??
-            (id) async {
-              final s = FakeSession(characteristics: const []);
-              opened.add(s);
-              return s;
-            },
-      );
+  ConnectionManager manager(
+    GattDriver driver, {
+    SessionOpener? open,
+    bool holdLinks = false,
+    bool optIn = false,
+  }) => ConnectionManager(
+    tracker,
+    holdLinks: holdLinks,
+    optIn: optIn,
+    drivers: GattDriverRegistry([driver]),
+    tick: const Duration(hours: 1),
+    open:
+        open ??
+        (id) async {
+          final s = FakeSession(characteristics: const []);
+          opened.add(s);
+          return s;
+        },
+  );
 
   final testAdv = adv(
     id: 'AA:BB:CC:DD:EE:01',
@@ -101,6 +124,66 @@ void main() {
     // A later broadcast does not wipe the connected reading.
     tracker.onAdvertisement(testAdv);
     expect(tracker[testAdv.id]!.view?.model, 'Test device');
+    m.dispose();
+  });
+
+  test('nothing polls while another connect has the radio', () async {
+    final driver = ScriptedDriver();
+    final m = manager(driver);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    final gate = Completer<void>();
+    final held = m.exclusive('sync hub', () => gate.future);
+    await m.pump();
+    expect(driver.reads, 0);
+    expect(m.busyId, 'sync hub');
+    gate.complete();
+    await held;
+    await m.pump();
+    expect(driver.reads, 1);
+    m.dispose();
+  });
+
+  test('a Bluetooth call that never returns lets go of the radio', () async {
+    final driver = ScriptedDriver();
+    final m = manager(driver);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    final stuck = m.exclusive(
+      'screen sync',
+      () => Completer<void>().future,
+      limit: const Duration(milliseconds: 50),
+    );
+    await expectLater(stuck, throwsA(isA<TimeoutException>()));
+    expect(m.busyId, isNull);
+    await m.pump();
+    expect(driver.reads, 1);
+    m.dispose();
+  });
+
+  test('a connect that never returns gives the radio back', () async {
+    final driver = ScriptedDriver();
+    var hang = true;
+    final m = manager(
+      driver,
+      open: (id) async {
+        if (hang) await Completer<void>().future;
+        return FakeSession(characteristics: const []);
+      },
+    )..stuckAfter = const Duration(milliseconds: 50);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    unawaited(m.pump());
+    await Future<void>.delayed(Duration.zero);
+    expect(m.busyId, testAdv.id);
+    await m.pump();
+    expect(driver.reads, 0, reason: 'still within the limit');
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    hang = false;
+    await m.readNow(testAdv.id);
+    expect(m[testAdv.id]?.error, isNull);
+    expect(driver.reads, 1);
+    expect(m.busyId, isNull);
     m.dispose();
   });
 
@@ -277,6 +360,39 @@ void main() {
     m.dispose();
   });
 
+  test('with opt-in, only devices turned on are connected to', () async {
+    final driver = ScriptedDriver();
+    final m = manager(driver, optIn: true);
+    final told = <(String, bool)>[];
+    m.onChoice = (id, on) => told.add((id, on));
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.pump();
+    expect(driver.reads, 0);
+    expect(m[testAdv.id]!.phase, LinkPhase.off);
+    expect(m.hasChoice(testAdv.id), isFalse);
+    await m.setDeviceEnabled(testAdv.id, true);
+    expect(told, [(testAdv.id, true)]);
+    await m.pump();
+    expect(driver.reads, 1);
+    // A choice from another screen is not sent back.
+    await m.setDeviceEnabled(testAdv.id, false, quiet: true);
+    expect(told, hasLength(1));
+    expect(m.allows(testAdv.id), isFalse);
+    m.dispose();
+  });
+
+  test('devices turned off before opt-in stay off', () async {
+    SharedPreferences.setMockInitialValues({
+      'gatt:disabled': [testAdv.id],
+    });
+    final m = manager(ScriptedDriver());
+    await m.load();
+    expect(m.allows(testAdv.id), isFalse);
+    expect(m.hasChoice(testAdv.id), isTrue);
+    m.dispose();
+  });
+
   test('devices not heard for a while are not connected to', () async {
     final driver = ScriptedDriver();
     final m = manager(driver);
@@ -300,5 +416,93 @@ void main() {
     m.onAdvertisement(other);
     expect(m.links, isEmpty);
     m.dispose();
+  });
+
+  group('live links', () {
+    test('a live device stays connected and is read again', () async {
+      final driver = LiveScriptedDriver();
+      final m = manager(driver, holdLinks: true);
+      tracker.onAdvertisement(testAdv);
+      m.onAdvertisement(testAdv);
+      await m.pump();
+      expect(m.isLive(testAdv.id), isTrue);
+      expect(opened.single.closed, isFalse);
+      expect(m.busyId, isNull, reason: 'other devices can still be read');
+      await m.pump();
+      await m.pump();
+      expect(driver.reads, 3);
+      expect(opened, hasLength(1));
+      m.dispose();
+    });
+
+    test('waits while another device connects', () async {
+      final driver = LiveScriptedDriver();
+      final m = manager(driver, holdLinks: true);
+      tracker.onAdvertisement(testAdv);
+      m.onAdvertisement(testAdv);
+      await m.pump();
+      final gate = Completer<void>();
+      final held = m.exclusive('Xiaomi', () => gate.future);
+      await m.pump();
+      expect(driver.reads, 1);
+      gate.complete();
+      await held;
+      await m.pump();
+      expect(driver.reads, 2);
+      m.dispose();
+    });
+
+    test('only on screens that hold links', () async {
+      final driver = LiveScriptedDriver();
+      final m = manager(driver);
+      tracker.onAdvertisement(testAdv);
+      m.onAdvertisement(testAdv);
+      await m.pump();
+      expect(m.isLive(testAdv.id), isFalse);
+      expect(opened.single.closed, isTrue);
+      m.dispose();
+    });
+
+    test('reconnects when the device drops the link', () async {
+      final driver = LiveScriptedDriver();
+      final m = manager(driver, holdLinks: true);
+      tracker.onAdvertisement(testAdv);
+      m.onAdvertisement(testAdv);
+      await m.pump();
+      opened.single.drop();
+      await Future<void>.delayed(Duration.zero);
+      expect(m.isLive(testAdv.id), isFalse);
+      await m.pump();
+      expect(opened, hasLength(2));
+      expect(m.isLive(testAdv.id), isTrue);
+      m.dispose();
+    });
+
+    test('lets go when another screen should read it', () async {
+      final driver = LiveScriptedDriver();
+      final aside = _Aside();
+      final m = manager(driver, holdLinks: true)..remote = aside;
+      tracker.onAdvertisement(testAdv);
+      m.onAdvertisement(testAdv);
+      await m.pump();
+      aside.why = 'Locked to the iPad';
+      await m.pump();
+      expect(m.isLive(testAdv.id), isFalse);
+      expect(opened.single.closed, isTrue);
+      expect(driver.reads, 1);
+      m.dispose();
+    });
+
+    test('lets go when turned off', () async {
+      final driver = LiveScriptedDriver();
+      final m = manager(driver, holdLinks: true);
+      tracker.onAdvertisement(testAdv);
+      m.onAdvertisement(testAdv);
+      await m.pump();
+      await m.setDeviceEnabled(testAdv.id, false);
+      expect(m.isLive(testAdv.id), isFalse);
+      expect(opened.single.closed, isTrue);
+      m.dispose();
+    });
   });
 }

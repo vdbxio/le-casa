@@ -37,6 +37,13 @@ class MainActivity : FlutterActivity() {
                     window.attributes = lp
                     result.success(null)
                 }
+                "deviceName" -> {
+                    // The name set in Settings › About, else the model ("M10").
+                    val name = android.provider.Settings.Global.getString(
+                        contentResolver, "device_name"
+                    )
+                    result.success(if (name.isNullOrBlank()) android.os.Build.MODEL else name)
+                }
                 "keepScreenOn" -> {
                     if (call.arguments == true) {
                         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

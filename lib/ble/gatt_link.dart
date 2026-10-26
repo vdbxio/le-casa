@@ -77,7 +77,14 @@ class GattLink implements ClosableSession {
     Duration timeout = const Duration(seconds: 32),
   }) async {
     debugPrint('gatt: connecting ${peripheral.uuid}');
-    await central.connect(peripheral).timeout(timeout);
+    try {
+      await central.connect(peripheral).timeout(timeout);
+    } on TimeoutException {
+      // iOS never gives up on a connect by itself; cancel it, or it stays
+      // pending and the next connect to this device is never answered.
+      await _cancel(central, peripheral);
+      rethrow;
+    }
     debugPrint('gatt: connected ${peripheral.uuid}, discovering services');
     try {
       // Ask for a big MTU first, like iOS and macOS do on every connection.
@@ -115,15 +122,31 @@ class GattLink implements ClosableSession {
       return GattLink._(central, peripheral, chars, serviceOf);
     } catch (e) {
       debugPrint('gatt: discovery on ${peripheral.uuid} failed: $e');
-      try {
-        await central.disconnect(peripheral);
-      } catch (_) {}
+      await _cancel(central, peripheral);
       rethrow;
     }
   }
 
+  /// Disconnects, without waiting for ever: iOS answers a disconnect only
+  /// when the link actually goes down.
+  static Future<void> _cancel(CentralManager central, Peripheral p) async {
+    try {
+      await central.disconnect(p).timeout(const Duration(seconds: 5));
+    } catch (_) {}
+  }
+
   GATTCharacteristic _platform(GattChar c) =>
       _platformChars[characteristics.indexOf(c)];
+
+  /// Most bytes one write can carry on this link (MTU less the header).
+  Future<int> maxWriteLength({bool withResponse = true}) => _central
+      .getMaximumWriteLength(
+        peripheral,
+        type: withResponse
+            ? GATTCharacteristicWriteType.withResponse
+            : GATTCharacteristicWriteType.withoutResponse,
+      )
+      .timeout(const Duration(seconds: 5));
 
   @override
   Future<Uint8List> read(GattChar c) =>
@@ -140,13 +163,15 @@ class GattLink implements ClosableSession {
       'gatt: write ${c.uuid.substring(4, 8)} '
       '${useResponse ? 'with' : 'without'} response: ${_hex(data)}',
     );
-    return _central.writeCharacteristic(
-      peripheral,
-      _platform(c),
-      value: data,
-      type: useResponse
-          ? GATTCharacteristicWriteType.withResponse
-          : GATTCharacteristicWriteType.withoutResponse,
+    return RadioWrites.track(
+      _central.writeCharacteristic(
+        peripheral,
+        _platform(c),
+        value: data,
+        type: useResponse
+            ? GATTCharacteristicWriteType.withResponse
+            : GATTCharacteristicWriteType.withoutResponse,
+      ),
     );
   }
 
@@ -157,11 +182,11 @@ class GattLink implements ClosableSession {
     final ctl = StreamController<Uint8List>.broadcast();
     _notify[c.uuid] = ctl;
     debugPrint('gatt: subscribe ${c.uuid.substring(4, 8)}');
-    await _central.setCharacteristicNotifyState(
-      peripheral,
-      _platform(c),
-      state: true,
-    );
+    // iOS never answers when the other end drops mid-request, and a call
+    // that never returns holds the radio for every other device.
+    await _central
+        .setCharacteristicNotifyState(peripheral, _platform(c), state: true)
+        .timeout(const Duration(seconds: 10));
     return ctl.stream;
   }
 
@@ -174,13 +199,36 @@ class GattLink implements ClosableSession {
       await c.close();
     }
     _notify.clear();
-    try {
-      await _central.disconnect(peripheral).timeout(const Duration(seconds: 5));
-    } catch (_) {
-      // Already gone, or the stack is wedged; nothing more we can do.
-    }
+    // Already gone, or the stack is wedged; nothing more we can do.
+    await _cancel(_central, peripheral);
   }
 }
 
 String _hex(List<int> b) =>
     b.map((x) => x.toRadixString(16).padLeft(2, '0')).join(' ');
+
+/// Writes waiting for an answer, on any link. The M10's Bluetooth stack
+/// has crashed twice when the scan was paused for a connect while a write
+/// to another screen hung: the scan-filter command it sends on a pause
+/// timed out and took the stack down. Connects check this first.
+class RadioWrites {
+  static int _pending = 0;
+
+  static Future<T> track<T>(Future<T> write) {
+    _pending++;
+    return write.whenComplete(() => _pending--);
+  }
+
+  /// Waits up to [limit] for writes in flight to finish. False when some
+  /// are still waiting: leave the scan alone then.
+  static Future<bool> settle({
+    Duration limit = const Duration(seconds: 3),
+  }) async {
+    final until = DateTime.now().add(limit);
+    while (_pending > 0) {
+      if (DateTime.now().isAfter(until)) return false;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    return true;
+  }
+}

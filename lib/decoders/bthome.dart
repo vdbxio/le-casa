@@ -107,6 +107,7 @@ class BtHomeDecoder implements Decoder {
           model: _guessModel(adv, const []),
           needs: 'Decryption failed: wrong key?',
           info: extra,
+          keyCheck: KeyCheck.wrong,
         );
       }
       extra['counter'] = ByteData.sublistView(counter)
@@ -199,6 +200,7 @@ class BtHomeDecoder implements Decoder {
       readings: readings,
       events: events,
       info: extra,
+      keyCheck: encrypted ? KeyCheck.works : null,
     );
   }
 

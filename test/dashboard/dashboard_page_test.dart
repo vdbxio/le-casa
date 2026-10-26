@@ -8,6 +8,9 @@ import 'package:bluetooth_low_energy/bluetooth_low_energy.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lecasa/sync/ble_radio.dart';
+import 'package:lecasa/sync/home.dart';
+import 'package:lecasa/sync/sync_service.dart';
 import 'package:lecasa/app.dart';
 import 'package:lecasa/ble/ble_scanner.dart';
 import 'package:lecasa/ble/connection_manager.dart';
@@ -63,6 +66,8 @@ void main() {
             ..lux = 120;
           final dash = DashboardController();
           await dash.load();
+          final keys = KeyStore();
+          final home = HomeStore.memory('test', 'Test screen');
           dash.setLayout(
             autoLayout(
               catalog(
@@ -76,7 +81,7 @@ void main() {
               child: AppServices(
                 scanner: scanner,
                 autostart: ScanAutostart(scanner),
-                keys: KeyStore(),
+                keys: keys,
                 tracker: tracker,
                 connections: connections,
                 dashboard: dash,
@@ -84,6 +89,14 @@ void main() {
                 tablet: tablet,
                 settings: settings,
                 weather: weather,
+                home: home,
+                sync: SyncService(
+                  home: home,
+                  tracker: tracker,
+                  keys: keys,
+                  connections: connections,
+                  radio: BleSyncRadio(scanner),
+                ),
                 liveData: tracker,
                 child: MaterialApp(
                   debugShowCheckedModeBanner: false,

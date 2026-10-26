@@ -6,9 +6,9 @@
 // turns platform scan results into plain RawAdvertisement values.
 
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:bluetooth_low_energy/bluetooth_low_energy.dart';
+import 'package:flutter/foundation.dart';
 
 import '../decoders/raw_advertisement.dart';
 
@@ -41,31 +41,75 @@ class BleScanner {
 
   Future<void> showAppSettings() => _central.showAppSettings();
 
-  Future<void>? _starting;
+  /// Starts and stops run one after another: a start that arrives while a
+  /// stop is still going must not see the old "scanning" flag and do
+  /// nothing, or the scan stays off for good.
+  Future<void> _ops = Future.value();
+  Timer? _watchdog;
+  DateTime _lastAdvert = DateTime.now();
+  DateTime? _stoppedAt;
 
-  /// Starts scanning. Safe to call from several places at once: callers that
-  /// arrive while a start is in flight share the same future, and a platform
-  /// "already started" error is treated as success.
-  Future<void> start() {
-    if (_scanning) return Future.value();
-    return _starting ??= _doStart().whenComplete(() => _starting = null);
+  Future<void> _queue(Future<void> Function() op) {
+    final next = _ops.then((_) => op());
+    _ops = next.catchError((_) {});
+    return next;
   }
+
+  /// Starts scanning. Safe to call from several places at once; a platform
+  /// "already started" error is treated as success.
+  Future<void> start() => _queue(() async {
+    if (_scanning) return;
+    await _doStart();
+  });
 
   Future<void> _doStart() async {
     _sub ??= _central.discovered.listen((e) {
+      _lastAdvert = DateTime.now();
       final adv = toRaw(e.peripheral.uuid, e.rssi, e.advertisement);
       _peripherals[adv.id] = e.peripheral;
       _out.add(adv);
     });
     try {
-      await _central.startDiscovery();
+      await _central.startDiscovery().timeout(_platformLimit);
     } catch (e) {
       // Android reports SCAN_FAILED_ALREADY_STARTED (1) when another path
       // got there first; the radio is scanning, so that is not a failure.
       if (!_isAlreadyStarted(e)) rethrow;
     }
     _scanning = true;
+    _stoppedAt = null;
+    _lastAdvert = DateTime.now();
+    _watchdog ??= Timer.periodic(const Duration(seconds: 15), (_) => _check());
   }
+
+  /// Scans can die quietly: a pause for a connection whose restart got
+  /// lost, or iOS dropping the scan. Restart one that has been off for long
+  /// after a pause, or that has heard nothing at all for a while.
+  void _check() {
+    final now = DateTime.now();
+    final off = _stoppedAt;
+    if (!_scanning && off != null && now.difference(off) > _offTooLong) {
+      debugPrint('scan: off since $off, starting again');
+      unawaited(start().catchError((Object e) => debugPrint('scan: $e')));
+    } else if (_scanning && now.difference(_lastAdvert) > _quietTooLong) {
+      debugPrint('scan: nothing heard since $_lastAdvert, restarting');
+      unawaited(
+        _queue(() async {
+          try {
+            await _central.stopDiscovery().timeout(_platformLimit);
+          } catch (_) {}
+          _scanning = false;
+          await _doStart();
+        }).catchError((Object e) => debugPrint('scan: $e')),
+      );
+    }
+  }
+
+  /// A start or stop that never returns would hold up every later one,
+  /// and every connect waits for the scan to pause.
+  static const _platformLimit = Duration(seconds: 10);
+  static const _offTooLong = Duration(seconds: 90);
+  static const _quietTooLong = Duration(seconds: 45);
 
   static bool _isAlreadyStarted(Object e) {
     final msg = e.toString().toLowerCase();
@@ -73,13 +117,19 @@ class BleScanner {
         RegExp(r'error ?code[ =:]*1\b').hasMatch(msg);
   }
 
-  Future<void> stop() async {
+  Future<void> stop() => _queue(() async {
     if (!_scanning) return;
-    await _central.stopDiscovery();
+    try {
+      await _central.stopDiscovery().timeout(_platformLimit);
+    } on TimeoutException {
+      debugPrint('scan: stop did not answer');
+    }
     _scanning = false;
-  }
+    _stoppedAt = DateTime.now();
+  });
 
   Future<void> dispose() async {
+    _watchdog?.cancel();
     await stop();
     await _sub?.cancel();
     await _out.close();

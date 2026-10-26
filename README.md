@@ -21,9 +21,9 @@ The app currently
   chargers, SmartShunt/BMV battery monitors, Orion DC/DC. Model names come
   straight from the unencrypted header, so an MPPT is recognised before
   you enter its key;
-- recognises a Xiaomi sensor still on **stock firmware** and tells you to
-  flash pvvx, and reads the pvvx "custom" and ATC1441 formats in the
-  meantime;
+- decodes **stock Xiaomi MiBeacon** broadcasts (AES-CCM) once you enter
+  the sensor's bindkey (see below), and reads the pvvx "custom" and
+  ATC1441 formats;
 - recognises **Improv BLE** Wi-Fi setup broadcasts and parks them in
   their own group;
 - stores per-device encryption keys on the tablet;
@@ -49,9 +49,13 @@ The app currently
     [aiobmsble](https://github.com/patman15/aiobmsble). Batteries that
     need a PIN get a *Battery PIN* field on their page. Full list, PIN
     notes and iPad limits in [docs/bms.md](docs/bms.md).
-  - Each device has a "Read over connection" switch and a "Read now"
-    button on its page; the link icon on the scan screen pauses all
-    connections at once (handy when you want to use the vendor app).
+  - Le'Casa only connects to devices you turn on: each device has a
+    "Connect to this device" switch (off until you turn it on, so a
+    campground full of other people's batteries and fridges is left
+    alone) and a "Read now" button on its page. Broadcasts are always read.
+    The choice is shared with every screen in the home, and the link icon
+    on the scan screen pauses all connections at once (handy when you want
+    to use the vendor app).
   - Known issue: the PRITOM M10 test tablet loses every link to the Daly
     module about 4 s after the module's connection-parameter update.
     Asking Android for other link parameters or the 1M PHY changes
@@ -94,6 +98,33 @@ Flash [pvvx firmware](https://pvvx.github.io/ATC_MiThermometer/TelinkMiFlasher.h
 from Chrome on a laptop or Android, then in the same page set
 *Advertising type* to **BTHome**. Done; the sensor shows up as
 "Xiaomi LYWSD03MMC (pvvx)".
+
+### Xiaomi bindkey (stock firmware)
+
+A sensor left on stock firmware encrypts its broadcasts with a bindkey.
+Le'Casa reads it over a connection every 5 minutes without one, but with
+the bindkey every screen reads its broadcasts as they come and nothing
+needs to connect. Paste the 32 hex characters into *Encryption key* on
+the sensor's page; the key reaches your other screens by itself.
+
+Two ways to get a bindkey:
+
+1. **Without a Xiaomi account (recommended).** Open the
+   [TelinkMiFlasher page](https://pvvx.github.io/ATC_MiThermometer/TelinkMiFlasher.html)
+   in Chrome on a laptop or an Android phone, tick *Get Advertising MAC*
+   if offered, *Connect* to the sensor and press **Do Activation**. The
+   page makes a new bindkey on your machine and shows it (*Mi Bind
+   Key*). The sensor is then bound to that key and drops out of Mi Home,
+   so use this for sensors you only read with Le'Casa.
+2. **From your Xiaomi account,** for sensors you want to keep in Mi Home.
+   Run [Xiaomi-cloud-tokens-extractor](https://github.com/PiotrMachowski/Xiaomi-cloud-tokens-extractor)
+   (`pip install` and run `token_extractor.py`, or the prebuilt
+   Windows/macOS binary), sign in with your Xiaomi account, pick the
+   server region your Mi Home app uses, and copy the *BLE KEY* shown
+   for each sensor, matching it by MAC. The login goes to Xiaomi's
+   servers; Le'Casa itself never needs it.
+
+Flashing pvvx firmware with BTHome (above) avoids bindkeys altogether.
 
 ### Le'Fob
 

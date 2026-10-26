@@ -27,9 +27,18 @@ class TrackedDevice {
 
   /// The latest reading taken over a GATT connection, for devices that do
   /// not broadcast their values (Daly BMS, stock Xiaomi). Survives new
-  /// advertisements; [view] prefers it over [decoded].
+  /// advertisements; [view] prefers it over [decoded] until the broadcasts
+  /// can be read.
   Decoded? polled;
   DateTime? polledAt;
+
+  /// The screen that took [polled], when it was not this one: another
+  /// tablet or phone in the home that holds the connection and shares
+  /// what it reads.
+  String? polledBy;
+
+  /// True for a device this screen only knows from another screen.
+  bool remoteOnly = false;
   final DateTime firstSeen;
   int packets = 1;
   String? lastPacketId;
@@ -38,9 +47,22 @@ class TrackedDevice {
 
   TrackedDevice(this.latest) : id = latest.id, firstSeen = latest.seenAt;
 
-  /// What to show: the connected reading when there is one, else whatever
-  /// the broadcast decoder made of the device.
-  Decoded? get view => polled ?? decoded;
+  /// What to show: the broadcast readings once they can be read (a stock
+  /// Xiaomi after its bindkey is entered, when nothing connects to it any
+  /// more), else the connected reading, else whatever the broadcast
+  /// decoder made of the device.
+  Decoded? get view =>
+      (decoded?.isReadable ?? false) ? decoded : polled ?? decoded;
+
+  /// Whether readings come from the device's broadcasts rather than a
+  /// connection.
+  bool get readsBroadcasts => polled != null && (decoded?.isReadable ?? false);
+
+  /// The device's MAC: from the radio (Android), or from inside its
+  /// broadcast when it carries one (iOS hides MACs; stock Xiaomi and pvvx
+  /// send theirs).
+  String? get mac =>
+      latest.macString ?? decoded?.info['mac'] ?? polled?.info['mac'];
 
   String get title => view?.model ?? latest.name ?? 'Unknown device';
 
@@ -95,7 +117,45 @@ class DeviceTracker extends ChangeNotifier {
     if (d == null) return;
     d.polled = decoded;
     d.polledAt = DateTime.now();
+    d.polledBy = null;
     notifyListeners();
+  }
+
+  /// Stores a reading another screen took over its connection. Creates the
+  /// device when this screen has never heard it (out of range, or iOS and
+  /// Android know it under different ids). Ignored when this screen has a
+  /// newer reading of its own.
+  void setRemote(
+    String id, {
+    required Decoded decoded,
+    required DateTime at,
+    required String by,
+    String? name,
+    Uint8List? mac,
+  }) {
+    var d = _devices[id];
+    if (d == null) {
+      d = TrackedDevice(
+        RawAdvertisement(id: id, rssi: 0, seenAt: at, name: name, mac: mac),
+      )..remoteOnly = true;
+      _devices[id] = d;
+    } else if (d.polledAt != null && !at.isAfter(d.polledAt!)) {
+      return;
+    }
+    if (d.remoteOnly) d.latest = d.latest.withSeenAt(at);
+    d.polled = decoded;
+    d.polledAt = at;
+    d.polledBy = by;
+    notifyListeners();
+  }
+
+  /// Forgets a device that only another screen told us about, once it
+  /// turns out to be one this screen hears under its own id.
+  void removeRemote(String id) {
+    if (_devices[id]?.remoteOnly ?? false) {
+      _devices.remove(id);
+      notifyListeners();
+    }
   }
 
   TrackedDevice? operator [](String id) => _devices[id];
@@ -117,6 +177,7 @@ class DeviceTracker extends ChangeNotifier {
         .._logEvents(decoded);
     } else {
       d.latest = adv;
+      d.remoteOnly = false;
       d.packets++;
       if (decoded != null) {
         d.decoded = decoded;

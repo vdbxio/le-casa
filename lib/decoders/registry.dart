@@ -10,6 +10,7 @@ import 'daly.dart';
 import 'decoded.dart';
 import 'decoder.dart';
 import 'improv.dart';
+import 'lecasa.dart';
 import 'raw_advertisement.dart';
 import 'victron.dart';
 import 'xiaomi.dart';
@@ -26,7 +27,7 @@ class DecoderRegistry {
       DecoderRegistry([
         BtHomeDecoder(keyFor: keyFor),
         VictronDecoder(keyFor: keyFor),
-        const XiaomiStockDecoder(),
+        XiaomiStockDecoder(keyFor: keyFor),
         const PvvxCustomDecoder(),
         const ImprovDecoder(),
         const DalyDecoder(),
@@ -35,6 +36,7 @@ class DecoderRegistry {
         // after the appliances: some BMS name patterns are broad
         const BmsDecoder(),
         const AppleDecoder(),
+        const LeCasaScreenDecoder(),
       ]);
 
   Decoded? decode(RawAdvertisement adv) {

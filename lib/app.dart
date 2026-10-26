@@ -4,6 +4,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 
 import 'ble/ble_scanner.dart';
@@ -19,6 +20,9 @@ import 'keys/key_store.dart';
 import 'platform/tablet.dart';
 import 'settings/dimmer.dart';
 import 'settings/settings_store.dart';
+import 'sync/ble_radio.dart';
+import 'sync/home.dart';
+import 'sync/sync_service.dart';
 import 'ui/palette.dart';
 import 'weather/weather.dart';
 
@@ -35,6 +39,8 @@ class AppServices extends InheritedWidget {
   final TabletSensors tablet;
   final SettingsStore settings;
   final WeatherService weather;
+  final HomeStore home;
+  final SyncService sync;
 
   /// Fires when anything a card shows has changed, at most once a second.
   final Listenable liveData;
@@ -51,6 +57,8 @@ class AppServices extends InheritedWidget {
     required this.tablet,
     required this.settings,
     required this.weather,
+    required this.home,
+    required this.sync,
     required this.liveData,
     required super.child,
   });
@@ -115,12 +123,24 @@ class _LeCasaAppState extends State<LeCasaApp> {
     scanner,
     tracker,
     drivers: GattDriverRegistry.standard(secretFor: keys.secretFor),
+    holdLinks:
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS,
+    optIn: true,
   );
   late final DashboardController dashboard = DashboardController();
   late final History history = History(tracker);
   late final TabletSensors tablet = TabletSensors();
   late final SettingsStore settings = SettingsStore();
   late final WeatherService weather = WeatherService(settings);
+  late final HomeStore home = HomeStore();
+  late final SyncService sync = SyncService(
+    home: home,
+    tracker: tracker,
+    keys: keys,
+    connections: connections,
+    radio: BleSyncRadio(scanner, connections: connections),
+  );
   late final Throttled liveData = Throttled(
     Listenable.merge([tracker, tablet, weather]),
     const Duration(seconds: 1),
@@ -131,7 +151,15 @@ class _LeCasaAppState extends State<LeCasaApp> {
   @override
   void initState() {
     super.initState();
-    keys.load();
+    keys.label = (id) {
+      final d = tracker[id];
+      return (name: d?.latest.name, mac: d?.mac);
+    };
+    keys
+        .load()
+        .then((_) => home.load())
+        .then((_) => sync.readBy.load())
+        .then((_) => sync.start());
     connections.load();
     dashboard.load();
     keys.addListener(tracker.redecodeAll);
@@ -161,6 +189,7 @@ class _LeCasaAppState extends State<LeCasaApp> {
     _dimmer?.dispose();
     liveData.dispose();
     weather.dispose();
+    sync.dispose();
     tablet.dispose();
     history.dispose();
     dashboard.dispose();
@@ -183,6 +212,8 @@ class _LeCasaAppState extends State<LeCasaApp> {
       tablet: tablet,
       settings: settings,
       weather: weather,
+      home: home,
+      sync: sync,
       liveData: liveData,
       child: ListenableBuilder(
         listenable: settings,

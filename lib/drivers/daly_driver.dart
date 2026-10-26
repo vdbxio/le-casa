@@ -16,7 +16,7 @@ import '../decoders/raw_advertisement.dart';
 import 'daly_protocol.dart';
 import 'driver.dart';
 
-class DalyDriver implements GattDriver {
+class DalyDriver implements LiveDriver {
   static const serviceUuid = 'fff0';
   static const notifyUuid = 'fff1';
   static const writeUuid = 'fff2';
@@ -35,6 +35,10 @@ class DalyDriver implements GattDriver {
 
   @override
   Duration get timeout => const Duration(seconds: 25);
+
+  /// Once connected the module answers in about 200 ms.
+  @override
+  Duration get liveInterval => const Duration(seconds: 3);
 
   @override
   bool matches(RawAdvertisement adv) => const DalyDecoder().matches(adv);

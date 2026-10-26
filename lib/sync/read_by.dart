@@ -159,6 +159,17 @@ class ReadByStore extends ChangeNotifier {
     return true;
   }
 
+  /// Forgets [id]'s record on this screen only (one filed under the wrong
+  /// device).
+  Future<void> drop(String id) async {
+    if (_records.remove(id) == null) return;
+    await _prefs?.setString(
+      _key,
+      jsonEncode([for (final r in _records.values) r.toJson()]),
+    );
+    notifyListeners();
+  }
+
   Future<void> _put(ReadByRecord r) async {
     _records[r.id] = r;
     await _prefs?.setString(

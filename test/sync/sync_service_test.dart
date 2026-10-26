@@ -502,6 +502,50 @@ void main() {
   );
 
   test(
+    'a key for one of two identical sensors never lands on the other',
+    () async {
+      // The M10 knows both by MAC; the iPad has heard only the other one,
+      // and not yet learnt its MAC.
+      const m10Warm = 'A4:C1:38:DF:07:81';
+      const m10Cold = 'A4:C1:38:50:6E:3A';
+      const ipadCold = '8918B170-0000-4000-8000-6D06C31036F5';
+      m10.hear(m10Warm, 'LYWSD03MMC');
+      m10.hear(m10Cold, 'LYWSD03MMC');
+      ipad.hear(ipadCold, 'LYWSD03MMC');
+      await m10.keys.set(m10Warm, '00112233445566778899aabbccddeeff');
+      await settle();
+      for (var i = 0; i < 5; i++) {
+        await ipad.sync.tick();
+      }
+      expect(ipad.keys.has(ipadCold), isFalse);
+    },
+  );
+
+  test('a key filed under the wrong sensor is dropped there only', () async {
+    const m10Warm = 'A4:C1:38:DF:07:81';
+    const m10Cold = 'A4:C1:38:50:6E:3A';
+    m10.hear(m10Cold, 'LYWSD03MMC');
+    await m10.keys.apply(
+      const KeyRecord(
+        SecretKind.key,
+        m10Cold,
+        name: 'LYWSD03MMC',
+        mac: m10Warm,
+        value: '00112233445566778899aabbccddeeff',
+        at: 1,
+      ),
+    );
+    expect(m10.keys.has(m10Cold), isTrue);
+    for (var i = 0; i < 5; i++) {
+      await m10.sync.tick();
+    }
+    await settle();
+    expect(m10.keys.has(m10Cold), isFalse);
+    // No removal went out for the other screens to copy.
+    expect(m10.keys.records.where((r) => r.id == m10Cold), isEmpty);
+  });
+
+  test(
     'a third screen joins through any screen and extends the mesh',
     () async {
       // The phone is only in range of the M10, and pairs through it.

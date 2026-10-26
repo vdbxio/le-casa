@@ -1055,6 +1055,15 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
   Future<void> _adoptKeys() async {
     _applying = true;
     try {
+      // Before matching was strict, a key or lock could land on the wrong
+      // one of two identical sensors. Drop it here only: the record still
+      // names the right device, which keeps its own copy.
+      for (final r in keys.records) {
+        if (_misfiled(r.id, r.mac)) await keys.drop(r.kind, r.id);
+      }
+      for (final r in readBy.records) {
+        if (_misfiled(r.id, r.mac)) await readBy.drop(r.id);
+      }
       for (final r in keys.records) {
         if (r.value == null || tracker[r.id] != null) continue;
         final local = _resolve(r.id, r.mac, r.name);
@@ -1104,15 +1113,30 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
         if (d.id == mac || d.mac == mac) return d.id;
       }
     }
-    if (name != null) {
-      final named = heard.where((d) => d.latest.name == name).toList();
+    // By name or data only when nothing says it is another device: a
+    // known MAC that differs rules a device out.
+    final open = [
+      for (final d in heard)
+        if (mac == null || d.mac == null || d.mac == mac) d,
+    ];
+    // Every stock Xiaomi is called LYWSD03MMC: hearing only one of them
+    // does not make it the one meant. Wait for its MAC instead.
+    if (name != null && !genericName(name)) {
+      final named = open.where((d) => d.latest.name == name).toList();
       if (named.length == 1) return named.single.id;
     }
-    if (fp != null) {
-      final same = heard.where((d) => _fp(d.id) == fp).toList();
+    if (fp != null && (name == null || !genericName(name))) {
+      final same = open.where((d) => _fp(d.id) == fp).toList();
       if (same.length == 1) return same.single.id;
     }
     return id;
+  }
+
+  /// Whether a record kept under [id] is about another device: both MACs
+  /// are known and differ.
+  bool _misfiled(String id, String? mac) {
+    final own = tracker[id]?.mac;
+    return mac != null && own != null && own != mac;
   }
 
   String? _fp(String id) {
@@ -1143,3 +1167,10 @@ int _max(int a, int b) => a > b ? a : b;
 
 String _hex(List<int> b) =>
     b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
+
+/// Model names every unit of a kind shares, so they cannot tell two
+/// devices apart.
+bool genericName(String name) => RegExp(
+  r'^(LYWSD03MMC|LYWSD02MMC|LYWSDCGQ|MJ_HT_V1|CGG1|CGDK2|MHO-C401|BTHome)$',
+  caseSensitive: false,
+).hasMatch(name);

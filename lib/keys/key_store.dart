@@ -126,6 +126,22 @@ class KeyStore extends ChangeNotifier {
   Future<void> removeSecret(String id) =>
       _put(_local(SecretKind.pin, id, null));
 
+  /// Forgets an entry on this screen only, leaving no removal behind for
+  /// other screens to copy: for one filed under the wrong device.
+  Future<void> drop(SecretKind kind, String id) async {
+    switch (kind) {
+      case SecretKind.key:
+        _keys.remove(id);
+        await _prefs?.remove('$_prefix$id');
+      case SecretKind.pin:
+        _secrets.remove(id);
+        await _prefs?.remove('$_secretPrefix$id');
+    }
+    _meta.remove(_slot(kind, id));
+    await _prefs?.remove('$_metaPrefix${_slot(kind, id)}');
+    notifyListeners();
+  }
+
   /// Every key and PIN with its sync bookkeeping, removals included.
   List<KeyRecord> get records {
     final out = <String, KeyRecord>{..._meta};

@@ -22,7 +22,7 @@ typedef SecretProvider = String? Function(String id);
 
 String? noSecrets(String id) => null;
 
-class BmsDriver implements GattDriver {
+class BmsDriver implements LiveDriver {
   final SecretProvider secretFor;
 
   /// Module names left to other drivers, e.g. Daly, which has its own.
@@ -42,6 +42,12 @@ class BmsDriver implements GattDriver {
   /// BMSs need several, plus a device info read the first time.
   @override
   Duration get timeout => const Duration(seconds: 45);
+
+  /// Next read this long after the last one finished, on a link that
+  /// stays open. Each read sets the BMS up again (subscribe, any wake-up
+  /// command), which costs little once connected.
+  @override
+  Duration get liveInterval => const Duration(seconds: 3);
 
   BmsSpec? specFor(RawAdvertisement adv) {
     final s = bmsSpecFor(adv);

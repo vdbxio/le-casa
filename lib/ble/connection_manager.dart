@@ -9,6 +9,7 @@
 // to the broadcast ones.
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -128,7 +129,8 @@ SessionOpener scannerOpener(BleScanner scanner, {bool pauseScan = true}) =>
       // left running is the classic cause of GATT status 133 on connect and of
       // links that time out right after they come up. Pause it for the few
       // seconds the link lives.
-      final wasScanning = pauseScan && scanner.scanning;
+      final wasScanning =
+          pauseScan && scanner.scanning && await RadioWrites.settle();
       if (wasScanning) await scanner.stop();
       try {
         final link = await GattLink.open(scanner.central, p);
@@ -174,6 +176,7 @@ class _ScanPausingSession implements ClosableSession {
 
 class ConnectionManager extends ChangeNotifier {
   static const _disabledKey = 'gatt:disabled';
+  static const _choiceKey = 'gatt:choice';
   static const _globalKey = 'gatt:enabled';
 
   /// Do not try to connect to something we have not heard from recently;
@@ -193,7 +196,19 @@ class ConnectionManager extends ChangeNotifier {
 
   /// Open links kept for [holdLinks], by device id.
   final Map<String, ClosableSession> _held = {};
-  final Set<String> _disabled = {};
+
+  /// Connect only to devices the person turned on. Otherwise every device
+  /// a driver recognises is read, which at a campground full of other
+  /// people's batteries and fridges means connecting to all of them (and
+  /// taking the one connection most allow from their owners' apps).
+  final bool optIn;
+
+  /// The person's choice per device: true to connect, false not to.
+  final Map<String, bool> _choice = {};
+
+  /// Told when the person turns a device on or off here, so the other
+  /// screens in the home can follow.
+  void Function(String id, bool on)? onChoice;
   SharedPreferences? _prefs;
   Timer? _tick;
   bool _enabled = true;
@@ -220,6 +235,7 @@ class ConnectionManager extends ChangeNotifier {
     GattDriverRegistry? drivers,
     Duration tick = const Duration(seconds: 1),
     this.holdLinks = false,
+    this.optIn = false,
   }) : drivers = drivers ?? GattDriverRegistry.standard(),
        // ignore: prefer_initializing_formals
        _open = open {
@@ -231,6 +247,7 @@ class ConnectionManager extends ChangeNotifier {
     DeviceTracker tracker, {
     GattDriverRegistry? drivers,
     bool holdLinks = false,
+    bool optIn = false,
   }) : this(
          tracker,
          // A held link would keep the scan paused for good; screens that
@@ -238,10 +255,17 @@ class ConnectionManager extends ChangeNotifier {
          open: scannerOpener(scanner, pauseScan: !holdLinks),
          drivers: drivers,
          holdLinks: holdLinks,
+         optIn: optIn,
        );
 
   /// Whether this screen keeps a link to [id] open and reads it live.
   bool isLive(String id) => _held.containsKey(id);
+
+  /// Whether the person lets this screen connect to [id].
+  bool allows(String id) => _choice[id] ?? !optIn;
+
+  /// Whether the person has said either way for [id].
+  bool hasChoice(String id) => _choice.containsKey(id);
 
   /// Global switch: when off, nothing connects to anything.
   bool get enabled => _enabled;
@@ -287,12 +311,31 @@ class ConnectionManager extends ChangeNotifier {
 
   Future<void> load() async {
     _prefs = await SharedPreferences.getInstance();
-    _disabled.addAll(_prefs!.getStringList(_disabledKey) ?? const []);
+    try {
+      final saved = jsonDecode(_prefs!.getString(_choiceKey) ?? '{}') as Map;
+      for (final e in saved.entries) {
+        if (e.value is bool) _choice['${e.key}'] = e.value as bool;
+      }
+    } catch (_) {}
+    // Before the choice map there was only a list of devices turned off.
+    for (final id in _prefs!.getStringList(_disabledKey) ?? const <String>[]) {
+      _choice.putIfAbsent(id, () => false);
+    }
     _enabled = _prefs!.getBool(_globalKey) ?? true;
     for (final l in _links.values) {
-      if (_disabled.contains(l.id) && !l.busy) l.phase = LinkPhase.off;
+      if (!allows(l.id) && !l.busy) l.phase = LinkPhase.off;
+      if (allows(l.id) && l.phase == LinkPhase.off) {
+        l
+          ..phase = LinkPhase.scheduled
+          ..nextDue = DateTime.now();
+      }
     }
     notifyListeners();
+  }
+
+  Future<void> _saveChoices() async {
+    await _prefs?.setString(_choiceKey, jsonEncode(_choice));
+    await _prefs?.remove(_disabledKey);
   }
 
   Future<void> setEnabled(bool v) async {
@@ -302,11 +345,13 @@ class ConnectionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Per-device on/off, remembered across restarts.
-  Future<void> setDeviceEnabled(String id, bool v) async {
+  /// Per-device on/off, remembered across restarts. [quiet] for a choice
+  /// that came from another screen, so it is not sent back.
+  Future<void> setDeviceEnabled(String id, bool v, {bool quiet = false}) async {
     final l = _links[id];
+    final changed = _choice[id] != v;
+    _choice[id] = v;
     if (v) {
-      _disabled.remove(id);
       if (l != null && l.phase == LinkPhase.off) {
         l
           ..phase = LinkPhase.scheduled
@@ -314,11 +359,11 @@ class ConnectionManager extends ChangeNotifier {
           ..nextDue = DateTime.now();
       }
     } else {
-      _disabled.add(id);
       await _release(id);
       if (l != null && !l.busy) l.phase = LinkPhase.off;
     }
-    await _prefs?.setStringList(_disabledKey, _disabled.toList());
+    await _saveChoices();
+    if (changed && !quiet) onChoice?.call(id, v);
     notifyListeners();
   }
 
@@ -328,10 +373,8 @@ class ConnectionManager extends ChangeNotifier {
   Future<void> readNow(String id) {
     final l = _links[id];
     if (l == null || l.phase == LinkPhase.unsupported) return Future.value();
-    if (l.phase == LinkPhase.off) {
-      _disabled.remove(id);
-      _prefs?.setStringList(_disabledKey, _disabled.toList());
-    }
+    // Asking for a read is saying yes to connecting.
+    if (!allows(id)) unawaited(setDeviceEnabled(id, true));
     if (!l.busy) {
       l
         ..phase = LinkPhase.scheduled
@@ -380,7 +423,7 @@ class ConnectionManager extends ChangeNotifier {
       throw StateError('This device cannot be controlled');
     }
     if (!_enabled) throw StateError('Connections are paused');
-    if (!l.enabled) throw StateError('Turn on "Read over connection" first');
+    if (!l.enabled) throw StateError('Turn on "Connect to this device" first');
     final until = DateTime.now().add(const Duration(seconds: 60));
     while (!_free()) {
       if (DateTime.now().isAfter(until)) {
@@ -461,7 +504,7 @@ class ConnectionManager extends ChangeNotifier {
     if (_links.containsKey(adv.id)) return;
     final driver = drivers.forAdvertisement(adv);
     if (driver == null) return;
-    _links[adv.id] = Link(adv.id, driver, enabled: !_disabled.contains(adv.id));
+    _links[adv.id] = Link(adv.id, driver, enabled: allows(adv.id));
     notifyListeners();
   }
 
@@ -480,6 +523,9 @@ class ConnectionManager extends ChangeNotifier {
       if (remote?.standAside(l.id) != null) continue;
       final dev = tracker[l.id];
       if (dev == null || now.difference(dev.lastSeen) > staleAfter) continue;
+      // Its broadcasts already carry the readings (a stock Xiaomi with its
+      // bindkey entered): no need to connect.
+      if (dev.decoded?.isReadable ?? false) continue;
       if (pick == null || l.nextDue.isBefore(pick.nextDue)) pick = l;
     }
     return pick == null ? live : Future.wait([live, _poll(pick)]);
@@ -659,8 +705,17 @@ class ConnectionManager extends ChangeNotifier {
     return m?.group(1) ?? s;
   }
 
+  bool _disposed = false;
+
+  @override
+  void notifyListeners() {
+    // Choices from other screens and polls finish after the app has gone.
+    if (!_disposed) super.notifyListeners();
+  }
+
   @override
   void dispose() {
+    _disposed = true;
     _tick?.cancel();
     for (final link in _held.values) {
       unawaited(link.close());

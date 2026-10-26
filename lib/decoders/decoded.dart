@@ -64,6 +64,18 @@ enum DeviceKind {
   const DeviceKind(this.label, this.description);
 }
 
+/// How an entered key is doing, for decoders of encrypted broadcasts.
+enum KeyCheck {
+  /// Nothing has come in yet that the key could be tried on.
+  waiting,
+
+  /// A broadcast decrypted with it.
+  works,
+
+  /// A broadcast that carried readings did not decrypt with it.
+  wrong,
+}
+
 /// What a decoder figured out about one advertisement.
 class Decoded {
   /// Short protocol tag: "BTHome", "Victron", "Xiaomi (stock)", ...
@@ -86,6 +98,13 @@ class Decoded {
   /// Extra notes for the detail screen (packet counter, flags...).
   final Map<String, String> info;
 
+  /// Set when a key is stored for the device.
+  final KeyCheck? keyCheck;
+
+  /// When a broadcast last decrypted with the key, where the decoder
+  /// keeps track.
+  final DateTime? decryptedAt;
+
   const Decoded({
     required this.protocol,
     required this.model,
@@ -94,6 +113,8 @@ class Decoded {
     this.events = const [],
     this.needs,
     this.info = const {},
+    this.keyCheck,
+    this.decryptedAt,
   });
 
   bool get isReadable => needs == null;

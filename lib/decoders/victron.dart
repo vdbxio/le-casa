@@ -206,6 +206,7 @@ class VictronDecoder implements Decoder {
             'Key does not match this device (first byte should be '
             '${h.keyByte0.toRadixString(16).padLeft(2, '0')})',
         info: info,
+        keyCheck: KeyCheck.wrong,
       );
     }
 
@@ -225,6 +226,7 @@ class VictronDecoder implements Decoder {
           model: h.modelName,
           needs: 'Record type "${info['record type']}" is not decoded yet',
           info: {...info, 'decrypted': hex(plain)},
+          keyCheck: KeyCheck.works,
         );
     }
     return Decoded(
@@ -233,6 +235,7 @@ class VictronDecoder implements Decoder {
       model: h.modelName,
       readings: readings,
       info: info,
+      keyCheck: KeyCheck.works,
     );
   }
 

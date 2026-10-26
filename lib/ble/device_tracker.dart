@@ -27,7 +27,8 @@ class TrackedDevice {
 
   /// The latest reading taken over a GATT connection, for devices that do
   /// not broadcast their values (Daly BMS, stock Xiaomi). Survives new
-  /// advertisements; [view] prefers it over [decoded].
+  /// advertisements; [view] prefers it over [decoded] until the broadcasts
+  /// can be read.
   Decoded? polled;
   DateTime? polledAt;
 
@@ -46,9 +47,22 @@ class TrackedDevice {
 
   TrackedDevice(this.latest) : id = latest.id, firstSeen = latest.seenAt;
 
-  /// What to show: the connected reading when there is one, else whatever
-  /// the broadcast decoder made of the device.
-  Decoded? get view => polled ?? decoded;
+  /// What to show: the broadcast readings once they can be read (a stock
+  /// Xiaomi after its bindkey is entered, when nothing connects to it any
+  /// more), else the connected reading, else whatever the broadcast
+  /// decoder made of the device.
+  Decoded? get view =>
+      (decoded?.isReadable ?? false) ? decoded : polled ?? decoded;
+
+  /// Whether readings come from the device's broadcasts rather than a
+  /// connection.
+  bool get readsBroadcasts => polled != null && (decoded?.isReadable ?? false);
+
+  /// The device's MAC: from the radio (Android), or from inside its
+  /// broadcast when it carries one (iOS hides MACs; stock Xiaomi and pvvx
+  /// send theirs).
+  String? get mac =>
+      latest.macString ?? decoded?.info['mac'] ?? polled?.info['mac'];
 
   String get title => view?.model ?? latest.name ?? 'Unknown device';
 

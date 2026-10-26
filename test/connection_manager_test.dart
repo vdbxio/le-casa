@@ -8,6 +8,7 @@ import 'package:lecasa/decoders/decoded.dart';
 import 'package:lecasa/decoders/raw_advertisement.dart';
 import 'package:lecasa/decoders/registry.dart';
 import 'package:lecasa/drivers/driver.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fake_session.dart';
 import 'helpers.dart';
@@ -83,9 +84,11 @@ void main() {
     GattDriver driver, {
     SessionOpener? open,
     bool holdLinks = false,
+    bool optIn = false,
   }) => ConnectionManager(
     tracker,
     holdLinks: holdLinks,
+    optIn: optIn,
     drivers: GattDriverRegistry([driver]),
     tick: const Duration(hours: 1),
     open:
@@ -354,6 +357,39 @@ void main() {
     await m.setEnabled(true);
     await m.pump();
     expect(driver.reads, 1);
+    m.dispose();
+  });
+
+  test('with opt-in, only devices turned on are connected to', () async {
+    final driver = ScriptedDriver();
+    final m = manager(driver, optIn: true);
+    final told = <(String, bool)>[];
+    m.onChoice = (id, on) => told.add((id, on));
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.pump();
+    expect(driver.reads, 0);
+    expect(m[testAdv.id]!.phase, LinkPhase.off);
+    expect(m.hasChoice(testAdv.id), isFalse);
+    await m.setDeviceEnabled(testAdv.id, true);
+    expect(told, [(testAdv.id, true)]);
+    await m.pump();
+    expect(driver.reads, 1);
+    // A choice from another screen is not sent back.
+    await m.setDeviceEnabled(testAdv.id, false, quiet: true);
+    expect(told, hasLength(1));
+    expect(m.allows(testAdv.id), isFalse);
+    m.dispose();
+  });
+
+  test('devices turned off before opt-in stay off', () async {
+    SharedPreferences.setMockInitialValues({
+      'gatt:disabled': [testAdv.id],
+    });
+    final m = manager(ScriptedDriver());
+    await m.load();
+    expect(m.allows(testAdv.id), isFalse);
+    expect(m.hasChoice(testAdv.id), isTrue);
     m.dispose();
   });
 

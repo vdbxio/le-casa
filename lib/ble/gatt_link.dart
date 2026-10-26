@@ -163,13 +163,15 @@ class GattLink implements ClosableSession {
       'gatt: write ${c.uuid.substring(4, 8)} '
       '${useResponse ? 'with' : 'without'} response: ${_hex(data)}',
     );
-    return _central.writeCharacteristic(
-      peripheral,
-      _platform(c),
-      value: data,
-      type: useResponse
-          ? GATTCharacteristicWriteType.withResponse
-          : GATTCharacteristicWriteType.withoutResponse,
+    return RadioWrites.track(
+      _central.writeCharacteristic(
+        peripheral,
+        _platform(c),
+        value: data,
+        type: useResponse
+            ? GATTCharacteristicWriteType.withResponse
+            : GATTCharacteristicWriteType.withoutResponse,
+      ),
     );
   }
 
@@ -204,3 +206,29 @@ class GattLink implements ClosableSession {
 
 String _hex(List<int> b) =>
     b.map((x) => x.toRadixString(16).padLeft(2, '0')).join(' ');
+
+/// Writes waiting for an answer, on any link. The M10's Bluetooth stack
+/// has crashed twice when the scan was paused for a connect while a write
+/// to another screen hung: the scan-filter command it sends on a pause
+/// timed out and took the stack down. Connects check this first.
+class RadioWrites {
+  static int _pending = 0;
+
+  static Future<T> track<T>(Future<T> write) {
+    _pending++;
+    return write.whenComplete(() => _pending--);
+  }
+
+  /// Waits up to [limit] for writes in flight to finish. False when some
+  /// are still waiting: leave the scan alone then.
+  static Future<bool> settle({
+    Duration limit = const Duration(seconds: 3),
+  }) async {
+    final until = DateTime.now().add(limit);
+    while (_pending > 0) {
+      if (DateTime.now().isAfter(until)) return false;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    return true;
+  }
+}

@@ -126,6 +126,7 @@ class _LeCasaAppState extends State<LeCasaApp> {
     holdLinks:
         defaultTargetPlatform == TargetPlatform.iOS ||
         defaultTargetPlatform == TargetPlatform.macOS,
+    optIn: true,
   );
   late final DashboardController dashboard = DashboardController();
   late final History history = History(tracker);
@@ -152,7 +153,7 @@ class _LeCasaAppState extends State<LeCasaApp> {
     super.initState();
     keys.label = (id) {
       final d = tracker[id];
-      return (name: d?.latest.name, mac: d?.latest.macString);
+      return (name: d?.latest.name, mac: d?.mac);
     };
     keys
         .load()

@@ -27,7 +27,7 @@ class DecoderRegistry {
       DecoderRegistry([
         BtHomeDecoder(keyFor: keyFor),
         VictronDecoder(keyFor: keyFor),
-        const XiaomiStockDecoder(),
+        XiaomiStockDecoder(keyFor: keyFor),
         const PvvxCustomDecoder(),
         const ImprovDecoder(),
         const DalyDecoder(),

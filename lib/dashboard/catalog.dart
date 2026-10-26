@@ -144,7 +144,11 @@ List<CatalogEntry> catalog(CardSources s) {
 
 /// A readable name. Uses the advertised name where it is a real one (Victron
 /// devices carry the name set in VictronConnect), otherwise the model plus
-/// the end of the address so identical sensors can be told apart.
+/// the end of the MAC so identical sensors can be told apart, and read the
+/// same on every screen. iOS hides MACs, so there it is the MAC the device
+/// sends in its broadcasts. Devices whose name carries a serial (Daly,
+/// Alpicool) use the end of that instead, and the rest the end of iOS's own
+/// id, which means something only on that one screen.
 String deviceName(TrackedDevice d) {
   final v = d.view;
   final name = d.latest.name;
@@ -154,7 +158,9 @@ String deviceName(TrackedDevice d) {
       RegExp(r'^(LYWSD03MMC|ATC_|ATC|LYWSD|MJ_HT|BTHome|DL-|BYD-|AK1-|A1-)')
           .hasMatch(name);
   if (!isModuleId) return name;
-  final tail = d.id.replaceAll(':', '');
+  // Names like DL-694201312BA carry a serial that every screen sees.
+  final serial = name != null && RegExp(r'^(DL-|BYD-|AK1-|A1-)').hasMatch(name);
+  final tail = (serial ? name : d.mac ?? d.id).replaceAll(':', '');
   final suffix = tail.length >= 4 ? tail.substring(tail.length - 4) : tail;
   final base = switch (v?.kind) {
     DeviceKind.climate => 'Climate',

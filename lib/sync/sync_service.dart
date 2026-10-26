@@ -235,9 +235,12 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     _sightingSub = radio.sightings.listen(_onSighting);
     keys.addListener(_onKeys);
     readBy.addListener(_onReadBy);
+    readBy.addListener(_applyChoices);
+    tracker.addListener(_applyChoices);
     _keysSent = _maxAt(keys.records.map((r) => r.at));
     _readBySent = _maxAt(readBy.records.map((r) => r.at));
     connections.remote = this;
+    connections.onChoice = _onChoice;
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => tick());
     unawaited(_applyHome());
   }
@@ -257,6 +260,9 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     _sightingSub?.cancel();
     keys.removeListener(_onKeys);
     readBy.removeListener(_onReadBy);
+    readBy.removeListener(_applyChoices);
+    tracker.removeListener(_applyChoices);
+    if (connections.onChoice == _onChoice) connections.onChoice = null;
     unawaited(_shutdown());
     super.dispose();
   }
@@ -319,6 +325,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
   }
 
   /// Locks [id] to [screen], or with null lets the screens sort it out.
+  /// Picking a screen to read it is also saying it may be read.
   Future<void> lock(String id, ScreenId? screen) {
     final d = tracker[id];
     return readBy.set(
@@ -326,9 +333,33 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       screen: screen?.id,
       screenName: screen?.name,
       name: d?.latest.name,
-      mac: d?.latest.macString,
+      mac: d?.mac,
       fp: _fp(id),
+      connect: screen != null ? true : null,
     );
+  }
+
+  /// The person turned connecting to [id] on or off on this screen: every
+  /// screen in the home follows.
+  void _onChoice(String id, bool on) {
+    if (!home.inHome) return;
+    final d = tracker[id];
+    unawaited(
+      readBy.setConnect(id, on, name: d?.latest.name, mac: d?.mac, fp: _fp(id)),
+    );
+  }
+
+  /// Applies connect choices made on any screen to this one.
+  void _applyChoices() {
+    for (final r in readBy.records) {
+      // A lock from before connecting was opt-in means yes too.
+      final on = r.connect ?? (r.screen != null ? true : null);
+      if (on == null || tracker[r.id] == null) continue;
+      if (connections.hasChoice(r.id) && connections.allows(r.id) == on) {
+        continue;
+      }
+      unawaited(connections.setDeviceEnabled(r.id, on, quiet: true));
+    }
   }
 
   /// The screens that hear [screenId], loudest first: where it is.
@@ -434,7 +465,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
         'req': req,
         'o': owner,
         'id': deviceId,
-        'mac': ?tracker[id]?.latest.macString,
+        'mac': ?tracker[id]?.mac,
         'fp': ?_fp(id),
         'name': ?tracker[id]?.latest.name,
         's': command.setting,
@@ -729,7 +760,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     return SharedReading(
       id: d.id,
       name: d.latest.name,
-      mac: d.latest.macString,
+      mac: d.mac,
       fp: _fp(d.id),
       ownerId: home.me.id,
       ownerName: home.me.name,
@@ -758,7 +789,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
               d.id,
               d.latest.rssi,
               name: d.latest.name,
-              mac: d.latest.macString,
+              mac: d.mac,
               fp: _fp(d.id),
             ).toJson(),
       ],
@@ -1024,6 +1055,15 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
   Future<void> _adoptKeys() async {
     _applying = true;
     try {
+      // Before matching was strict, a key or lock could land on the wrong
+      // one of two identical sensors. Drop it here only: the record still
+      // names the right device, which keeps its own copy.
+      for (final r in keys.records) {
+        if (_misfiled(r.id, r.mac)) await keys.drop(r.kind, r.id);
+      }
+      for (final r in readBy.records) {
+        if (_misfiled(r.id, r.mac)) await readBy.drop(r.id);
+      }
       for (final r in keys.records) {
         if (r.value == null || tracker[r.id] != null) continue;
         final local = _resolve(r.id, r.mac, r.name);
@@ -1070,18 +1110,33 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     if (heard.any((d) => d.id == id)) return id;
     if (mac != null) {
       for (final d in heard) {
-        if (d.id == mac || d.latest.macString == mac) return d.id;
+        if (d.id == mac || d.mac == mac) return d.id;
       }
     }
-    if (name != null) {
-      final named = heard.where((d) => d.latest.name == name).toList();
+    // By name or data only when nothing says it is another device: a
+    // known MAC that differs rules a device out.
+    final open = [
+      for (final d in heard)
+        if (mac == null || d.mac == null || d.mac == mac) d,
+    ];
+    // Every stock Xiaomi is called LYWSD03MMC: hearing only one of them
+    // does not make it the one meant. Wait for its MAC instead.
+    if (name != null && !genericName(name)) {
+      final named = open.where((d) => d.latest.name == name).toList();
       if (named.length == 1) return named.single.id;
     }
-    if (fp != null) {
-      final same = heard.where((d) => _fp(d.id) == fp).toList();
+    if (fp != null && (name == null || !genericName(name))) {
+      final same = open.where((d) => _fp(d.id) == fp).toList();
       if (same.length == 1) return same.single.id;
     }
     return id;
+  }
+
+  /// Whether a record kept under [id] is about another device: both MACs
+  /// are known and differ.
+  bool _misfiled(String id, String? mac) {
+    final own = tracker[id]?.mac;
+    return mac != null && own != null && own != mac;
   }
 
   String? _fp(String id) {
@@ -1112,3 +1167,10 @@ int _max(int a, int b) => a > b ? a : b;
 
 String _hex(List<int> b) =>
     b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
+
+/// Model names every unit of a kind shares, so they cannot tell two
+/// devices apart.
+bool genericName(String name) => RegExp(
+  r'^(LYWSD03MMC|LYWSD02MMC|LYWSDCGQ|MJ_HT_V1|CGG1|CGDK2|MHO-C401|BTHome)$',
+  caseSensitive: false,
+).hasMatch(name);

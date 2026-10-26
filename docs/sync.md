@@ -42,15 +42,20 @@ is open.
   An iPad or iPhone that reads a Daly BMS stays connected to it and reads
   it every 3 seconds; other screens reconnect for each read, every 30
   seconds. While a screen stays connected, the Daly phone app cannot
-  connect: turn off "Read over connection" on the device's page to let it
+  connect: turn off "Connect to this device" on the device's page to let it
   in.
 - **Controls.** Changing the fridge on any screen sends the change to the
   screen that reads the fridge, through other screens if needed.
-- **Keys and PINs** (Victron, BTHome, BMS PINs), including removals, and
-  the Read by choices. iOS hides MAC addresses, so the same device has a
+- **Keys and PINs** (Victron, BTHome, BMS PINs), including removals, the
+  Read by choices, and which devices screens may connect to (turning one
+  on or off on any screen does it on all; locking one to a screen turns
+  it on). iOS hides MAC addresses, so the same device has a
   different id on an iPad than on an Android tablet; these are matched to
-  the other screen's device by MAC when it can, otherwise by the device's
-  advertised name.
+  the other screen's device by MAC when it can (Android, or the MAC a
+  Xiaomi, pvvx or BTHome sensor sends in its broadcasts), otherwise by a
+  name with a serial in it (DL-694201312BA) or the device's advertised
+  data. Model names that every unit shares (LYWSD03MMC) never match: such a
+  key waits until the screen has heard that sensor's MAC.
 - **Where each screen is.** Every screen reports how loudly it hears the
   others. Settings › Screens and phones lists, for each screen, which
   screens hear it and at what signal, so you can tell roughly which room a

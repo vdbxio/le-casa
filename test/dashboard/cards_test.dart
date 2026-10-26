@@ -25,7 +25,8 @@ void main() {
     final byKey = {for (final e in catalog(sources)) e.spec.key: e.title};
     expect(byKey['device:luna'], 'Luna 50');
     expect(byKey['device:A4:C1:38:50:6E:3A'], 'Climate · 6E3A');
-    expect(byKey['device:D2:19:08:01:C5:61'], 'Battery · C561');
+    // The Daly's name carries its serial, the same on every screen.
+    expect(byKey['device:D2:19:08:01:C5:61'], 'Battery · 12BA');
   });
 
   test('combined solar adds the chargers up and keeps each share', () {

@@ -237,6 +237,65 @@ class ConnectionManager extends ChangeNotifier {
     return pump();
   }
 
+  /// Whether [id] has a driver that can change its settings.
+  bool canControl(String id) => _links[id]?.driver is ControllableDriver;
+
+  /// Changes a setting on the device: waits for the radio, connects, sends
+  /// [command] and stores the state read back. Throws with a message for
+  /// the user when it cannot.
+  Future<void> control(String id, DeviceCommand command) async {
+    final l = _links[id];
+    final driver = l?.driver;
+    if (l == null || driver is! ControllableDriver) {
+      throw StateError('This device cannot be controlled');
+    }
+    if (!_enabled) throw StateError('Connections are paused');
+    if (!l.enabled) throw StateError('Turn on "Read over connection" first');
+    final until = DateTime.now().add(const Duration(seconds: 60));
+    while (_busy != null) {
+      if (DateTime.now().isAfter(until)) {
+        throw TimeoutException('Bluetooth is busy with another device');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+    final dev = tracker[id];
+    if (dev == null) throw StateError('Device gone');
+    _busy = id;
+    l
+      ..phase = LinkPhase.connecting
+      ..lastAttempt = DateTime.now()
+      ..error = null;
+    debugPrint('control: $id $command');
+    notifyListeners();
+    ClosableSession? link;
+    try {
+      link = await _open(id);
+      l.phase = LinkPhase.reading;
+      notifyListeners();
+      final decoded = await driver
+          .control(link, dev.lastRecognised ?? dev.latest, command)
+          .timeout(driver.timeout);
+      tracker.setPolled(id, decoded);
+      l
+        ..phase = LinkPhase.ok
+        ..failures = 0
+        ..drops = 0
+        ..lastOk = DateTime.now()
+        ..nextDue = DateTime.now().add(driver.interval);
+    } catch (e) {
+      debugPrint('control: $id failed: $e');
+      l
+        ..phase = LinkPhase.failed
+        ..error = _describe(e)
+        ..nextDue = DateTime.now().add(driver.interval);
+      rethrow;
+    } finally {
+      await link?.close();
+      _busy = null;
+      notifyListeners();
+    }
+  }
+
   /// Called for every advertisement: the first one from a device a driver
   /// recognises schedules it.
   void onAdvertisement(RawAdvertisement adv) {

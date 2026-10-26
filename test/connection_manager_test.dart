@@ -40,6 +40,20 @@ class ScriptedDriver implements GattDriver {
   }
 }
 
+class ControlDriver extends ScriptedDriver implements ControllableDriver {
+  final commands = <DeviceCommand>[];
+
+  @override
+  Future<Decoded> control(
+    GattSession s,
+    RawAdvertisement adv,
+    DeviceCommand command,
+  ) async {
+    commands.add(command);
+    return const Decoded(protocol: 'test', model: 'Controlled');
+  }
+}
+
 void main() {
   late DeviceTracker tracker;
   late List<FakeSession> opened;
@@ -180,6 +194,37 @@ void main() {
     await m.pump();
     expect(m[testAdv.id]!.drops, 1);
     expect(m[testAdv.id]!.error, 'The device dropped the connection');
+    m.dispose();
+  });
+
+  test('control connects, sends the command and stores the result', () async {
+    final driver = ControlDriver();
+    final m = manager(driver);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    expect(m.canControl(testAdv.id), isTrue);
+    await m.control(testAdv.id, const DeviceCommand('power', false));
+    expect(driver.commands.single.setting, 'power');
+    expect(tracker[testAdv.id]!.view?.model, 'Controlled');
+    expect(opened.single.closed, isTrue);
+    expect(m.busyId, isNull);
+    await m.setDeviceEnabled(testAdv.id, false);
+    expect(
+      () => m.control(testAdv.id, const DeviceCommand('power', true)),
+      throwsStateError,
+    );
+    m.dispose();
+  });
+
+  test('read-only drivers cannot be controlled', () async {
+    final m = manager(ScriptedDriver());
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    expect(m.canControl(testAdv.id), isFalse);
+    expect(
+      () => m.control(testAdv.id, const DeviceCommand('power', true)),
+      throwsStateError,
+    );
     m.dispose();
   });
 

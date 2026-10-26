@@ -31,13 +31,21 @@ Does not work, or not reliably:
   of its device polls (two Xiaomis and the fridge) failed this way. Read
   devices from their broadcasts where possible (a bindkey for stock
   Xiaomi firmware), or lock them to another screen.
-- **Several Bluetooth jobs at once:** the chip's firmware can stop
-  answering. Seen twice (2026-10-26) when the scan was paused for a
-  connect while a write to another screen was stuck: Android logged
-  "Timed out waiting for 0xfd57 (LE_ADV_FILTER)", aborted its Bluetooth
-  service, and the chip stayed wedged until a reboot. Since then Le'Casa
-  waits for writes in flight before pausing the scan, and leaves the
-  scan running if any are still waiting.
+- **Stuck writes, then a disconnect:** the chip's firmware can stop
+  answering, and Android's Bluetooth service then aborts (SIGABRT). The
+  chip stays wedged until a reboot. Seen four times on 2026-10-26:
+  - Twice the scan was paused for a connect while a write to another
+    screen was stuck: "Timed out waiting for 0xfd57 (LE_ADV_FILTER)".
+    Since then Le'Casa waits for writes in flight before pausing the scan,
+    and leaves the scan running if any are still waiting.
+  - At 13:59 the M10's sync link to an iPhone stalled on a 512-byte
+    write. After 15 s Le'Casa gave up and disconnected, the HCI
+    DISCONNECT timed out, and the stack aborted. Since then sync chunks
+    are at most 180 bytes (one link-layer packet), and a link Le'Casa gives
+    up on is only disconnected once its last write has finished; one that
+    stays stuck is left for the other screen or the link timeout to drop.
+  - Once the stack crashed at the moment the iPad connected to the Daly,
+    with the M10 itself not connecting.
 - Wireless debugging drops now and then, and switches off on every
   reboot (Wi-Fi shares the radio). A "Wireless debugging" quick-settings
   tile (Developer options › Quick settings developer tiles) turns it back

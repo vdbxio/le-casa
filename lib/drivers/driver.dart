@@ -30,6 +30,14 @@ abstract interface class GattDriver {
   Future<Decoded> read(GattSession session, RawAdvertisement adv);
 }
 
+/// A driver whose device answers quickly enough to read every few
+/// seconds over a link that stays open, on screens whose Bluetooth holds
+/// links well.
+abstract interface class LiveDriver implements GattDriver {
+  /// How often to read while the link stays open.
+  Duration get liveInterval;
+}
+
 /// A change asked of a device: which setting, and its new value.
 class DeviceCommand {
   final String setting;

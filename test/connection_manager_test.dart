@@ -40,6 +40,22 @@ class ScriptedDriver implements GattDriver {
   }
 }
 
+class LiveScriptedDriver extends ScriptedDriver implements LiveDriver {
+  @override
+  Duration get liveInterval => Duration.zero;
+}
+
+/// Another screen that wants a device, or not.
+class _Aside implements RemoteLinks {
+  String? why;
+  @override
+  RemoteOwner? ownerOf(String id) => null;
+  @override
+  Future<void> control(String id, DeviceCommand command) async {}
+  @override
+  String? standAside(String id) => why;
+}
+
 class ControlDriver extends ScriptedDriver implements ControllableDriver {
   final commands = <DeviceCommand>[];
 
@@ -63,19 +79,23 @@ void main() {
     opened = [];
   });
 
-  ConnectionManager manager(GattDriver driver, {SessionOpener? open}) =>
-      ConnectionManager(
-        tracker,
-        drivers: GattDriverRegistry([driver]),
-        tick: const Duration(hours: 1),
-        open:
-            open ??
-            (id) async {
-              final s = FakeSession(characteristics: const []);
-              opened.add(s);
-              return s;
-            },
-      );
+  ConnectionManager manager(
+    GattDriver driver, {
+    SessionOpener? open,
+    bool holdLinks = false,
+  }) => ConnectionManager(
+    tracker,
+    holdLinks: holdLinks,
+    drivers: GattDriverRegistry([driver]),
+    tick: const Duration(hours: 1),
+    open:
+        open ??
+        (id) async {
+          final s = FakeSession(characteristics: const []);
+          opened.add(s);
+          return s;
+        },
+  );
 
   final testAdv = adv(
     id: 'AA:BB:CC:DD:EE:01',
@@ -360,5 +380,76 @@ void main() {
     m.onAdvertisement(other);
     expect(m.links, isEmpty);
     m.dispose();
+  });
+
+  group('live links', () {
+    test('a live device stays connected and is read again', () async {
+      final driver = LiveScriptedDriver();
+      final m = manager(driver, holdLinks: true);
+      tracker.onAdvertisement(testAdv);
+      m.onAdvertisement(testAdv);
+      await m.pump();
+      expect(m.isLive(testAdv.id), isTrue);
+      expect(opened.single.closed, isFalse);
+      expect(m.busyId, isNull, reason: 'other devices can still be read');
+      await m.pump();
+      await m.pump();
+      expect(driver.reads, 3);
+      expect(opened, hasLength(1));
+      m.dispose();
+    });
+
+    test('only on screens that hold links', () async {
+      final driver = LiveScriptedDriver();
+      final m = manager(driver);
+      tracker.onAdvertisement(testAdv);
+      m.onAdvertisement(testAdv);
+      await m.pump();
+      expect(m.isLive(testAdv.id), isFalse);
+      expect(opened.single.closed, isTrue);
+      m.dispose();
+    });
+
+    test('reconnects when the device drops the link', () async {
+      final driver = LiveScriptedDriver();
+      final m = manager(driver, holdLinks: true);
+      tracker.onAdvertisement(testAdv);
+      m.onAdvertisement(testAdv);
+      await m.pump();
+      opened.single.drop();
+      await Future<void>.delayed(Duration.zero);
+      expect(m.isLive(testAdv.id), isFalse);
+      await m.pump();
+      expect(opened, hasLength(2));
+      expect(m.isLive(testAdv.id), isTrue);
+      m.dispose();
+    });
+
+    test('lets go when another screen should read it', () async {
+      final driver = LiveScriptedDriver();
+      final aside = _Aside();
+      final m = manager(driver, holdLinks: true)..remote = aside;
+      tracker.onAdvertisement(testAdv);
+      m.onAdvertisement(testAdv);
+      await m.pump();
+      aside.why = 'Locked to the iPad';
+      await m.pump();
+      expect(m.isLive(testAdv.id), isFalse);
+      expect(opened.single.closed, isTrue);
+      expect(driver.reads, 1);
+      m.dispose();
+    });
+
+    test('lets go when turned off', () async {
+      final driver = LiveScriptedDriver();
+      final m = manager(driver, holdLinks: true);
+      tracker.onAdvertisement(testAdv);
+      m.onAdvertisement(testAdv);
+      await m.pump();
+      await m.setDeviceEnabled(testAdv.id, false);
+      expect(m.isLive(testAdv.id), isFalse);
+      expect(opened.single.closed, isTrue);
+      m.dispose();
+    });
   });
 }

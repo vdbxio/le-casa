@@ -39,6 +39,11 @@ is open.
   - **Locked to a screen**: only that screen reads it, phones included.
     Use this when one tablet's Bluetooth does not get along with a device
     (the M10 and the Alpicool fridge, for example).
+  An iPad or iPhone that reads a Daly BMS stays connected to it and reads
+  it every 3 seconds; other screens reconnect for each read, every 30
+  seconds. While a screen stays connected, the Daly phone app cannot
+  connect: turn off "Read over connection" on the device's page to let it
+  in.
 - **Controls.** Changing the fridge on any screen sends the change to the
   screen that reads the fridge, through other screens if needed.
 - **Keys and PINs** (Victron, BTHome, BMS PINs), including removals, and

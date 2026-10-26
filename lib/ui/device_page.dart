@@ -340,6 +340,9 @@ class _ConnectionSection extends StatelessWidget {
               'reads, so this screen leaves the device alone'
         : aside != null
         ? '$aside, so this screen leaves the device alone'
+        : connections.isLive(link.id)
+        ? 'Staying connected, reading every few seconds. Last read '
+              '${ago(link.lastOk!)}'
         : switch (link.phase) {
             LinkPhase.ok when link.lastOk != null =>
               'Last read ${ago(link.lastOk!)}, next in '

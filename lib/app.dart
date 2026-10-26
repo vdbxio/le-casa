@@ -4,6 +4,7 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 
 import 'ble/ble_scanner.dart';
@@ -122,6 +123,9 @@ class _LeCasaAppState extends State<LeCasaApp> {
     scanner,
     tracker,
     drivers: GattDriverRegistry.standard(secretFor: keys.secretFor),
+    holdLinks:
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS,
   );
   late final DashboardController dashboard = DashboardController();
   late final History history = History(tracker);

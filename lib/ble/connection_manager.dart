@@ -120,23 +120,24 @@ abstract interface class RemoteLinks {
 /// The real one goes through the scanner and [GattLink]; tests fake it.
 typedef SessionOpener = Future<ClosableSession> Function(String id);
 
-SessionOpener scannerOpener(BleScanner scanner) => (id) async {
-  final p = scanner.peripheralFor(id);
-  if (p == null) throw StateError('Device not seen by the scanner');
-  // Scanning and connecting fight over the radio on cheap tablets; a scan
-  // left running is the classic cause of GATT status 133 on connect and of
-  // links that time out right after they come up. Pause it for the few
-  // seconds the link lives.
-  final wasScanning = scanner.scanning;
-  if (wasScanning) await scanner.stop();
-  try {
-    final link = await GattLink.open(scanner.central, p);
-    return _ScanPausingSession(link, wasScanning ? scanner : null);
-  } catch (_) {
-    if (wasScanning) unawaited(scanner.start());
-    rethrow;
-  }
-};
+SessionOpener scannerOpener(BleScanner scanner, {bool pauseScan = true}) =>
+    (id) async {
+      final p = scanner.peripheralFor(id);
+      if (p == null) throw StateError('Device not seen by the scanner');
+      // Scanning and connecting fight over the radio on cheap tablets; a scan
+      // left running is the classic cause of GATT status 133 on connect and of
+      // links that time out right after they come up. Pause it for the few
+      // seconds the link lives.
+      final wasScanning = pauseScan && scanner.scanning;
+      if (wasScanning) await scanner.stop();
+      try {
+        final link = await GattLink.open(scanner.central, p);
+        return _ScanPausingSession(link, wasScanning ? scanner : null);
+      } catch (_) {
+        if (wasScanning) unawaited(scanner.start());
+        rethrow;
+      }
+    };
 
 /// Restarts the scan when the link closes.
 class _ScanPausingSession implements ClosableSession {
@@ -183,6 +184,15 @@ class ConnectionManager extends ChangeNotifier {
   final GattDriverRegistry drivers;
   final SessionOpener _open;
   final Map<String, Link> _links = {};
+
+  /// Keep links to [LiveDriver] devices open and read them every few
+  /// seconds, instead of reconnecting every [GattDriver.interval]. Only on
+  /// screens whose Bluetooth runs several links at once (iOS, macOS); the
+  /// M10 cannot even hold one.
+  final bool holdLinks;
+
+  /// Open links kept for [holdLinks], by device id.
+  final Map<String, ClosableSession> _held = {};
   final Set<String> _disabled = {};
   SharedPreferences? _prefs;
   Timer? _tick;
@@ -209,6 +219,7 @@ class ConnectionManager extends ChangeNotifier {
     required SessionOpener open,
     GattDriverRegistry? drivers,
     Duration tick = const Duration(seconds: 1),
+    this.holdLinks = false,
   }) : drivers = drivers ?? GattDriverRegistry.standard(),
        // ignore: prefer_initializing_formals
        _open = open {
@@ -219,7 +230,18 @@ class ConnectionManager extends ChangeNotifier {
     BleScanner scanner,
     DeviceTracker tracker, {
     GattDriverRegistry? drivers,
-  }) : this(tracker, open: scannerOpener(scanner), drivers: drivers);
+    bool holdLinks = false,
+  }) : this(
+         tracker,
+         // A held link would keep the scan paused for good; screens that
+         // hold links scan and connect at once without trouble.
+         open: scannerOpener(scanner, pauseScan: !holdLinks),
+         drivers: drivers,
+         holdLinks: holdLinks,
+       );
+
+  /// Whether this screen keeps a link to [id] open and reads it live.
+  bool isLive(String id) => _held.containsKey(id);
 
   /// Global switch: when off, nothing connects to anything.
   bool get enabled => _enabled;
@@ -233,7 +255,7 @@ class ConnectionManager extends ChangeNotifier {
     return ++_turn;
   }
 
-  void _release(int turn) {
+  void _giveBack(int turn) {
     if (turn != _turn) return;
     _busy = null;
     _busySince = null;
@@ -275,6 +297,7 @@ class ConnectionManager extends ChangeNotifier {
 
   Future<void> setEnabled(bool v) async {
     _enabled = v;
+    if (!v) await _releaseAll();
     await _prefs?.setBool(_globalKey, v);
     notifyListeners();
   }
@@ -292,6 +315,7 @@ class ConnectionManager extends ChangeNotifier {
       }
     } else {
       _disabled.add(id);
+      await _release(id);
       if (l != null && !l.busy) l.phase = LinkPhase.off;
     }
     await _prefs?.setStringList(_disabledKey, _disabled.toList());
@@ -366,6 +390,8 @@ class ConnectionManager extends ChangeNotifier {
     }
     final dev = tracker[id];
     if (dev == null) throw StateError('Device gone');
+    // Most devices take one connection: drop the live one for the command.
+    await _release(id);
     final turn = _take(id);
     l
       ..phase = LinkPhase.connecting
@@ -397,7 +423,7 @@ class ConnectionManager extends ChangeNotifier {
       rethrow;
     } finally {
       await link?.close();
-      _release(turn);
+      _giveBack(turn);
       notifyListeners();
     }
   }
@@ -424,7 +450,7 @@ class ConnectionManager extends ChangeNotifier {
     try {
       return await f().timeout(limit);
     } finally {
-      _release(turn);
+      _giveBack(turn);
       notifyListeners();
     }
   }
@@ -439,13 +465,16 @@ class ConnectionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Starts the most overdue poll if nothing is in flight. Runs on a timer;
-  /// public so tests can drive it. Returns when that poll has finished.
+  /// Starts the most overdue poll if nothing is in flight, and reads held
+  /// links that are due. Runs on a timer; public so tests can drive it.
+  /// Returns when what it started has finished.
   Future<void> pump() {
-    if (!_enabled || !_free()) return Future.value();
+    final live = _pumpLive();
+    if (!_enabled || !_free()) return live;
     final now = DateTime.now();
     Link? pick;
     for (final l in _links.values) {
+      if (_held.containsKey(l.id)) continue;
       if (!l.enabled || l.busy || l.nextDue.isAfter(now)) continue;
       if (heldElsewhere(l.id) != null) continue;
       if (remote?.standAside(l.id) != null) continue;
@@ -453,7 +482,90 @@ class ConnectionManager extends ChangeNotifier {
       if (dev == null || now.difference(dev.lastSeen) > staleAfter) continue;
       if (pick == null || l.nextDue.isBefore(pick.nextDue)) pick = l;
     }
-    return pick == null ? Future.value() : _poll(pick);
+    return pick == null ? live : Future.wait([live, _poll(pick)]);
+  }
+
+  /// Reads the held links that are due, and lets go of the ones this
+  /// screen should no longer read.
+  Future<void> _pumpLive() {
+    if (_held.isEmpty) return Future.value();
+    final now = DateTime.now();
+    final work = <Future<void>>[];
+    for (final id in _held.keys.toList()) {
+      final l = _links[id];
+      if (l == null ||
+          !_enabled ||
+          !l.enabled ||
+          heldElsewhere(id) != null ||
+          remote?.standAside(id) != null) {
+        work.add(_release(id));
+      } else if (!_liveReading.contains(id) && !l.nextDue.isAfter(now)) {
+        work.add(_readLive(l, _held[id]!));
+      }
+    }
+    return Future.wait(work);
+  }
+
+  final Set<String> _liveReading = {};
+
+  Future<void> _readLive(Link l, ClosableSession link) async {
+    final dev = tracker[l.id];
+    if (dev == null) return _release(l.id);
+    _liveReading.add(l.id);
+    try {
+      final decoded = await l.driver
+          .read(link, dev.lastRecognised ?? dev.latest)
+          .timeout(l.driver.timeout);
+      if (_held[l.id] != link) return;
+      tracker.setPolled(l.id, decoded);
+      l
+        ..phase = LinkPhase.ok
+        ..error = null
+        ..lastOk = DateTime.now()
+        ..nextDue = DateTime.now().add((l.driver as LiveDriver).liveInterval);
+    } catch (e) {
+      // Reconnect at once; a failure there backs off as usual.
+      debugPrint('live: ${l.id} failed: $e');
+      await _release(l.id);
+    } finally {
+      _liveReading.remove(l.id);
+      notifyListeners();
+    }
+  }
+
+  /// Keeps [link] open to read [l] live, if this screen does that.
+  bool _hold(Link l, ClosableSession link) {
+    final d = l.driver;
+    if (!holdLinks || d is! LiveDriver) return false;
+    _held[l.id] = link;
+    l.nextDue = DateTime.now().add(d.liveInterval);
+    debugPrint('live: holding ${l.id} (${d.name})');
+    unawaited(
+      link.onDisconnected.then((_) {
+        if (_held[l.id] != link) return;
+        debugPrint('live: ${l.id} dropped the link');
+        _held.remove(l.id);
+        l.nextDue = DateTime.now();
+        notifyListeners();
+      }),
+    );
+    return true;
+  }
+
+  /// Closes the held link to [id], if any.
+  Future<void> _release(String id) async {
+    final link = _held.remove(id);
+    if (link == null) return;
+    debugPrint('live: letting go of $id');
+    _links[id]?.nextDue = DateTime.now();
+    await link.close();
+    notifyListeners();
+  }
+
+  Future<void> _releaseAll() async {
+    for (final id in _held.keys.toList()) {
+      await _release(id);
+    }
   }
 
   Future<void> _poll(Link l) async {
@@ -482,6 +594,7 @@ class ConnectionManager extends ChangeNotifier {
         ..drops = 0
         ..lastOk = DateTime.now()
         ..nextDue = DateTime.now().add(l.driver.interval);
+      if (turn == _turn && _hold(l, link)) link = null;
     } on UnsupportedDeviceException catch (e) {
       debugPrint('poll: ${l.id} unsupported: ${e.message}');
       l
@@ -498,7 +611,7 @@ class ConnectionManager extends ChangeNotifier {
       }
     } finally {
       await link?.close();
-      _release(turn);
+      _giveBack(turn);
       notifyListeners();
     }
   }
@@ -545,6 +658,10 @@ class ConnectionManager extends ChangeNotifier {
   @override
   void dispose() {
     _tick?.cancel();
+    for (final link in _held.values) {
+      unawaited(link.close());
+    }
+    _held.clear();
     super.dispose();
   }
 }

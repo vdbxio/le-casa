@@ -34,7 +34,10 @@ class HcaloryDecoder implements Decoder {
   );
 }
 
-/// Alpicool fridges advertise as "AK1-…", "A1-…" or similar.
+/// Alpicool fridges advertise as "AK1-…", "A1-…" or similar, with
+/// manufacturer data that spells "1234567890" across the company id
+/// (0x3231, "12") and the payload. Rebadges keep the controller, so the
+/// payload alone is enough.
 class AlpicoolDecoder implements Decoder {
   const AlpicoolDecoder();
 
@@ -43,10 +46,18 @@ class AlpicoolDecoder implements Decoder {
   @override
   String get name => 'Alpicool';
 
+  static const _magic = [0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x30];
+
   @override
   bool matches(RawAdvertisement adv) {
     final n = adv.name;
-    return n != null && _namePattern.hasMatch(n);
+    if (n != null && _namePattern.hasMatch(n)) return true;
+    final m = adv.manufacturerData[0x3231];
+    if (m == null || m.length < _magic.length) return false;
+    for (var i = 0; i < _magic.length; i++) {
+      if (m[i] != _magic[i]) return false;
+    }
+    return true;
   }
 
   @override
@@ -54,7 +65,10 @@ class AlpicoolDecoder implements Decoder {
     protocol: 'Alpicool',
     kind: DeviceKind.appliance,
     model: 'Alpicool fridge',
-    needs: 'Needs a connection to read or control. Planned for a later phase.',
-    info: {'module': adv.name!},
+    needs:
+        'The fridge broadcasts no readings; Le\'Casa connects to it to read '
+        'and control it. Waiting for the first connection. Close the '
+        'Alpicool app first: the fridge takes one connection at a time.',
+    info: {'module': ?adv.name},
   );
 }

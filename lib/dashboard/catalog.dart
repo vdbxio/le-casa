@@ -245,6 +245,12 @@ CardModel _device(String id, CardSources s, String? savedName) {
       s,
     ),
     DeviceKind.climate => _climate(d, v, name, s),
+    DeviceKind.appliance when v.protocol == 'Alpicool' => _fridge(
+      d,
+      v,
+      name,
+      s,
+    ),
     DeviceKind.buttons || DeviceKind.leDevice => _buttons(d, v, name, s),
     _ => _generic(d, v, name, s),
   };
@@ -424,6 +430,34 @@ CardModel _climate(TrackedDevice d, Decoded v, String name, CardSources s) {
       if (_n(v, 'battery') case final b?)
         Metric('Sensor battery', _fmt(b, 0), '%', null, true),
     ],
+    series: s.history?.of(History.key(d.id, 'temperature')),
+  );
+}
+
+CardModel _fridge(TrackedDevice d, Decoded v, String name, CardSources s) {
+  Reading? r(String label) =>
+      v.readings.where((x) => x.label == label).firstOrNull;
+  final unit = r('temperature')?.unit ?? '°C';
+  final on = r('power')?.value == true;
+  final target = _n(v, 'target');
+  final t2 = _n(v, 'temperature 2');
+  return CardModel(
+    title: name,
+    subtitle: v.model,
+    icon: Icons.kitchen_outlined,
+    tone: Tone.cold,
+    headline: Metric('Temperature', _fmt(_n(v, 'temperature'), 0), unit),
+    state: on ? 'Cooling to ${_fmt(target, 0)} $unit' : 'Off',
+    details: [
+      if (t2 != null)
+        Metric('Second zone', _fmt(t2, 0), unit, null)
+      else
+        Metric('Target', _fmt(target, 0), unit),
+      if (r('mode')?.value case final String m) Metric('Mode', m),
+      if (_n(v, 'battery voltage') case final b?)
+        Metric('Supply', _fmt(b, 1), 'V', null, true),
+    ],
+    pillLabel: on ? 'on' : 'off',
     series: s.history?.of(History.key(d.id, 'temperature')),
   );
 }

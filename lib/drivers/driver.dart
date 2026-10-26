@@ -5,6 +5,7 @@
 import '../ble/gatt_session.dart';
 import '../decoders/decoded.dart';
 import '../decoders/raw_advertisement.dart';
+import 'alpicool_driver.dart';
 import 'bms_driver.dart';
 import 'daly_driver.dart';
 import 'xiaomi_driver.dart';
@@ -29,6 +30,27 @@ abstract interface class GattDriver {
   Future<Decoded> read(GattSession session, RawAdvertisement adv);
 }
 
+/// A change asked of a device: which setting, and its new value.
+class DeviceCommand {
+  final String setting;
+  final Object value;
+  const DeviceCommand(this.setting, this.value);
+
+  @override
+  String toString() => '$setting = $value';
+}
+
+/// A driver that can also change settings on the device. [control] gets a
+/// session of its own, like [read], and returns the state read back after
+/// the change.
+abstract interface class ControllableDriver implements GattDriver {
+  Future<Decoded> control(
+    GattSession session,
+    RawAdvertisement adv,
+    DeviceCommand command,
+  );
+}
+
 /// All connection drivers, in priority order. Mirrors [DecoderRegistry]
 /// for broadcasts.
 class GattDriverRegistry {
@@ -43,6 +65,7 @@ class GattDriverRegistry {
       GattDriverRegistry([
         const DalyDriver(),
         const XiaomiStockGattDriver(),
+        const AlpicoolDriver(),
         BmsDriver(secretFor: secretFor),
       ]);
 

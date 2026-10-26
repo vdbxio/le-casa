@@ -34,6 +34,12 @@ The app currently
     temperatures, MOSFET state, cycles and alarms. Both module
     generations are auto-detected (the newer `0xD2` dialect and the older
     `0x81` one). Polled every 30 s.
+  - **Alpicool fridges** (and Brass Monkey, Vevor and other rebadges of
+    the same controller): temperature, target, power, Eco, supply voltage
+    and battery protection, read every minute. The device page has
+    controls for power, target, Eco, the button lock and battery
+    protection; every change is read back from the fridge. Close the
+    Alpicool app first, since the fridge takes one connection at a time.
   - **Xiaomi LYWSD03MMC on stock firmware**: temperature, humidity and
     battery over the plain GATT characteristic, no bindkey needed. Polled
     every 5 minutes because connecting costs the coin cell far more than

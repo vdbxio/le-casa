@@ -12,6 +12,7 @@ import '../ble/device_tracker.dart';
 import '../bms/registry.dart';
 import '../decoders/raw_advertisement.dart';
 import 'format.dart';
+import 'fridge_controls.dart';
 
 /// Everything about one broadcaster: decoded values, raw bytes, packet rate,
 /// and the encryption key field for Victron / encrypted BTHome devices.
@@ -87,7 +88,8 @@ class _DevicePageState extends State<DevicePage> {
         // A BMS waits for a connection, not for a key.
         final bms = bmsSpecFor(dev.lastRecognised ?? a);
         final isBms = bms != null || (d?.protocol.startsWith('Daly') ?? false);
-        final wantsKey = (d?.needs != null && !isBms) || hasKey;
+        // Devices read over a connection wait for it, not for a key.
+        final wantsKey = (d?.needs != null && !isBms && link == null) || hasKey;
         final hasPin = services.keys.secretFor(widget.id) != null;
         return Scaffold(
           appBar: AppBar(title: Text(dev.title)),
@@ -105,6 +107,17 @@ class _DevicePageState extends State<DevicePage> {
               if (link != null) ...[
                 const Divider(height: 32),
                 _ConnectionSection(link: link, device: dev),
+              ],
+              if (d != null &&
+                  d.isReadable &&
+                  d.protocol == 'Alpicool' &&
+                  services.connections.canControl(widget.id)) ...[
+                const Divider(height: 32),
+                FridgeControls(
+                  id: widget.id,
+                  state: d,
+                  connections: services.connections,
+                ),
               ],
               if (d != null) ...[
                 const Divider(height: 32),

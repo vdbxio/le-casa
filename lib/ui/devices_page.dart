@@ -76,11 +76,16 @@ class _DevicesPageState extends State<DevicesPage> {
     final background = groups.remove(DeviceKind.background) ?? const [];
     final unknown = _onlyRecognised ? const <TrackedDevice>[] : tracker.unknown;
     final scanning = AppServices.of(context).scanner.scanning;
+    final connections = AppServices.of(context).connections;
 
     Widget row(TrackedDevice d) => DeviceRow(
       key: ValueKey(d.id),
       device: d,
       selected: split && _selected == d.id,
+      connecting:
+          connections.enabled &&
+          connections[d.id] != null &&
+          connections.allows(d.id),
       onTap: () => _open(context, d.id, split: split),
     );
 

@@ -57,7 +57,12 @@ class DeviceRow extends StatelessWidget {
     required this.device,
     required this.onTap,
     this.selected = false,
+    this.connecting = false,
   });
+
+  /// This screen is about to connect to read it: a device that broadcasts
+  /// no readings is not waiting for setup, only for its first read.
+  final bool connecting;
 
   @override
   Widget build(BuildContext context) {
@@ -73,7 +78,7 @@ class DeviceRow extends StatelessWidget {
     final subtitle = d == null
         ? '${ago(device.lastSeen)} · ${rawSummary(a).split('\n').first}'
         : d.needs != null
-        ? 'Needs setup'
+        ? (connecting ? 'Connecting…' : 'Needs setup')
         : {
             if (a.name != null && a.name != title) a.name,
             d.model,
@@ -92,7 +97,7 @@ class DeviceRow extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.bodySmall?.copyWith(
             fontFamily: d == null ? 'monospace' : null,
-            color: d?.needs != null ? scheme.tertiary : null,
+            color: d?.needs != null && !connecting ? scheme.tertiary : null,
           ),
         ),
         trailing: d == null

@@ -103,6 +103,32 @@ void main() {
     expect(find.text('25.06 °C'), findsOneWidget);
   });
 
+  testWidgets('a Daly waiting for its first read says Connecting', (
+    tester,
+  ) async {
+    final t = DeviceTracker(DecoderRegistry.standard());
+    t.onAdvertisement(
+      adv(
+        id: 'daly',
+        name: 'DL-694201312BA',
+        manufacturerData: {0x0402: '16 40 17 10 01 5c'},
+      ),
+    );
+    final d = t['daly']!;
+    expect(d.view?.needs, isNotNull);
+    Future<void> show(bool connecting) => tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DeviceRow(device: d, onTap: () {}, connecting: connecting),
+        ),
+      ),
+    );
+    await show(false);
+    expect(find.text('Needs setup'), findsOneWidget);
+    await show(true);
+    expect(find.text('Connecting…'), findsOneWidget);
+  });
+
   testWidgets('a narrow device row does not overflow', (tester) async {
     final t = DeviceTracker(DecoderRegistry.standard());
     t.onAdvertisement(

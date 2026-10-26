@@ -710,6 +710,18 @@ void main() {
       },
     );
 
+    test('changes in the same millisecond each get their own time', () async {
+      final store = ReadByStore.memory();
+      final keys = KeyStore();
+      for (var i = 0; i < 20; i++) {
+        await store.setLabel('d$i', 'Name $i');
+        await keys.setSecret('d$i', '$i');
+      }
+      // Screens send what is newer than they last sent: a tie never left.
+      expect({for (final r in store.records) r.at}, hasLength(20));
+      expect({for (final r in keys.records) r.at}, hasLength(20));
+    });
+
     test(
       'a name for one of three identical sensors lands on that one only',
       () async {

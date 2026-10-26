@@ -90,6 +90,11 @@ class ReadByStore extends ChangeNotifier {
   SharedPreferences? _prefs;
   final Map<String, ReadByRecord> _records = {};
 
+  /// The newest time stamped or taken, so two changes in one millisecond
+  /// still get different times: screens send only what is newer than what
+  /// they last sent, and a tie would never leave.
+  int _last = 0;
+
   ReadByStore();
 
   /// For tests: never saved.
@@ -101,6 +106,7 @@ class ReadByStore extends ChangeNotifier {
       for (final j in jsonDecode(p.getString(_key) ?? '[]') as List) {
         final r = ReadByRecord.fromJson((j as Map).cast());
         _records[r.id] = r;
+        _last = _max(_last, r.at);
       }
     } catch (_) {}
     notifyListeners();
@@ -130,7 +136,7 @@ class ReadByStore extends ChangeNotifier {
     String? fp,
   }) {
     final r = _records[id];
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = _stamp();
     final clean = label?.trim();
     return _put(
       ReadByRecord(
@@ -161,7 +167,7 @@ class ReadByStore extends ChangeNotifier {
     bool? connect,
   }) {
     final r = _records[id];
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = _stamp();
     return _put(
       ReadByRecord(
         id,
@@ -238,8 +244,12 @@ class ReadByStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  int _stamp() =>
+      _last = _max(DateTime.now().millisecondsSinceEpoch, _last + 1);
+
   Future<void> _put(ReadByRecord r) async {
     _records[r.id] = r;
+    _last = _max(_last, r.at);
     await _prefs?.setString(
       _key,
       jsonEncode([for (final r in _records.values) r.toJson()]),
@@ -247,3 +257,5 @@ class ReadByStore extends ChangeNotifier {
     notifyListeners();
   }
 }
+
+int _max(int a, int b) => a > b ? a : b;

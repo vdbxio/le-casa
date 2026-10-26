@@ -87,6 +87,10 @@ class KeyStore extends ChangeNotifier {
   final Map<String, KeyRecord> _meta = {};
   SharedPreferences? _prefs;
 
+  /// The newest time stamped or taken, so two changes in one millisecond
+  /// still get different times and both reach the other screens.
+  int _last = 0;
+
   /// Fills in a device's name and MAC when a key is saved. Set by the app.
   DeviceLabel? label;
 
@@ -104,6 +108,7 @@ class KeyStore extends ChangeNotifier {
           final j = jsonDecode(_prefs!.getString(k) ?? '');
           final r = KeyRecord.fromJson((j as Map).cast());
           _meta[_slot(r.kind, r.id)] = r;
+          if (r.at > _last) _last = r.at;
         } catch (_) {}
       }
     }
@@ -225,14 +230,13 @@ class KeyStore extends ChangeNotifier {
     return true;
   }
 
-  KeyRecord _local(SecretKind kind, String id, String? value) => _withLabel(
-    KeyRecord(
-      kind,
-      id,
-      value: value,
-      at: DateTime.now().millisecondsSinceEpoch,
-    ),
-  );
+  KeyRecord _local(SecretKind kind, String id, String? value) =>
+      _withLabel(KeyRecord(kind, id, value: value, at: _stamp()));
+
+  int _stamp() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return _last = now > _last ? now : _last + 1;
+  }
 
   KeyRecord _withLabel(KeyRecord r) {
     final l = label?.call(r.id);
@@ -278,6 +282,7 @@ class KeyStore extends ChangeNotifier {
       value: v == null ? null : '',
     );
     _meta[_slot(r.kind, r.id)] = meta;
+    if (r.at > _last) _last = r.at;
     await _prefs?.setString(
       '$_metaPrefix${_slot(r.kind, r.id)}',
       jsonEncode(meta.toJson()),

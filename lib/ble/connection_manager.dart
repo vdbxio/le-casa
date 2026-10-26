@@ -50,6 +50,10 @@ class Link {
   String? error;
   int failures = 0;
 
+  /// Polls since the last good read where the link came up and then the
+  /// device dropped it before the read finished.
+  int drops = 0;
+
   Link(this.id, this.driver, {bool enabled = true})
     : nextDue = DateTime.now(),
       phase = enabled ? LinkPhase.scheduled : LinkPhase.off;
@@ -57,6 +61,15 @@ class Link {
   bool get busy => phase == LinkPhase.connecting || phase == LinkPhase.reading;
 
   bool get enabled => phase != LinkPhase.off && phase != LinkPhase.unsupported;
+
+  /// This device keeps cutting the link a few seconds after connecting. Seen
+  /// with a Daly module and the PRITOM M10 tablet: the module asks for new
+  /// link parameters and the tablet's radio loses the link four seconds
+  /// later, whatever the app does. Nothing to fix in the app, so tell the
+  /// user instead of retrying in silence.
+  bool get keepsDropping => drops >= dropsToWarn;
+
+  static const dropsToWarn = 3;
 
   String get statusText => switch (phase) {
     LinkPhase.scheduled => 'Waiting to connect',
@@ -107,6 +120,10 @@ class _ScanPausingSession implements ClosableSession {
   @override
   Future<Stream<Uint8List>> subscribe(GattChar c) => _link.subscribe(c);
   @override
+  bool get droppedByDevice => _link.droppedByDevice;
+  @override
+  Future<void> get onDisconnected => _link.onDisconnected;
+  @override
   Future<void> close() async {
     await _link.close();
     final r = _resume;
@@ -149,8 +166,11 @@ class ConnectionManager extends ChangeNotifier {
     _tick = Timer.periodic(tick, (_) => pump());
   }
 
-  ConnectionManager.forScanner(BleScanner scanner, DeviceTracker tracker)
-    : this(tracker, open: scannerOpener(scanner));
+  ConnectionManager.forScanner(
+    BleScanner scanner,
+    DeviceTracker tracker, {
+    GattDriverRegistry? drivers,
+  }) : this(tracker, open: scannerOpener(scanner), drivers: drivers);
 
   /// Global switch: when off, nothing connects to anything.
   bool get enabled => _enabled;
@@ -265,6 +285,7 @@ class ConnectionManager extends ChangeNotifier {
       l
         ..phase = LinkPhase.ok
         ..failures = 0
+        ..drops = 0
         ..lastOk = DateTime.now()
         ..nextDue = DateTime.now().add(l.driver.interval);
     } on UnsupportedDeviceException catch (e) {
@@ -274,12 +295,32 @@ class ConnectionManager extends ChangeNotifier {
         ..error = e.message;
     } catch (e) {
       debugPrint('poll: ${l.id} failed: $e');
-      _fail(l, _describe(e));
+      final dropped = await _dropped(link, e);
+      // Only a good read clears the count: on the M10 every other try at
+      // the Daly fails while connecting, between the drops.
+      if (dropped) l.drops++;
+      _fail(l, dropped ? 'The device dropped the connection' : _describe(e));
     } finally {
       await link?.close();
       _busy = null;
       notifyListeners();
     }
+  }
+
+  /// Whether [e] came from the link going down under us. Android fails the
+  /// pending request (often "status: 133") before it reports the
+  /// disconnect, so give that event a moment to arrive. A status 8 can also
+  /// come while connecting, before there is a [link].
+  static Future<bool> _dropped(ClosableSession? link, Object e) async {
+    if (RegExp(r'status: 8\b|is disconnected').hasMatch('$e')) return true;
+    if (link == null) return false;
+    if (!link.droppedByDevice) {
+      await link.onDisconnected.timeout(
+        const Duration(seconds: 2),
+        onTimeout: () {},
+      );
+    }
+    return link.droppedByDevice;
   }
 
   void _fail(Link l, String error) {

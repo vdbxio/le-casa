@@ -14,6 +14,7 @@ import 'dashboard/dashboard_controller.dart';
 import 'dashboard/dashboard_page.dart';
 import 'dashboard/history.dart';
 import 'decoders/registry.dart';
+import 'drivers/driver.dart';
 import 'keys/key_store.dart';
 import 'platform/tablet.dart';
 import 'settings/dimmer.dart';
@@ -113,6 +114,7 @@ class _LeCasaAppState extends State<LeCasaApp> {
   late final ConnectionManager connections = ConnectionManager.forScanner(
     scanner,
     tracker,
+    drivers: GattDriverRegistry.standard(secretFor: keys.secretFor),
   );
   late final DashboardController dashboard = DashboardController();
   late final History history = History(tracker);

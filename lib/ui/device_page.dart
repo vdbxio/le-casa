@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../app.dart';
 import '../ble/connection_manager.dart';
 import '../ble/device_tracker.dart';
+import '../bms/registry.dart';
 import '../decoders/raw_advertisement.dart';
 import 'format.dart';
 
@@ -25,6 +26,7 @@ class DevicePage extends StatefulWidget {
 class _DevicePageState extends State<DevicePage> {
   Timer? _tick;
   final _keyCtl = TextEditingController();
+  final _pinCtl = TextEditingController();
   String? _keyError;
 
   @override
@@ -37,6 +39,7 @@ class _DevicePageState extends State<DevicePage> {
   void dispose() {
     _tick?.cancel();
     _keyCtl.dispose();
+    _pinCtl.dispose();
     super.dispose();
   }
 
@@ -49,6 +52,14 @@ class _DevicePageState extends State<DevicePage> {
     } on FormatException catch (e) {
       setState(() => _keyError = e.message);
     }
+  }
+
+  Future<void> _savePin() async {
+    final services = AppServices.of(context);
+    await services.keys.setSecret(widget.id, _pinCtl.text);
+    _pinCtl.clear();
+    // try it straight away
+    unawaited(services.connections.readNow(widget.id));
   }
 
   @override
@@ -73,7 +84,11 @@ class _DevicePageState extends State<DevicePage> {
         final a = dev.latest;
         final link = services.connections[widget.id];
         final hasKey = services.keys.has(widget.id);
-        final wantsKey = d?.needs != null || hasKey;
+        // A BMS waits for a connection, not for a key.
+        final bms = bmsSpecFor(dev.lastRecognised ?? a);
+        final isBms = bms != null || (d?.protocol.startsWith('Daly') ?? false);
+        final wantsKey = (d?.needs != null && !isBms) || hasKey;
+        final hasPin = services.keys.secretFor(widget.id) != null;
         return Scaffold(
           appBar: AppBar(title: Text(dev.title)),
           body: ListView(
@@ -146,6 +161,47 @@ class _DevicePageState extends State<DevicePage> {
                       OutlinedButton(
                         onPressed: () => services.keys.remove(widget.id),
                         child: const Text('Forget key'),
+                      ),
+                  ],
+                ),
+              ],
+              if (bms != null && bms.acceptSecret) ...[
+                const Divider(height: 32),
+                Text('Battery PIN', style: theme.textTheme.titleMedium),
+                const SizedBox(height: 4),
+                Text(
+                  [
+                    hasPin
+                        ? 'A PIN is stored for this battery.'
+                        : 'Only needed if a PIN or password is set in the '
+                              'battery\'s own app.',
+                    ?bms.secretHint,
+                  ].join(' '),
+                  style: theme.textTheme.bodySmall,
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _pinCtl,
+                  decoration: const InputDecoration(
+                    labelText: 'PIN or password',
+                    border: OutlineInputBorder(),
+                  ),
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  obscureText: true,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    FilledButton(
+                      onPressed: _savePin,
+                      child: const Text('Save PIN'),
+                    ),
+                    const SizedBox(width: 8),
+                    if (hasPin)
+                      OutlinedButton(
+                        onPressed: () => services.keys.removeSecret(widget.id),
+                        child: const Text('Forget PIN'),
                       ),
                   ],
                 ),
@@ -291,6 +347,20 @@ class _ConnectionSection extends StatelessWidget {
               ? null
               : (v) => connections.setDeviceEnabled(link.id, v),
         ),
+        if (link.keepsDropping)
+          Card(
+            color: theme.colorScheme.tertiaryContainer,
+            child: const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text(
+                'This device keeps dropping the connection a few seconds '
+                'after it connects. Its radio and this tablet\'s Bluetooth '
+                'chip do not get along, and no setting in Le\'Casa changes '
+                'that. Another phone or tablet usually reads it fine. '
+                'Le\'Casa keeps trying in the background.',
+              ),
+            ),
+          ),
         if (!connections.enabled)
           Text(
             'Connections are paused globally (see the scan screen menu).',

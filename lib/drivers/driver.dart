@@ -5,6 +5,7 @@
 import '../ble/gatt_session.dart';
 import '../decoders/decoded.dart';
 import '../decoders/raw_advertisement.dart';
+import 'bms_driver.dart';
 import 'daly_driver.dart';
 import 'xiaomi_driver.dart';
 
@@ -35,8 +36,15 @@ class GattDriverRegistry {
 
   const GattDriverRegistry(this.drivers);
 
-  factory GattDriverRegistry.standard() =>
-      const GattDriverRegistry([DalyDriver(), XiaomiStockGattDriver()]);
+  /// Daly modules with the usual "DL-" name keep their own driver, which
+  /// has run on real batteries for a while; every other BMS, other Daly
+  /// variants included, goes through the aiobmsble port.
+  factory GattDriverRegistry.standard({SecretProvider secretFor = noSecrets}) =>
+      GattDriverRegistry([
+        const DalyDriver(),
+        const XiaomiStockGattDriver(),
+        BmsDriver(secretFor: secretFor),
+      ]);
 
   GattDriver? forAdvertisement(RawAdvertisement adv) {
     for (final d in drivers) {

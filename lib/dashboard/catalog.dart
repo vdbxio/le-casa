@@ -353,7 +353,8 @@ CardModel _solarTotal(CardSources s) {
 
 CardModel _battery(TrackedDevice d, Decoded v, String name, CardSources s) {
   final soc = _n(v, 'state of charge');
-  final isDaly = v.protocol.startsWith('Daly');
+  // Daly and the aiobmsble drivers share reading labels.
+  final isDaly = v.protocol.startsWith('Daly') || v.info.containsKey('bms');
   final current = _n(v, 'current');
   String? state;
   if (isDaly) {

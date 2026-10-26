@@ -38,16 +38,20 @@ The app currently
     battery over the plain GATT characteristic, no bindkey needed. Polled
     every 5 minutes because connecting costs the coin cell far more than
     listening does; flashing pvvx + BTHome is still the better setup.
+  - **Every BMS aiobmsble supports** (50 types: JBD, JiKong, ANT, Seplos, Renogy, Redodo,
+    Pylontech, ECO-WORTHY, Dometic and more), through a Dart port of
+    [aiobmsble](https://github.com/patman15/aiobmsble). Batteries that
+    need a PIN get a *Battery PIN* field on their page. Full list, PIN
+    notes and iPad limits in [docs/bms.md](docs/bms.md).
   - Each device has a "Read over connection" switch and a "Read now"
     button on its page; the link icon on the scan screen pauses all
     connections at once (handy when you want to use the vendor app).
-  - Known issue: the PRITOM M10 test tablet cannot hold a link to the
-    Daly module. The module connects, then the link times out 4 s after
-    the module's connection-parameter update, every time, whatever the app
-    does (write type, scan paused, MTU 512). The same module answers a Mac
-    instantly, so the Daly driver is verified against a real frame (see
-    `test/daly_protocol_test.dart`) and the card simply waits until a
-    radio that gets along with the module, or a Le'Dongle relay, reads it.
+  - Known issue: the PRITOM M10 test tablet loses every link to the Daly
+    module about 4 s after the module's connection-parameter update.
+    Asking Android for other link parameters or the 1M PHY changes
+    nothing (tested 2026-10-25), and the same module reads fine on a Mac
+    and on the iPad. When a device drops the link three polls in a row,
+    its page now says so instead of retrying in silence.
 
 Not yet: dashboard layout, controlling two-way devices (Alpicool, Hcalory),
 tablet-to-tablet sync, phone relay, voice. See the roadmap below.
@@ -112,6 +116,9 @@ lib/
     daly_protocol.dart  Daly frame building/parsing (pure, tested)
     daly_driver.dart    auto-detects the Daly dialect and reads a snapshot
     xiaomi_driver.dart  stock LYWSD03MMC live characteristic
+    bms_driver.dart     runs the aiobmsble port and builds the card
+  bms/           aiobmsble port: BaseBms, 50 drivers, registry (generated
+                 by tool/aiobmsble/gen_registry.py)
   ble/           radio wrapper (bluetooth_low_energy), device tracker,
                  GattSession abstraction and the connection manager that
                  polls one device at a time

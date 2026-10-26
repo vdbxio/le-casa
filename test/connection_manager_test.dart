@@ -14,7 +14,7 @@ import 'helpers.dart';
 
 /// Driver that returns a canned reading, or throws what it is told to.
 class ScriptedDriver implements GattDriver {
-  final Object? error;
+  Object? error;
   int reads = 0;
   ScriptedDriver({this.error});
 
@@ -115,6 +115,71 @@ void main() {
     expect(l.failures, 1);
     expect(l.nextDue.isAfter(DateTime.now()), isTrue);
     expect(opened.single.closed, isTrue);
+    m.dispose();
+  });
+
+  test('a device that keeps dropping the link is flagged', () async {
+    // The pending write fails first and the disconnect event follows, the
+    // order Android reports them in.
+    final driver = ScriptedDriver(
+      error: Exception('Write descriptor failed with status: 133.'),
+    );
+    var drop = true;
+    var failConnect = false;
+    final m = manager(
+      driver,
+      open: (id) async {
+        if (failConnect) throw Exception('Connect failed with status: 133');
+        final s = FakeSession(characteristics: const []);
+        if (drop) Timer(const Duration(milliseconds: 50), s.drop);
+        opened.add(s);
+        return s;
+      },
+    );
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    for (var i = 0; i < Link.dropsToWarn; i++) {
+      expect(m[testAdv.id]!.keepsDropping, isFalse);
+      await m.readNow(testAdv.id);
+      // a failed connect in between, as on the M10
+      failConnect = true;
+      await m.readNow(testAdv.id);
+      failConnect = false;
+    }
+    final l = m[testAdv.id]!;
+    expect(l.keepsDropping, isTrue);
+    // Connect failures in between do not clear it; a good read does.
+    drop = false;
+    driver.error = null;
+    await m.readNow(testAdv.id);
+    expect(l.keepsDropping, isFalse);
+    m.dispose();
+  });
+
+  test('a status 8 error counts as a drop straight away', () async {
+    final driver = ScriptedDriver(
+      error: Exception('GATT is disconnected with status: 8'),
+    );
+    final m = manager(driver);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.pump();
+    expect(m[testAdv.id]!.drops, 1);
+    expect(m[testAdv.id]!.error, 'The device dropped the connection');
+    m.dispose();
+  });
+
+  test('a status 8 while connecting counts as a drop too', () async {
+    final m = manager(
+      ScriptedDriver(),
+      open: (id) async =>
+          throw Exception('GATT is disconnected with status: 8'),
+    );
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.pump();
+    expect(m[testAdv.id]!.drops, 1);
+    expect(m[testAdv.id]!.error, 'The device dropped the connection');
     m.dispose();
   });
 

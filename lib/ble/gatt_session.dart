@@ -17,8 +17,13 @@ class GattChar {
   final bool canWriteWithoutResponse;
   final bool canNotify;
 
+  /// UUID of the service it belongs to, when known. A few devices repeat a
+  /// characteristic UUID in two services.
+  final String? service;
+
   const GattChar(
     this.uuid, {
+    this.service,
     this.canRead = false,
     this.canWrite = false,
     this.canWriteWithoutResponse = false,
@@ -63,6 +68,13 @@ abstract interface class GattSession {
 /// A session the connection manager can also close.
 abstract interface class ClosableSession implements GattSession {
   Future<void> close();
+
+  /// True once the device or the radio ended the link by itself, rather
+  /// than through [close].
+  bool get droppedByDevice;
+
+  /// Completes when the link drops by itself; never completes otherwise.
+  Future<void> get onDisconnected;
 }
 
 extension GattSessionLookup on GattSession {

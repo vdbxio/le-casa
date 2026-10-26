@@ -4,6 +4,7 @@
 
 import 'appliances.dart';
 import 'apple.dart';
+import 'bms.dart';
 import 'bthome.dart';
 import 'daly.dart';
 import 'decoded.dart';
@@ -31,6 +32,8 @@ class DecoderRegistry {
         const DalyDecoder(),
         const HcaloryDecoder(),
         const AlpicoolDecoder(),
+        // after the appliances: some BMS name patterns are broad
+        const BmsDecoder(),
         const AppleDecoder(),
       ]);
 

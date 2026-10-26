@@ -22,11 +22,16 @@ class GattLink implements ClosableSession {
   StreamSubscription? _stateSub;
   final _disconnected = Completer<void>();
 
-  GattLink._(this._central, this.peripheral, this._platformChars)
-    : characteristics = [
-        for (final c in _platformChars)
+  GattLink._(
+    this._central,
+    this.peripheral,
+    this._platformChars,
+    List<String> serviceOf,
+  ) : characteristics = [
+        for (final (i, c) in _platformChars.indexed)
           GattChar(
             c.uuid.toString().toLowerCase(),
+            service: serviceOf[i],
             canRead: c.properties.contains(GATTCharacteristicProperty.read),
             canWrite: c.properties.contains(GATTCharacteristicProperty.write),
             canWriteWithoutResponse: c.properties.contains(
@@ -56,8 +61,11 @@ class GattLink implements ClosableSession {
     });
   }
 
-  /// Completes when the peripheral drops the link on its own.
+  @override
   Future<void> get onDisconnected => _disconnected.future;
+
+  @override
+  bool get droppedByDevice => _disconnected.isCompleted;
 
   /// Connects and discovers services. Throws on failure or after
   /// [timeout]; the caller does not need to disconnect in that case.
@@ -87,16 +95,24 @@ class GattLink implements ClosableSession {
       final services = await central
           .discoverGATT(peripheral)
           .timeout(const Duration(seconds: 15));
-      final chars = <GATTCharacteristic>[
-        for (final s in services) ...s.characteristics,
-        for (final s in services)
-          for (final inc in s.includedServices) ...inc.characteristics,
-      ];
+      final chars = <GATTCharacteristic>[];
+      final serviceOf = <String>[];
+      void add(GATTService s) {
+        for (final c in s.characteristics) {
+          chars.add(c);
+          serviceOf.add(s.uuid.toString().toLowerCase());
+        }
+      }
+
+      services.forEach(add);
+      for (final s in services) {
+        s.includedServices.forEach(add);
+      }
       debugPrint(
         'gatt: ${peripheral.uuid} has ${chars.length} characteristics: '
         '${chars.map((c) => c.uuid.toString().substring(4, 8)).join(' ')}',
       );
-      return GattLink._(central, peripheral, chars);
+      return GattLink._(central, peripheral, chars, serviceOf);
     } catch (e) {
       debugPrint('gatt: discovery on ${peripheral.uuid} failed: $e');
       try {

@@ -1,0 +1,2965 @@
+[
+{
+"kind": "bms",
+"type": "roypow_bms",
+"mac": "12:6C:14:00:00:00",
+"name": " B12100A 220600016 ",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb",
+"0000ffe7-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"424": "88a0126c143922b8"
+},
+"matches": [
+"roypow_bms"
+]
+},
+{
+"kind": "bms",
+"type": "roypow_bms",
+"mac": "12:6C:14:00:00:00",
+"name": " B12100A xxxxxxxxx ",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb",
+"0000fee7-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"2865": "88a0126c1439281f"
+},
+"matches": [
+"roypow_bms"
+]
+},
+{
+"kind": "bms",
+"type": "roypow_bms",
+"mac": "C6:6C:15:00:00:00",
+"name": " B12100A xxxxxxxxx ",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb",
+"0000fee7-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"35579": "88a0c66c1508a7e9"
+},
+"matches": [
+"roypow_bms"
+]
+},
+{
+"kind": "bms",
+"type": "roypow_bms",
+"mac": "C6:6C:15:00:00:00",
+"name": " UT1300 BT 2207B00434",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb",
+"0000fee7-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"34889": "88a0c66c15000000"
+},
+"matches": [
+"roypow_bms"
+]
+},
+{
+"kind": "bms",
+"type": "roypow_bms",
+"mac": "77:77:19:00:00:00",
+"name": " S12100A LI00735 ",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb",
+"0000fee7-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"52083": "88a0777719000000"
+},
+"matches": [
+"roypow_bms"
+]
+},
+{
+"kind": "bms",
+"type": "roypow_bms",
+"mac": "12:6C:14:00:00:00",
+"name": " S12200A  LE00006",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb",
+"0000fee7-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"20228": "88a0126c14386c14"
+},
+"matches": [
+"roypow_bms"
+]
+},
+{
+"kind": "bms",
+"type": "pwrboozt_bms",
+"mac": "",
+"name": "BT-Battery          ",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"32516": "0ef5e2ad"
+},
+"matches": [
+"pwrboozt_bms"
+]
+},
+{
+"kind": "bms",
+"type": "dometic_bms",
+"mac": "48:02:AF:00:00:00",
+"name": "KAA_500219_TLB150",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"2117": "1485"
+},
+"matches": [
+"dometic_bms"
+]
+},
+{
+"kind": "bms",
+"type": "dometic_bms",
+"mac": "00:21:7e:00:00:00",
+"name": "KAA_500xxx_TLB150",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"2117": "1485"
+},
+"matches": [
+"dometic_bms"
+]
+},
+{
+"kind": "bms",
+"type": "saihang_bms",
+"mac": "",
+"name": "SH24100-H-00069",
+"service_uuids": [
+"0000fffa-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {
+"0000180a-0000-1000-8000-00805f9b34fb": ""
+},
+"manufacturer_data": {
+"105": "202251a2"
+},
+"matches": [
+"saihang_bms"
+]
+},
+{
+"kind": "bms",
+"type": "superb_bms",
+"mac": "60:8A:10:00:00:00",
+"name": "Epsilon-201007664",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"superb_bms"
+]
+},
+{
+"kind": "bms",
+"type": "superb_bms",
+"mac": "E8:EB:1B:00:00:00",
+"name": "Epsilon-201006763",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"superb_bms"
+]
+},
+{
+"kind": "bms",
+"type": "buknuwo_bms",
+"mac": "B4:69:00:00:00:00",
+"name": "CDZG202512050020000242 ",
+"service_uuids": [],
+"service_data": {
+"0000180a-0000-1000-8000-00805f9b34fb": ""
+},
+"manufacturer_data": {
+"65535": "4e"
+},
+"matches": [
+"buknuwo_bms"
+]
+},
+{
+"kind": "bms",
+"type": "buknuwo_bms",
+"mac": "82:FF:00:00:00:00",
+"name": "MEY-12320-A00898",
+"service_uuids": [],
+"service_data": {
+"0000180a-0000-1000-8000-00805f9b34fb": ""
+},
+"manufacturer_data": {
+"65535": "4e"
+},
+"matches": [
+"buknuwo_bms"
+]
+},
+{
+"kind": "bms",
+"type": "cbtpwr_vb_bms",
+"mac": "F8:2E:0C:00:00:00",
+"name": "VB024000390",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb",
+"0000ffb0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"16963": "545e0211f82e0ca88942"
+},
+"matches": [
+"cbtpwr_vb_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ws_nova_bms",
+"mac": "60:6E:41:00:00:00",
+"name": "Power-1",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"28256": "41000000"
+},
+"matches": [
+"ws_nova_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ws_nova_bms",
+"mac": "10:23:81:00:00:00",
+"name": "10:23:81:00:00:00",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"8976": "81000000"
+},
+"matches": [
+"ws_nova_bms"
+]
+},
+{
+"kind": "bms",
+"type": "redodo_bms",
+"mac": "",
+"name": "R-24100BNN160-A00643",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"22618": "c8478015d834"
+},
+"matches": [
+"redodo_bms"
+]
+},
+{
+"kind": "bms",
+"type": "redodo_bms",
+"mac": "",
+"name": "P-24050BNNA70-A01152",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"22618": "c8478018bc81"
+},
+"matches": [
+"redodo_bms"
+]
+},
+{
+"kind": "bms",
+"type": "redodo_bms",
+"mac": "",
+"name": "PQ-24100B-A00292",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"22618": "c8478010b79a"
+},
+"matches": [
+"redodo_bms"
+]
+},
+{
+"kind": "bms",
+"type": "redodo_bms",
+"mac": "",
+"name": "L-12100BNNA70-A09683",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"22618": "c8478015de04"
+},
+"matches": [
+"redodo_bms"
+]
+},
+{
+"kind": "bms",
+"type": "redodo_bms",
+"mac": "",
+"name": "RO-24100B-A00162",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"22618": "c8478012d5e7"
+},
+"matches": [
+"redodo_bms"
+]
+},
+{
+"kind": "bms",
+"type": "redodo_bms",
+"mac": "",
+"name": "LT-51230BGC-A00229",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"22618": "c8478012d64e"
+},
+"matches": [
+"redodo_bms"
+]
+},
+{
+"kind": "bms",
+"type": "redodo_bms",
+"mac": "",
+"name": "LT-12100BG-A07700",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"22618": "c8478012b3b8"
+},
+"matches": [
+"redodo_bms"
+]
+},
+{
+"kind": "bms",
+"type": "redodo_bms",
+"mac": "",
+"name": "L-51030GBNGC2-A00263",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"22618": "c8478014ec68"
+},
+"matches": [
+"redodo_bms"
+]
+},
+{
+"kind": "bms",
+"type": "redodo_bms",
+"mac": "",
+"name": "LT-24100B-A00473",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"22618": "c847800fad8b"
+},
+"matches": [
+"redodo_bms"
+]
+},
+{
+"kind": "bms",
+"type": "redodo_bms",
+"mac": "C8:47:80:00:00:00",
+"name": "S-12100BNNA70-A00101",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"22618": "c84780000000"
+},
+"matches": [
+"redodo_bms"
+]
+},
+{
+"kind": "bms",
+"type": "redodo_bms",
+"mac": "C8:47:80:00:00:00",
+"name": "SS-12100BGH-A00102",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"22618": "c84780000000"
+},
+"matches": [
+"redodo_bms"
+]
+},
+{
+"kind": "bms",
+"type": "redodo_bms",
+"mac": "C8:47:80:00:00:00",
+"name": "T-12100BNNH19-A00130",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"22618": "c84780000000"
+},
+"matches": [
+"redodo_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ant_leg_bms",
+"mac": "",
+"name": "ANT-BLE16S",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb",
+"0000fee7-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"1623": "88a0aabbcca12345"
+},
+"matches": [
+"ant_leg_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ant_leg_bms",
+"mac": "22:DD:65:00:00:00",
+"name": "ANT-BLE22AACB-0489",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb",
+"0000fee7-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"10139": "88a022dd65000489"
+},
+"matches": [
+"ant_leg_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A4:C1:37:00:00:00",
+"name": "GJ-25.6V200AH-0006",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "E1:24:50:00:00:00",
+"name": "SX100P-B230201",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"31488": "02ffff7d"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A5:C2:37:00:00:00",
+"name": "DP04S007L4S100A",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"6226": "2837c2a5"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A5:C2:37:00:00:00",
+"name": "DP04S007L4S100A",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"8856": "2837c2a5"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "70:3E:97:00:00:00",
+"name": null,
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"15984": "97d1c18c"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A4:C1:38:00:00:00",
+"name": null,
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"49572": "38991554"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A4:C1:38:00:00:00",
+"name": "LT40AH",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"19011": "1b38c1a4"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A5:C2:37:00:00:00",
+"name": "DP04S007L4S120A",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"42435": "2737c2a5"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A5:C2:37:00:00:00",
+"name": "SP17S005P17S120A",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"34114": "1c1fc2a5"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A5:C2:37:00:00:00",
+"name": "12300DE00013",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"44580": "2737c2a5"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A4:C1:37:00:00:00",
+"name": "AP21S002-L21S",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"16089": "4237c1a4"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "F9:56:0B:00:00:00",
+"name": "SBL-12330BLH1-242055",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"123": "02ffff7d"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "C2:33:20:00:00:00",
+"name": "SBL-12330BLH1-242049",
+"service_uuids": [
+"00001800-0000-1000-8000-00805f9b34fb",
+"00001801-0000-1000-8000-00805f9b34fb",
+"0000180a-0000-1000-8000-00805f9b34fb",
+"00002600-0000-1000-8000-00805f9b34fb",
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"123": "02ffff7d"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A4:C1:37:00:00:00",
+"name": "162400552210210097",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"49572": "375532f9"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A4:C1:38:00:00:00",
+"name": "PKT2201PB121000084",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"30669": "e438c1a4"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A5:C2:37:00:00:00",
+"name": "gokwh battery",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"16666": "2937c2a5"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "AA:C2:37:00:00:00",
+"name": "ECO-LFP48100-3U-8EC7",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"49834": "37018ec700014c03"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "38:36:13:00:00:00",
+"name": "OGR-48100-123456789",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb",
+"00000001-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"13880": "13014e9a"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "",
+"name": "JBD-SP16S020-L8S",
+"service_uuids": [
+"00001800-0000-1000-8000-00805f9b34fb",
+"00001801-0000-1000-8000-00805f9b34fb",
+"0000180a-0000-1000-8000-00805f9b34fb",
+"0000ff00-0000-1000-8000-00805f9b34fb",
+"00010203-0405-0607-0809-0a0b0c0d1912"
+],
+"service_data": {},
+"manufacturer_data": {
+"13880": "13014e9a"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A4:C1:37:00:00:00",
+"name": "DWCK00309J-029",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"49148": "3437c1a4"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A4:C1:37:00:00:00",
+"name": "xiaoxiang BMS",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"11313": "2037c1a4"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A4:C1:37:00:00:00",
+"name": "AL12-100-4S-B01",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"36783": "3037c1a4"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A4:C1:37:00:00:00",
+"name": "AL12-100-4S-B02",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"21516": "5037c1a4"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A4:C1:38:00:00:00",
+"name": "DXDB00213J-020",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"58324": "3238c1a4"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A4:C1:38:00:00:00",
+"name": "06201000690",
+"service_uuids": [
+"00001800-0000-1000-8000-00805f9b34fb",
+"00001801-0000-1000-8000-00805f9b34fb",
+"0000180a-0000-1000-8000-00805f9b34fb",
+"0000180f-0000-1000-8000-00805f9b34fb",
+"0000262a-0000-1000-8000-00805f9b34fb",
+"0000fa00-0000-1000-8000-00805f9b34fb",
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {
+"0000262a-0000-1000-8000-00805f9b34fb": "46003e"
+},
+"manufacturer_data": {
+"529": "000040002abb7fff2b382b43c8cb007c00bfbfbfc0000000002580"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A5:C2:37:00:00:00",
+"name": "BS202212-01-0168",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A5:C2:37:00:00:00",
+"name": "BT  LP07841",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"45653": "6037c2a5"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A5:C2:37:00:00:00",
+"name": "DDCK01602J-003",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"37637": "3337c2a5"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A5:C2:37:00:00:00",
+"name": "LP02555",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"407": "2e37c2a5"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A5:C2:37:00:00:00",
+"name": "SPCC13C3BT43000017",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"19446": "4037c2a5"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "F4:F0:3C:00:00:00",
+"name": "TZ-H006-02408-0042",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"123": "02ffff7d"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "E9:99:6B:00:00:00",
+"name": "SX60U-B250016",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"123": "02ffff7d"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "10:A5:62:00:00:00",
+"name": "5",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A5:C2:39:00:00:00",
+"name": "DP04S007L4S60A",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"61774": "2739c2a5"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "96:68:01:00:00:00",
+"name": "N-12100BL250042   ",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"123": "02ffff7d"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A5:C2:3A:00:00:00",
+"name": "SP08S025L8S200A",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "BB:30:00:05:31:35",
+"name": "LSG-48100Y250930-113",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb",
+"00000001-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "04:7F:0E:00:00:00",
+"name": "12150BLH1805",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb",
+"6e40ff00-b5a3-f393-e0a9-e50e24dcca9e"
+],
+"service_data": {},
+"manufacturer_data": {
+"42754": "dc3855a4"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "FE:57:25:00:00:00",
+"name": "SJ-480-B240023",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"123": "02ffff7d"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "A2:C2:37:02:31:58",
+"name": "ECO-LFP48100-3U-3158",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"49826": "3700000000015507"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jbd_bms",
+"mac": "C5:4C:01:00:00:00",
+"name": "@KsM:33390A014CC5    ",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"123": "0002ffff7d"
+},
+"matches": [
+"jbd_bms"
+]
+},
+{
+"kind": "bms",
+"type": "seplos_v2_bms",
+"mac": "",
+"name": "BP02",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"seplos_v2_bms"
+]
+},
+{
+"kind": "bms",
+"type": "seplos_v2_bms",
+"mac": "",
+"name": "BP21",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"seplos_v2_bms"
+]
+},
+{
+"kind": "bms",
+"type": "seplos_v2_bms",
+"mac": "",
+"name": "BP00",
+"service_uuids": [
+"00001800-0000-1000-8000-00805f9b34fb",
+"00001801-0000-1000-8000-00805f9b34fb",
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"seplos_v2_bms"
+]
+},
+{
+"kind": "bms",
+"type": "superb_v2_bms",
+"mac": "48:23:35:00:00:00",
+"name": "Epsilon 150 - 202019586",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"20670": "457073696c6f6e205632"
+},
+"matches": [
+"superb_v2_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ej_bms",
+"mac": "",
+"name": "LT-12V-1544",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"33384": "0102000781b54e"
+},
+"matches": [
+"ej_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ej_bms",
+"mac": "",
+"name": "L-12V100AH-0902",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"ej_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ej_bms",
+"mac": "",
+"name": "LT-12V-0002\r\n",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"ej_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ej_bms",
+"mac": "",
+"name": "LT-24100B-A00249",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"22618": "c847800bb654"
+},
+"matches": [
+"ej_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ej_bms",
+"mac": "",
+"name": "V-12V200Ah-0215",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"ej_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ej_bms",
+"mac": "",
+"name": "SV12V150224041",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"33384": "01020007a030f7"
+},
+"matches": [
+"ej_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ej_bms",
+"mac": "",
+"name": "LT-12100BG-A06359",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"22618": "36342462a26b"
+},
+"matches": [
+"ej_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ej_bms",
+"mac": "",
+"name": "libattU12E9",
+"service_uuids": [
+"00001800-0000-1000-8000-00805f9b34fb",
+"00001801-0000-1000-8000-00805f9b34fb",
+"6e400001-b5a3-f393-e0a9-e50e24dcca9e"
+],
+"service_data": {},
+"manufacturer_data": {
+"21320": "38343238303839643132653936343030"
+},
+"matches": [
+"ej_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ej_bms",
+"mac": "",
+"name": "G-12V300Ah-0345",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"ej_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ej_bms",
+"mac": "",
+"name": "G-12V80Ah-0054",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"ej_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ej_bms",
+"mac": "",
+"name": "G-12V80AH-0669",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"ej_bms"
+]
+},
+{
+"kind": "bms",
+"type": "felicity_bms",
+"mac": "",
+"name": "F100011002424470238",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"felicity_bms"
+]
+},
+{
+"kind": "bms",
+"type": "felicity_bms",
+"mac": "",
+"name": "F074204831425240169",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"felicity_bms"
+]
+},
+{
+"kind": "bms",
+"type": "x123smart_bms",
+"mac": "E8:A2:C9:00:00:00",
+"name": "123\\SmartBMS",
+"service_uuids": [
+"6e400001-b5a3-f393-e0a9-e50e24dcca9e"
+],
+"service_data": {},
+"manufacturer_data": {
+"2330": "00060d02"
+},
+"matches": [
+"x123smart_bms"
+]
+},
+{
+"kind": "bms",
+"type": "abc_bms",
+"mac": "",
+"name": "SOK-24V1127",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"abc_bms"
+]
+},
+{
+"kind": "bms",
+"type": "abc_bms",
+"mac": "",
+"name": "SOK-AA02120",
+"service_uuids": [
+"00001800-0000-1000-8000-00805f9b34fb",
+"00001801-0000-1000-8000-00805f9b34fb",
+"0000180a-0000-1000-8000-00805f9b34fb",
+"0000180f-0000-1000-8000-00805f9b34fb",
+"0000ffe0-0000-1000-8000-00805f9b34fb",
+"0000fff0-0000-1000-8000-00805f9b34fb",
+"f000ffc0-0451-4000-b000-000000000000"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"abc_bms"
+]
+},
+{
+"kind": "bms",
+"type": "tdt_bms",
+"mac": "",
+"name": null,
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"54976": "3c4fac50ff"
+},
+"matches": [
+"tdt_bms"
+]
+},
+{
+"kind": "bms",
+"type": "tdt_bms",
+"mac": "63:A1:00:00:00:00",
+"name": "HS020603AW26030934",
+"service_uuids": [
+"0000ffe1-0000-1000-8000-00805f9b34fb",
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"31526": "88a063a10006b35a"
+},
+"matches": [
+"tdt_bms"
+]
+},
+{
+"kind": "bms",
+"type": "tdt_bms",
+"mac": "AA:C2:37:00:00:00",
+"name": "WTDH04SC02",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"49834": "3700000000024c000300"
+},
+"matches": [
+"tdt_bms"
+]
+},
+{
+"kind": "bms",
+"type": "tdt_bms",
+"mac": "AA:C2:37:00:00:00",
+"name": "WTaHdAZ2603312531",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"49834": "370d2b4a000240000300"
+},
+"matches": [
+"tdt_bms"
+]
+},
+{
+"kind": "bms",
+"type": "tdt_bms",
+"mac": "63:A1:00:00:00:00",
+"name": "WTbFcBG2621080",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb",
+"0000ffe1-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"31526": "88a063a100000000"
+},
+"matches": [
+"tdt_bms"
+]
+},
+{
+"kind": "bms",
+"type": "braunpwr_bms",
+"mac": "24:19:72:00:00:00",
+"name": "HSKS-25A-118",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"123": "02ffff7b"
+},
+"matches": [
+"braunpwr_bms"
+]
+},
+{
+"kind": "bms",
+"type": "braunpwr_bms",
+"mac": "",
+"name": "BL-25F-170-118",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"123": "02ffff7d"
+},
+"matches": [
+"braunpwr_bms"
+]
+},
+{
+"kind": "bms",
+"type": "braunpwr_bms",
+"mac": "F4:AB:5C:00:00:00",
+"name": "HSKS-random name",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"123": "02ffff7d"
+},
+"matches": [
+"braunpwr_bms"
+]
+},
+{
+"kind": "bms",
+"type": "braunpwr_bms",
+"mac": "CF:68:06:00:00:00",
+"name": "KS-Vanvolt-666",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"123": "02ffff7d"
+},
+"matches": [
+"braunpwr_bms"
+]
+},
+{
+"kind": "bms",
+"type": "braunpwr_bms",
+"mac": "F2:B9:21:00:00:00",
+"name": "Vanvolt-180A-24313",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"123": "02ffff7d"
+},
+"matches": [
+"braunpwr_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ag_bms",
+"mac": "",
+"name": "AG100L21021805",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"21320": "84280836070d6400"
+},
+"matches": [
+"ag_bms"
+]
+},
+{
+"kind": "bms",
+"type": "pwrxtreme_bms",
+"mac": "DC:0D:30:00:00:00",
+"name": "Moby",
+"service_uuids": [
+"0000fef5-0000-1000-8000-00805f9b34fb",
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"76": "0215fda50693a4e24fb1afcfc6eb07647825275165c1c6"
+},
+"matches": [
+"pwrxtreme_bms"
+]
+},
+{
+"kind": "bms",
+"type": "eg4_bms",
+"mac": "80:6F:B0:00:00:00",
+"name": "Z122002264",
+"service_uuids": [
+"00001000-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"28544": "b0155e71"
+},
+"matches": [
+"eg4_bms"
+]
+},
+{
+"kind": "bms",
+"type": "eg4_bms",
+"mac": "80:6F:B0:00:00:00",
+"name": "Z121004265",
+"service_uuids": [
+"00001000-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"28544": "b0154870"
+},
+"matches": [
+"eg4_bms"
+]
+},
+{
+"kind": "bms",
+"type": "eg4_bms",
+"mac": "CC:45:A5:00:00:00",
+"name": "Bat1",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"17868": "a5000000"
+},
+"matches": [
+"eg4_bms"
+]
+},
+{
+"kind": "bms",
+"type": "tianpwr_bms",
+"mac": "90:a6:bf:00:00:00",
+"name": "TP_123456",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"tianpwr_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ecoworthy_bms",
+"mac": "",
+"name": "ECO-WORTHY 02_B8EF",
+"service_uuids": [
+"00001800-0000-1000-8000-00805f9b34fb",
+"00001801-0000-1000-8000-00805f9b34fb",
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"49844": "e0fab8f0"
+},
+"matches": [
+"ecoworthy_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ecoworthy_bms",
+"mac": "",
+"name": "ECO-WORTHY 02_50DB",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"47912": "ed0050dc"
+},
+"matches": [
+"ecoworthy_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ecoworthy_bms",
+"mac": "",
+"name": "ECO-WORTHY 0B_5AD4",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"57570": "5a783c31"
+},
+"matches": [
+"ecoworthy_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ecoworthy_bms",
+"mac": "",
+"name": "ECO-WORTHY 02_3DDF",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"15996": "821c3de0"
+},
+"matches": [
+"ecoworthy_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ecoworthy_bms",
+"mac": "",
+"name": "DCHOUSE 01_4F9F",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"57570": "5a72a745"
+},
+"matches": [
+"ecoworthy_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ecoworthy_bms",
+"mac": "",
+"name": "ECO-WORTHY 0B_198D",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"59362": "798e373d"
+},
+"matches": [
+"ecoworthy_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ogt_bms",
+"mac": "",
+"name": "SmartBat-B15051",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"ogt_bms"
+]
+},
+{
+"kind": "bms",
+"type": "renogy_pro_bms",
+"mac": "",
+"name": "RNGRBP1228000830",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"57676": "7457947b"
+},
+"matches": [
+"renogy_pro_bms"
+]
+},
+{
+"kind": "bms",
+"type": "renogy_pro_bms",
+"mac": "",
+"name": "RNGC122BAT28000194",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"57676": "74683692"
+},
+"matches": [
+"renogy_pro_bms"
+]
+},
+{
+"kind": "bms",
+"type": "topband_bms",
+"mac": "",
+"name": "NWJ20221223010330\u0011",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"65535": "30554437a2d2"
+},
+"matches": [
+"topband_bms"
+]
+},
+{
+"kind": "bms",
+"type": "topband_bms",
+"mac": "",
+"name": "NWJ20221223010388\u0011",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"65535": "3055443762ec"
+},
+"matches": [
+"topband_bms"
+]
+},
+{
+"kind": "bms",
+"type": "topband_bms",
+"mac": "",
+"name": "$PFLAC,R,RADIOID\r\n",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"65535": "10554433e8b4"
+},
+"matches": [
+"topband_bms"
+]
+},
+{
+"kind": "bms",
+"type": "topband_bms",
+"mac": "",
+"name": "NWJ20200720020539",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"0": "3414b59d78e74c"
+},
+"matches": [
+"topband_bms"
+]
+},
+{
+"kind": "bms",
+"type": "topband_bms",
+"mac": "",
+"name": "ZM20210512010036\ufffd",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"0": "fc45c3bcd6a8"
+},
+"matches": [
+"topband_bms"
+]
+},
+{
+"kind": "bms",
+"type": "topband_bms",
+"mac": "",
+"name": "xxxxxxx20126\f",
+"service_uuids": [
+"00001800-0000-1000-8000-00805f9b34fb",
+"00001801-0000-1000-8000-00805f9b34fb",
+"0000ffe0-0000-1000-8000-00805f9b34fb",
+"f000ffc0-0451-4000-b000-000000000000"
+],
+"service_data": {},
+"manufacturer_data": {
+"65535": "3055443792f2"
+},
+"matches": [
+"topband_bms"
+]
+},
+{
+"kind": "bms",
+"type": "topband_bms",
+"mac": "30:55:44:00:00:00",
+"name": "30:55:44:00:00:00",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"65535": "305544000000"
+},
+"matches": [
+"topband_bms"
+]
+},
+{
+"kind": "bms",
+"type": "pylontech_bms",
+"mac": "",
+"name": "RT12100-710003",
+"service_uuids": [
+"00001812-0000-1000-8000-00805f9b34fb",
+"0000180f-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"pylontech_bms"
+]
+},
+{
+"kind": "bms",
+"type": "humsienk_bms",
+"mac": "13:C2:A7:00:00:00",
+"name": "HS30A3",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb",
+"00000001-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"49683": "a70330a3"
+},
+"matches": [
+"humsienk_bms"
+]
+},
+{
+"kind": "bms",
+"type": "humsienk_bms",
+"mac": "15:05:D5:00:00:00",
+"name": "ECOE934",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb",
+"00000001-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"1301": "d5000000"
+},
+"matches": [
+"humsienk_bms"
+]
+},
+{
+"kind": "bms",
+"type": "humsienk_bms",
+"mac": "ED:0B:CE:00:00:00",
+"name": "ECOBF9F",
+"service_uuids": [
+"00000001-0000-1000-8000-00805f9b34fb",
+"00001800-0000-1000-8000-00805f9b34fb",
+"00001801-0000-1000-8000-00805f9b34fb",
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"3053": "ce000000"
+},
+"matches": [
+"humsienk_bms"
+]
+},
+{
+"kind": "bms",
+"type": "humsienk_bms",
+"mac": "",
+"name": "ECO0AA8",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb",
+"00000001-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"64590": "6661643630616138"
+},
+"matches": [
+"humsienk_bms"
+]
+},
+{
+"kind": "bms",
+"type": "humsienk_bms",
+"mac": "15:72:D7:00:00:00",
+"name": "DCHC7AC",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb",
+"00000001-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"29205": "d7000000"
+},
+"matches": [
+"humsienk_bms"
+]
+},
+{
+"kind": "bms",
+"type": "eleksol_bms",
+"mac": "A5:C2:37:00:00:00",
+"name": "12150EG00040",
+"service_uuids": [
+"0000ff06-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"2163": "6237c2a5"
+},
+"matches": [
+"eleksol_bms"
+]
+},
+{
+"kind": "bms",
+"type": "allpowers_bms",
+"mac": "",
+"name": "AP R600 V2.0",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"allpowers_bms"
+]
+},
+{
+"kind": "bms",
+"type": "allpowers_bms",
+"mac": "",
+"name": "VOLIX-R1500",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"allpowers_bms"
+]
+},
+{
+"kind": "bms",
+"type": "daly_bms",
+"mac": "",
+"name": "DL-46640102XXXX",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"25670": "010209ac"
+},
+"matches": [
+"daly_bms"
+]
+},
+{
+"kind": "bms",
+"type": "daly_bms",
+"mac": "",
+"name": "DL-401710015C9B",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"770": "16401710015c9b444c"
+},
+"matches": [
+"daly_bms"
+]
+},
+{
+"kind": "bms",
+"type": "daly_bms",
+"mac": "",
+"name": "JHB-501812XXXXXX",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"260": "0150181201a3b34a4842"
+},
+"matches": [
+"daly_bms"
+]
+},
+{
+"kind": "bms",
+"type": "daly_bms",
+"mac": "",
+"name": "Randomname",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"260": "0150181201a4944a4842"
+},
+"matches": [
+"daly_bms"
+]
+},
+{
+"kind": "bms",
+"type": "daly_bms",
+"mac": "",
+"name": "BT270-2",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"770": "16401712011197444c"
+},
+"matches": [
+"daly_bms"
+]
+},
+{
+"kind": "bms",
+"type": "daly_bms",
+"mac": "",
+"name": "DL-40160901534C",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"258": "04"
+},
+"matches": [
+"daly_bms"
+]
+},
+{
+"kind": "bms",
+"type": "daly_bms",
+"mac": "",
+"name": "DL-FB4C2E0000000",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"771": "00b4c2e0000000444c00"
+},
+"matches": [
+"daly_bms"
+]
+},
+{
+"kind": "bms",
+"type": "daly_bms",
+"mac": "",
+"name": "JHB-D2190701C66E",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"1026": "27d2190701c66e4a4842"
+},
+"matches": [
+"daly_bms"
+]
+},
+{
+"kind": "bms",
+"type": "daly_bms",
+"mac": "40:18:07:00:00:00",
+"name": "MyName\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"770": "16401807012ec2444c"
+},
+"matches": [
+"daly_bms"
+]
+},
+{
+"kind": "bms",
+"type": "greenway_bms",
+"mac": "C4:A9:B8:00:00:00",
+"name": "56C00253A00037",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"greenway_bms"
+]
+},
+{
+"kind": "bms",
+"type": "neey_bms",
+"mac": "",
+"name": "GW-24Srenamed1",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb",
+"0000fee7-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"34952": "8888bf9501113638"
+},
+"matches": [
+"neey_bms"
+]
+},
+{
+"kind": "bms",
+"type": "neey_bms",
+"mac": "",
+"name": "GW-24Srenamed2",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb",
+"0000fee7-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"neey_bms"
+]
+},
+{
+"kind": "bms",
+"type": "neey_bms",
+"mac": "",
+"name": "GW-24Srenamed3",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb",
+"0000fee7-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"55769": "88a02b8003f2fc9b"
+},
+"matches": [
+"neey_bms"
+]
+},
+{
+"kind": "bms",
+"type": "neey_bms",
+"mac": "",
+"name": "EK-16S2EB",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb",
+"0000fee7-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"neey_bms"
+]
+},
+{
+"kind": "bms",
+"type": "gobel_bms",
+"mac": "",
+"name": "BMS-1234567890ABCDEF",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"gobel_bms"
+]
+},
+{
+"kind": "bms",
+"type": "gobel_bms",
+"mac": "",
+"name": "BMS-4056911A1100032P    ",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"gobel_bms"
+]
+},
+{
+"kind": "bms",
+"type": "gobel_bms",
+"mac": "04:D8:10:00:00:00",
+"name": "B7522603211101     ",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"65535": "4e"
+},
+"matches": [
+"gobel_bms"
+]
+},
+{
+"kind": "bms",
+"type": "c4s_bms",
+"mac": "",
+"name": "C4S100IE06007",
+"service_uuids": [
+"6e400001-b5a3-f393-e0a9-e50e24dcca9e"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"c4s_bms"
+]
+},
+{
+"kind": "bms",
+"type": "seplos_bms",
+"mac": "C0:D6:3C:00:00:00",
+"name": "SP05B2312190075       ",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"seplos_bms"
+]
+},
+{
+"kind": "bms",
+"type": "seplos_bms",
+"mac": "C0:D6:3C:00:00:00",
+"name": "SP51B2407270006       ",
+"service_uuids": [
+"00001800-0000-1000-8000-00805f9b34fb",
+"00001801-0000-1000-8000-00805f9b34fb",
+"0000fff0-0000-1000-8000-00805f9b34fb",
+"02f00000-0000-0000-8000-00000000fe00"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"seplos_bms"
+]
+},
+{
+"kind": "bms",
+"type": "seplos_bms",
+"mac": "C0:D6:3C:00:00:00",
+"name": "SP66B2404270002       ",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"seplos_bms"
+]
+},
+{
+"kind": "bms",
+"type": "seplos_bms",
+"mac": "C0:D6:3C:00:00:00",
+"name": "SP47B-A2410230006",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"seplos_bms"
+]
+},
+{
+"kind": "bms",
+"type": "seplos_bms",
+"mac": "C0:D6:3C:00:00:00",
+"name": "CSY012405290042",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"seplos_bms"
+]
+},
+{
+"kind": "bms",
+"type": "seplos_bms",
+"mac": "C0:D6:3C:00:00:00",
+"name": "SP95B-B2503190001",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"seplos_bms"
+]
+},
+{
+"kind": "bms",
+"type": "seplos_bms",
+"mac": "C0:D6:3C:00:00:00",
+"name": "SP112B2409100524      ",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"seplos_bms"
+]
+},
+{
+"kind": "bms",
+"type": "seplos_bms",
+"mac": "C0:D6:3C:00:00:00",
+"name": "XZHXLD012404120010    ",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"seplos_bms"
+]
+},
+{
+"kind": "bms",
+"type": "seplos_bms",
+"mac": "C0:D6:3C:00:00:00",
+"name": "ST0012603060048 ",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"seplos_bms"
+]
+},
+{
+"kind": "bms",
+"type": "saftkiste_bms",
+"mac": "D5:DA:24:00:00:00",
+"name": "3000SARKYA",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"89": "191a1b1c1d",
+"4660": "0102030405060708"
+},
+"matches": [
+"saftkiste_bms"
+]
+},
+{
+"kind": "bms",
+"type": "cbtpwr_bms",
+"mac": "38:AB:41:00:00:00",
+"name": "170R000121",
+"service_uuids": [
+"00001800-0000-1000-8000-00805f9b34fb",
+"00001801-0000-1000-8000-00805f9b34fb",
+"0000180a-0000-1000-8000-00805f9b34fb",
+"0000fd00-0000-1000-8000-00805f9b34fb",
+"0000ff90-0000-1000-8000-00805f9b34fb",
+"0000ffb0-0000-1000-8000-00805f9b34fb",
+"0000ffc0-0000-1000-8000-00805f9b34fb",
+"0000ffd0-0000-1000-8000-00805f9b34fb",
+"0000ffe0-0000-1000-8000-00805f9b34fb",
+"0000ffe5-0000-1000-8000-00805f9b34fb",
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"21330": "2134ba03ec110cb4010500010000"
+},
+"matches": [
+"cbtpwr_bms"
+]
+},
+{
+"kind": "bms",
+"type": "cbtpwr_bms",
+"mac": "",
+"name": "170R000086",
+"service_uuids": [
+"00001800-0000-1000-8000-00805f9b34fb",
+"00001801-0000-1000-8000-00805f9b34fb",
+"0000180a-0000-1000-8000-00805f9b34fb",
+"0000fd00-0000-1000-8000-00805f9b34fb",
+"0000ff90-0000-1000-8000-00805f9b34fb",
+"0000ffb0-0000-1000-8000-00805f9b34fb",
+"0000ffc0-0000-1000-8000-00805f9b34fb",
+"0000ffd0-0000-1000-8000-00805f9b34fb",
+"0000ffe0-0000-1000-8000-00805f9b34fb",
+"0000ffe5-0000-1000-8000-00805f9b34fb",
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"21330": "2134ba03ec110cf8010500010000"
+},
+"matches": [
+"cbtpwr_bms"
+]
+},
+{
+"kind": "bms",
+"type": "cbtpwr_bms",
+"mac": "38:AB:41:00:00:00",
+"name": "140R000288",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"0": "ffffffff6400ff000000000000000000"
+},
+"matches": [
+"cbtpwr_bms"
+]
+},
+{
+"kind": "bms",
+"type": "cbtpwr_bms",
+"mac": "BA:03:EC:00:00:00",
+"name": "100R0002E3",
+"service_uuids": [
+"000003c1-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"21330": "2134ba03ec110909010500010000"
+},
+"matches": [
+"cbtpwr_bms"
+]
+},
+{
+"kind": "bms",
+"type": "cbtpwr_bms",
+"mac": "68:5E:1C:00:00:00",
+"name": "170C000E56",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb",
+"0000ffb0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"16963": "545e0111"
+},
+"matches": [
+"cbtpwr_bms"
+]
+},
+{
+"kind": "bms",
+"type": "vatrer_bms",
+"mac": "",
+"name": "250320512100045",
+"service_uuids": [
+"6e400001-b5a3-f393-e0a9-e50e24dcca9e"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"vatrer_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jikong_bms",
+"mac": "",
+"name": "BatteryOben-00",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"2917": "88a0c847800fd5c5"
+},
+"matches": [
+"jikong_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jikong_bms",
+"mac": "",
+"name": "BatterieUnten-01",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"2917": "88a0c847800d086b"
+},
+"matches": [
+"jikong_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jikong_bms",
+"mac": "",
+"name": "JK_B2A8S20P",
+"service_uuids": [
+"00001800-0000-1000-8000-00805f9b34fb",
+"00001801-0000-1000-8000-00805f9b34fb",
+"0000180a-0000-1000-8000-00805f9b34fb",
+"0000180f-0000-1000-8000-00805f9b34fb",
+"0000fee7-0000-1000-8000-00805f9b34fb",
+"0000ffe0-0000-1000-8000-00805f9b34fb",
+"f000ffc0-0451-4000-b000-000000000000"
+],
+"service_data": {},
+"manufacturer_data": {
+"2917": "88a0c847801488b7"
+},
+"matches": [
+"jikong_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jikong_bms",
+"mac": "A4:C1:38:00:00:00",
+"name": "506036N46002293-00",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb",
+"0000fee7-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"2917": "88a0a4c13801085a"
+},
+"matches": [
+"jikong_bms"
+]
+},
+{
+"kind": "bms",
+"type": "jikong_bms",
+"mac": "20:25:03:32:09:75",
+"name": "JK-BD4A8S-4P",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"19274": "0001"
+},
+"matches": [
+"jikong_bms"
+]
+},
+{
+"kind": "bms",
+"type": "dpwrcore_bms",
+"mac": "B0:D2:78:00:00:00",
+"name": "TBA-13500277",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"dpwrcore_bms"
+]
+},
+{
+"kind": "bms",
+"type": "dpwrcore_bms",
+"mac": "3C:E4:B0:00:00:00",
+"name": "TBA-11100169",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"dpwrcore_bms"
+]
+},
+{
+"kind": "bms",
+"type": "lipower_bms",
+"mac": "10:ED:FA:7D:04:48",
+"name": "23-01-05-034",
+"service_uuids": [
+"0000af30-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"lipower_bms"
+]
+},
+{
+"kind": "bms",
+"type": "lipower_bms",
+"mac": "79:D5:EE:00:00:00",
+"name": "24-03-20-011",
+"service_uuids": [
+"0000af30-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"lipower_bms"
+]
+},
+{
+"kind": "bms",
+"type": "pro_bms",
+"mac": "",
+"name": "Pro BMS",
+"service_uuids": [
+"0000fff0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"pro_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ant_bms",
+"mac": "",
+"name": "ANT-BLE24C-001",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"8979": "88a0aabbcc900001"
+},
+"matches": [
+"ant_bms"
+]
+},
+{
+"kind": "bms",
+"type": "ant_bms",
+"mac": "64:9B:F8:2E:A6:6A",
+"name": "ANT@BLE24CBUB-1231\r",
+"service_uuids": [
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"5000": "649bf82ea66a22113322"
+},
+"matches": [
+"ant_bms"
+]
+},
+{
+"kind": "bms",
+"type": "lithionics_bms",
+"mac": "6C:79:B8:00:00:00",
+"name": "Li3-061322094",
+"service_uuids": [
+"00001800-0000-1000-8000-00805f9b34fb",
+"00001801-0000-1000-8000-00805f9b34fb",
+"0000b000-0000-1000-8000-00805f9b34fb",
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {
+"0000b000-0000-1000-8000-00805f9b34fb": "00000000"
+},
+"manufacturer_data": {
+"19784": "6c79b8000000"
+},
+"matches": [
+"lithionics_bms"
+]
+},
+{
+"kind": "bms",
+"type": "lithionics_bms",
+"mac": "A0:6C:65:00:00:00",
+"name": "Li3-022724009",
+"service_uuids": [
+"00001800-0000-1000-8000-00805f9b34fb",
+"00001801-0000-1000-8000-00805f9b34fb",
+"0000b000-0000-1000-8000-00805f9b34fb",
+"0000ffe0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {
+"0000b000-0000-1000-8000-00805f9b34fb": "00000000"
+},
+"manufacturer_data": {
+"19784": "a06c65000000"
+},
+"matches": [
+"lithionics_bms"
+]
+},
+{
+"kind": "bms",
+"type": "pace_bms",
+"mac": "",
+"name": "PC-9662",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {
+"1": "04b4c2e00101015043003132333435363738393031325a"
+},
+"matches": [
+"pace_bms"
+]
+},
+{
+"kind": "bms",
+"type": "myvolta_bms",
+"mac": "E8:EB:1B:00:00:00",
+"name": "VPS-197B",
+"service_uuids": [
+"00035b03-58e6-07dd-021a-08123a000300"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"myvolta_bms"
+]
+},
+{
+"kind": "bms",
+"type": "daren_bms",
+"mac": "3C:8A:1F:00:00:00",
+"name": "DWF3C8A1F7C1235",
+"service_uuids": [
+"0000ff00-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {},
+"matches": [
+"daren_bms"
+]
+},
+{
+"kind": "bms",
+"type": "renogy_bms",
+"mac": "60:98:66:00:00:00",
+"name": "BT-TH-66EDFC11",
+"service_uuids": [
+"0000ffd0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"39008": "66edfc11"
+},
+"matches": [
+"renogy_bms"
+]
+},
+{
+"kind": "bms",
+"type": "renogy_bms",
+"mac": "C4:64:E3:00:00:00",
+"name": "BT-TH-E3383D0E    ",
+"service_uuids": [
+"0000ffd0-0000-1000-8000-00805f9b34fb"
+],
+"service_data": {},
+"manufacturer_data": {
+"25796": "e3383d0e"
+},
+"matches": [
+"renogy_bms"
+]
+},
+{
+"kind": "ignore",
+"type": "classic BT device",
+"mac": "",
+"name": "BMS-SMART_708BFC",
+"service_uuids": [],
+"service_data": {},
+"manufacturer_data": {},
+"matches": []
+},
+{
+"kind": "ignore",
+"type": "MPPT controller, no BMS",
+"mac": "C8:47:80:00:00:00",
+"name": "BT-ROCC2440",
+"service_uuids": [
+"0",
+"0",
+"0",
+"0",
+"f",
+"f",
+"e",
+"0",
+"-",
+"0",
+"0",
+"0",
+"0",
+"-",
+"1",
+"0",
+"0",
+"0",
+"-",
+"8",
+"0",
+"0",
+"0",
+"-",
+"0",
+"0",
+"8",
+"0",
+"5",
+"f",
+"9",
+"b",
+"3",
+"4",
+"f",
+"b"
+],
+"service_data": {},
+"manufacturer_data": {
+"22618": "c84780000000"
+},
+"matches": []
+}
+]

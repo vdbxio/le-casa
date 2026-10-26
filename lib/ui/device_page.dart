@@ -452,10 +452,14 @@ class _ConnectionSection extends StatelessWidget {
         Text('Connection', style: theme.textTheme.titleMedium),
         const SizedBox(height: 4),
         Text(
-          '${link.driver.name} driver. Le\'Casa connects every '
-          '${_duration(link.driver.interval)}, reads, and disconnects so the '
-          'device stays free for its own app in between. Only one app can be '
-          'connected at a time.',
+          connections.isLive(link.id)
+              ? '${link.driver.name} driver. Le\'Casa stays connected and '
+                    'reads every few seconds. Only one app can be connected '
+                    'at a time.'
+              : '${link.driver.name} driver. Le\'Casa connects every '
+                    '${_duration(link.driver.interval)}, reads, and '
+                    'disconnects so the device stays free for its own app in '
+                    'between. Only one app can be connected at a time.',
           style: theme.textTheme.bodySmall,
         ),
         SwitchListTile(

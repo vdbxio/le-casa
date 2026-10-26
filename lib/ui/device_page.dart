@@ -145,6 +145,9 @@ class _DevicePageState extends State<DevicePage> {
                 if (a.name case final name? when name != deviceName(dev))
                   ('Advertised', name),
                 ('Signal', '${a.rssi} dBm'),
+                // A device held open stops advertising: its last read is
+                // what says it is alive.
+                if (dev.polledAt case final at?) ('Read', ago(at)),
                 ('Seen', ago(a.seenAt)),
                 (
                   'Packets',

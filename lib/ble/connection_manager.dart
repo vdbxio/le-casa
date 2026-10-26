@@ -360,8 +360,14 @@ class ConnectionManager extends ChangeNotifier {
 
   /// Runs [f] with the radio to itself: waits for any poll in flight, and
   /// no poll starts until [f] returns. Cheap tablets (the M10) fail every
-  /// connect with status 133 when two are attempted at once.
-  Future<T> exclusive<T>(String what, Future<T> Function() f) async {
+  /// connect with status 133 when two are attempted at once. Gives the
+  /// radio back after [limit] even if [f] is stuck, so one platform call
+  /// that never returns cannot stop every poll for good.
+  Future<T> exclusive<T>(
+    String what,
+    Future<T> Function() f, {
+    Duration limit = const Duration(seconds: 60),
+  }) async {
     final until = DateTime.now().add(const Duration(seconds: 60));
     while (_busy != null) {
       if (DateTime.now().isAfter(until)) {
@@ -372,7 +378,7 @@ class ConnectionManager extends ChangeNotifier {
     _busy = what;
     notifyListeners();
     try {
-      return await f();
+      return await f().timeout(limit);
     } finally {
       _busy = null;
       notifyListeners();

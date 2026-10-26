@@ -121,6 +121,23 @@ void main() {
     m.dispose();
   });
 
+  test('a Bluetooth call that never returns lets go of the radio', () async {
+    final driver = ScriptedDriver();
+    final m = manager(driver);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    final stuck = m.exclusive(
+      'screen sync',
+      () => Completer<void>().future,
+      limit: const Duration(milliseconds: 50),
+    );
+    await expectLater(stuck, throwsA(isA<TimeoutException>()));
+    expect(m.busyId, isNull);
+    await m.pump();
+    expect(driver.reads, 1);
+    m.dispose();
+  });
+
   test('does not poll again before the interval', () async {
     final driver = ScriptedDriver();
     final m = manager(driver);

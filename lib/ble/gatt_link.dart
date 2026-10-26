@@ -126,13 +126,14 @@ class GattLink implements ClosableSession {
       _platformChars[characteristics.indexOf(c)];
 
   /// Most bytes one write can carry on this link (MTU less the header).
-  Future<int> maxWriteLength({bool withResponse = true}) =>
-      _central.getMaximumWriteLength(
+  Future<int> maxWriteLength({bool withResponse = true}) => _central
+      .getMaximumWriteLength(
         peripheral,
         type: withResponse
             ? GATTCharacteristicWriteType.withResponse
             : GATTCharacteristicWriteType.withoutResponse,
-      );
+      )
+      .timeout(const Duration(seconds: 5));
 
   @override
   Future<Uint8List> read(GattChar c) =>
@@ -166,11 +167,11 @@ class GattLink implements ClosableSession {
     final ctl = StreamController<Uint8List>.broadcast();
     _notify[c.uuid] = ctl;
     debugPrint('gatt: subscribe ${c.uuid.substring(4, 8)}');
-    await _central.setCharacteristicNotifyState(
-      peripheral,
-      _platform(c),
-      state: true,
-    );
+    // iOS never answers when the other end drops mid-request, and a call
+    // that never returns holds the radio for every other device.
+    await _central
+        .setCharacteristicNotifyState(peripheral, _platform(c), state: true)
+        .timeout(const Duration(seconds: 10));
     return ctl.stream;
   }
 

@@ -288,6 +288,8 @@ class BleSyncRadio implements SyncRadio {
   @override
   Future<MessageLink> connect(PeerSighting peer) {
     final c = connections;
+    // The connect gives up after 32 s and each step after it has its own
+    // limit, so exclusive's 60 s is only a backstop.
     return c == null
         ? _connect(peer)
         : c.exclusive('screen sync', () => _connect(peer));

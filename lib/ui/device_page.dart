@@ -101,6 +101,9 @@ class _DevicePageState extends State<DevicePage> {
             padding: const EdgeInsets.all(16),
             children: [
               _kv('Id', a.id),
+              // iOS ids hide the MAC; some devices send it in their
+              // broadcasts, which is what matches them to their keys.
+              if (dev.mac case final mac? when mac != a.id) _kv('MAC', mac),
               if (a.name != null) _kv('Advertised name', a.name!),
               _kv('Signal', '${a.rssi} dBm'),
               _kv('Last seen', ago(a.seenAt)),

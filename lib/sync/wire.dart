@@ -6,6 +6,29 @@
 // belong to.
 
 import '../decoders/decoded.dart';
+import '../decoders/raw_advertisement.dart';
+import 'crypto.dart';
+
+/// A short hash of a device's manufacturer data, which is the same
+/// whichever screen hears it. Matches a device across screens when there
+/// is no MAC (iOS hides it) and the name differs between platforms (the
+/// Daly is "DL-694201312BA" on iOS and nameless on the M10). Null when the
+/// advert has too little manufacturer data to tell devices apart.
+String? advertFingerprint(RawAdvertisement a) {
+  final ids = a.manufacturerData.keys.toList()..sort();
+  final bytes = <int>[];
+  for (final id in ids) {
+    bytes
+      ..add(id >> 8)
+      ..add(id & 0xff)
+      ..addAll(a.manufacturerData[id]!);
+  }
+  if (bytes.length < 6) return null;
+  return sha256(bytes)
+      .sublist(0, 8)
+      .map((b) => b.toRadixString(16).padLeft(2, '0'))
+      .join();
+}
 
 Map<String, Object?> decodedToJson(Decoded d) => {
   'p': d.protocol,
@@ -48,6 +71,9 @@ class SharedReading {
   /// `AA:BB:CC:DD:EE:FF` when the owner knows it (Android).
   final String? mac;
 
+  /// [advertFingerprint] on the owning screen.
+  final String? fp;
+
   /// The screen that holds the connection.
   final String ownerId;
   final String ownerName;
@@ -70,6 +96,7 @@ class SharedReading {
     required this.decoded,
     this.name,
     this.mac,
+    this.fp,
     this.every = const Duration(minutes: 1),
     this.controllable = false,
   });
@@ -84,6 +111,7 @@ class SharedReading {
     'id': id,
     'name': ?name,
     'mac': ?mac,
+    'fp': ?fp,
     'o': ownerId,
     'on': ownerName,
     // An age, not a time: screen clocks drift apart in a van with no
@@ -98,6 +126,7 @@ class SharedReading {
     id: '${j['id']}',
     name: j['name'] as String?,
     mac: j['mac'] as String?,
+    fp: j['fp'] as String?,
     ownerId: '${j['o']}',
     ownerName: '${j['on'] ?? 'Another screen'}',
     at: DateTime.now().subtract(

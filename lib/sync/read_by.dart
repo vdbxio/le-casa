@@ -15,6 +15,9 @@ class ReadByRecord {
   final String? name;
   final String? mac;
 
+  /// Manufacturer-data fingerprint, to find the device on other screens.
+  final String? fp;
+
   /// Screen id, or null for automatic.
   final String? screen;
   final String? screenName;
@@ -26,6 +29,7 @@ class ReadByRecord {
     this.id, {
     this.name,
     this.mac,
+    this.fp,
     this.screen,
     this.screenName,
     this.at = 0,
@@ -35,6 +39,7 @@ class ReadByRecord {
     'id': id,
     'name': ?name,
     'mac': ?mac,
+    'fp': ?fp,
     's': ?screen,
     'sn': ?screenName,
     'at': at,
@@ -44,6 +49,7 @@ class ReadByRecord {
     '${j['id']}',
     name: j['name'] as String?,
     mac: j['mac'] as String?,
+    fp: j['fp'] as String?,
     screen: j['s'] as String?,
     screenName: j['sn'] as String?,
     at: (j['at'] as num?)?.toInt() ?? 0,
@@ -86,11 +92,13 @@ class ReadByStore extends ChangeNotifier {
     String? screenName,
     String? name,
     String? mac,
+    String? fp,
   }) => _put(
     ReadByRecord(
       id,
       name: name,
       mac: mac,
+      fp: fp,
       screen: screen,
       screenName: screenName,
       at: DateTime.now().millisecondsSinceEpoch,
@@ -108,6 +116,7 @@ class ReadByStore extends ChangeNotifier {
         id,
         name: r.name,
         mac: r.mac,
+        fp: r.fp,
         screen: r.screen,
         screenName: r.screenName,
         at: r.at,

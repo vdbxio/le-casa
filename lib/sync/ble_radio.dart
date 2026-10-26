@@ -93,31 +93,37 @@ class BleSyncRadio implements SyncRadio {
     final apple =
         defaultTargetPlatform == TargetPlatform.iOS ||
         defaultTargetPlatform == TargetPlatform.macOS;
-    await pm.startAdvertising(
-      // iOS adverts carry only a name and service UUIDs, so everything goes
-      // in the name there. On Android a name would rename the tablet's
-      // Bluetooth, so it rides in manufacturer data instead, without the
-      // 16-byte service UUID: both do not fit in a legacy advert.
-      apple
-          ? Advertisement(
-              name:
-                  '$syncNamePrefix${ad.tag}.${ad.screen}${ad.adding ? '+' : ''}',
-              serviceUUIDs: [UUID.fromString(syncServiceUuid)],
-            )
-          : Advertisement(
-              manufacturerSpecificData: [
-                ManufacturerSpecificData(
-                  id: syncCompanyId,
-                  data: Uint8List.fromList([
-                    ...syncMagic,
-                    ad.adding ? 1 : 0,
-                    ...fromHexString(ad.tag),
-                    ...fromHexString(ad.screen),
-                  ]),
+    debugPrint('sync: starting advert');
+    await pm
+        .startAdvertising(
+          // iOS adverts carry only a name and service UUIDs, so everything goes
+          // in the name there. On Android a name would rename the tablet's
+          // Bluetooth, so it rides in manufacturer data instead, without the
+          // 16-byte service UUID: both do not fit in a legacy advert.
+          apple
+              ? Advertisement(
+                  name:
+                      '$syncNamePrefix${ad.tag}.${ad.screen}${ad.adding ? '+' : ''}',
+                  serviceUUIDs: [UUID.fromString(syncServiceUuid)],
+                )
+              : Advertisement(
+                  manufacturerSpecificData: [
+                    ManufacturerSpecificData(
+                      id: syncCompanyId,
+                      data: Uint8List.fromList([
+                        ...syncMagic,
+                        ad.adding ? 1 : 0,
+                        ...fromHexString(ad.tag),
+                        ...fromHexString(ad.screen),
+                      ]),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-    );
+        )
+        .timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => throw StateError('Starting the advert timed out'),
+        );
     debugPrint('sync: advertising ${ad.tag} as ${ad.screen}');
   }
 
@@ -129,11 +135,17 @@ class BleSyncRadio implements SyncRadio {
     _subs.clear();
     // Android asks for the advertise and connect permissions here; on iOS
     // the plugin has no authorize() and the system asks by itself.
+    // On Android the answer can go missing when the scanner asks for its
+    // own permissions at the same moment, and then authorize() never
+    // returns; carry on and let the state check below decide.
     try {
-      await pm.authorize();
+      await pm.authorize().timeout(const Duration(seconds: 8));
     } on UnsupportedError {
       // iOS
+    } on TimeoutException {
+      debugPrint('sync server: no answer to the permission request');
     }
+    debugPrint('sync server: Bluetooth is ${pm.state.name}');
     // The manager reports its real state a moment after it is created.
     // Poll rather than wait for an event: the change can land between a
     // check and a listen.
@@ -217,14 +229,21 @@ class BleSyncRadio implements SyncRadio {
       // iOS
     }
     await pm.removeAllServices();
-    await pm.addService(
-      GATTService(
-        uuid: UUID.fromString(syncServiceUuid),
-        isPrimary: true,
-        includedServices: [],
-        characteristics: [info, rx, tx],
-      ),
-    );
+    await pm
+        .addService(
+          GATTService(
+            uuid: UUID.fromString(syncServiceUuid),
+            isPrimary: true,
+            includedServices: [],
+            characteristics: [info, rx, tx],
+          ),
+        )
+        .timeout(
+          const Duration(seconds: 10),
+          onTimeout: () =>
+              throw StateError('Adding the GATT service timed out'),
+        );
+    debugPrint('sync server: service added');
   }
 
   Future<_CentralLink> _linkFor(Central c) async {

@@ -87,7 +87,16 @@ class RemoteOwner {
   final String screen;
   final DateTime at;
   final bool controllable;
-  const RemoteOwner(this.screen, this.at, {this.controllable = false});
+
+  /// The owner gives the device up to this screen when this screen can
+  /// read it (the owner is a phone, this is a tablet).
+  final bool yields;
+  const RemoteOwner(
+    this.screen,
+    this.at, {
+    this.controllable = false,
+    this.yields = false,
+  });
 }
 
 /// What screen sync tells the connection manager: who else holds which
@@ -276,7 +285,7 @@ class ConnectionManager extends ChangeNotifier {
   /// take one connection at a time.
   RemoteOwner? heldElsewhere(String id) {
     final o = remote?.ownerOf(id);
-    if (o == null) return null;
+    if (o == null || (o.yields && _links.containsKey(id))) return null;
     final ok = _links[id]?.lastOk;
     return ok == null || o.at.isAfter(ok) ? o : null;
   }

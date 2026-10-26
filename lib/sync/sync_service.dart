@@ -44,13 +44,15 @@ class HeardDevice {
   final String id;
   final String? name;
   final String? mac;
+  final String? fp;
   final int rssi;
-  const HeardDevice(this.id, this.rssi, {this.name, this.mac});
+  const HeardDevice(this.id, this.rssi, {this.name, this.mac, this.fp});
 
   Map<String, Object?> toJson() => {
     'id': id,
     'name': ?name,
     'mac': ?mac,
+    'fp': ?fp,
     'r': rssi,
   };
 
@@ -59,6 +61,7 @@ class HeardDevice {
     (j['r'] as num?)?.toInt() ?? -127,
     name: j['name'] as String?,
     mac: j['mac'] as String?,
+    fp: j['fp'] as String?,
   );
 }
 
@@ -316,6 +319,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       screenName: screen?.name,
       name: d?.latest.name,
       mac: d?.latest.macString,
+      fp: _fp(id),
     );
   }
 
@@ -339,7 +343,14 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
   RemoteOwner? ownerOf(String id) {
     final r = _shared[_ownerSlotOf[id]];
     if (r == null || !r.freshAt(DateTime.now())) return null;
-    return RemoteOwner(r.ownerName, r.at, controllable: r.controllable);
+    return RemoteOwner(
+      r.ownerName,
+      r.at,
+      controllable: r.controllable,
+      // A phone only reads a device until a tablet that hears it takes
+      // over; it may have got there first while the screens were linking.
+      yields: !home.phone && (_peers[r.ownerId]?.phone ?? false),
+    );
   }
 
   @override
@@ -403,6 +414,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
         'o': owner,
         'id': deviceId,
         'mac': ?tracker[id]?.latest.macString,
+        'fp': ?_fp(id),
         'name': ?tracker[id]?.latest.name,
         's': command.setting,
         'v': command.value,
@@ -431,7 +443,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     for (final p in _peers.values) {
       if (p.phone || now.difference(p.heard) >= _peerGone) continue;
       for (final d in p.hears) {
-        if (_resolve(d.id, d.mac, d.name) == id) {
+        if (_resolve(d.id, d.mac, d.name, d.fp) == id) {
           out.add((by: p.screen, rssi: d.rssi));
           break;
         }
@@ -465,6 +477,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       _serverUp = true;
       serverError = null;
     } catch (e) {
+      debugPrint('sync: server failed: $e');
       serverError =
           'Other screens cannot connect to this one (${_plainError(e)}). '
           'It still connects to them.';
@@ -681,6 +694,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       id: d.id,
       name: d.latest.name,
       mac: d.latest.macString,
+      fp: _fp(d.id),
       ownerId: home.me.id,
       ownerName: home.me.name,
       at: d.polledAt!,
@@ -709,6 +723,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
               d.latest.rssi,
               name: d.latest.name,
               mac: d.latest.macString,
+              fp: _fp(d.id),
             ).toJson(),
       ],
       's': {
@@ -828,7 +843,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
           if (old != null && !r.at.isAfter(old.at)) continue;
           _shared[r.slot] = r;
           fresh.add(r);
-          final local = _resolve(r.id, r.mac, r.name);
+          final local = _resolve(r.id, r.mac, r.name, r.fp);
           _ownerSlotOf[local] = r.slot;
           tracker.setRemote(
             local,
@@ -871,7 +886,10 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
         try {
           for (final j in (m['b'] as List? ?? const [])) {
             final r = ReadByRecord.fromJson((j as Map).cast());
-            if (await readBy.apply(r, asId: _resolve(r.id, r.mac, r.name))) {
+            if (await readBy.apply(
+              r,
+              asId: _resolve(r.id, r.mac, r.name, r.fp),
+            )) {
               changed.add(r);
             }
           }
@@ -911,6 +929,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
           '${m['id']}',
           m['mac'] as String?,
           m['name'] as String?,
+          m['fp'] as String?,
         );
         await connections.control(
           id,
@@ -978,7 +997,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       }
       for (final r in readBy.records) {
         if (tracker[r.id] != null) continue;
-        final local = _resolve(r.id, r.mac, r.name);
+        final local = _resolve(r.id, r.mac, r.name, r.fp);
         if (local != r.id) await readBy.apply(r, asId: local);
       }
     } finally {
@@ -988,7 +1007,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
 
   /// This screen's id for a device another screen calls [id]: the same id,
   /// the same MAC, or failing those the only device with that name.
-  String _resolve(String id, String? mac, String? name) {
+  String _resolve(String id, String? mac, String? name, [String? fp]) {
     final heard = tracker.devices.where((d) => !d.remoteOnly).toList();
     if (heard.any((d) => d.id == id)) return id;
     if (mac != null) {
@@ -1000,7 +1019,17 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       final named = heard.where((d) => d.latest.name == name).toList();
       if (named.length == 1) return named.single.id;
     }
+    if (fp != null) {
+      final same = heard.where((d) => _fp(d.id) == fp).toList();
+      if (same.length == 1) return same.single.id;
+    }
     return id;
+  }
+
+  String? _fp(String id) {
+    final d = tracker[id];
+    if (d == null || d.remoteOnly) return null;
+    return advertFingerprint(d.lastRecognised ?? d.latest);
   }
 }
 

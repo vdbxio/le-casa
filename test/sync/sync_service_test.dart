@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lecasa/ble/connection_manager.dart';
@@ -160,13 +161,19 @@ class Screen {
         (name: tracker[id]?.latest.name, mac: tracker[id]?.latest.macString);
   }
 
-  void hear(String id, String name, {int rssi = -60}) {
+  void hear(
+    String id,
+    String? name, {
+    int rssi = -60,
+    Map<int, Uint8List> mfr = const {},
+  }) {
     final adv = RawAdvertisement(
       id: id,
       rssi: rssi,
       seenAt: DateTime.now(),
       name: name,
       mac: parseMac(id),
+      manufacturerData: mfr,
     );
     tracker.onAdvertisement(adv);
     connections.onAdvertisement(adv);
@@ -320,6 +327,50 @@ void main() {
     // Unless it is locked to the phone.
     await phone.sync.lock(phoneFridge, phone.home.me);
     expect(phone.sync.standAside(phoneFridge), isNull);
+  });
+
+  test('a device with no MAC and another name matches by its data', () async {
+    // The Daly: a random id and "DL-…" on iOS, its MAC and no name on
+    // Android. Only the manufacturer data is the same.
+    final mfr = {
+      0x302: Uint8List.fromList([0x16, 0x40, 0x17, 0x10, 0x01, 0x5c]),
+    };
+    const ipadDaly = '7E48D8DF-E13A-24F8-78D4-C05C53494BA3';
+    const m10Daly = 'D2:19:08:01:C5:61';
+    ipad.hear(ipadDaly, 'DL-694201312BA', mfr: mfr);
+    m10.hear(m10Daly, null, mfr: mfr);
+    ipad.tracker.setPolled(
+      ipadDaly,
+      const Decoded(
+        protocol: 'Daly',
+        model: 'BMS',
+        kind: DeviceKind.battery,
+        readings: [Reading('voltage', 26.5, 'V')],
+      ),
+    );
+    await ipad.sync.tick();
+    await settle();
+    expect(m10.tracker[m10Daly]!.polledBy, 'Kitchen iPad');
+    expect(m10.tracker[ipadDaly], isNull);
+  });
+
+  test('a phone that got to a device first gives it to a tablet', () async {
+    final phone = Screen(air, 'phone', 'iPhone', phone: true);
+    addTearDown(phone.dispose);
+    await pairThrough(air, ipad, phone);
+    await link(air, [ipad, m10, phone]);
+    const phoneFridge = '0C0C0C0C-0000-4000-8000-000000000009';
+    phone.hear(phoneFridge, 'AK1-AAFE13156431');
+    m10.hear(m10Fridge, 'AK1-AAFE13156431');
+    await phone.connections.readNow(phoneFridge);
+    await phone.sync.tick();
+    await settle();
+    expect(m10.tracker[m10Fridge]!.polledBy, 'iPhone');
+    expect(m10.connections.heldElsewhere(m10Fridge), isNull);
+    await m10.connections.pump();
+    await m10.sync.tick();
+    await settle();
+    expect(phone.connections.heldElsewhere(phoneFridge)?.screen, 'M10');
   });
 
   test('a device the other screen never heard still shows up', () async {

@@ -63,6 +63,18 @@ class TabletSensors extends ChangeNotifier {
     }
   }
 
+  /// What the system calls this device: "iPad", "iPhone", or an Android
+  /// tablet's name or model. Null when the platform does not say.
+  static Future<String?> deviceName() async {
+    try {
+      return await _methods.invokeMethod<String>('deviceName');
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null;
+    }
+  }
+
   Future<void> keepScreenOn(bool on) async {
     try {
       await _methods.invokeMethod('keepScreenOn', on);

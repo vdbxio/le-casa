@@ -7,6 +7,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../platform/tablet.dart';
 import 'crypto.dart';
 import 'session.dart';
 
@@ -53,7 +54,7 @@ class HomeStore extends ChangeNotifier {
       await p.setString('${_p}id', id);
     }
     _id = id;
-    _name = p.getString('${_p}name') ?? _defaultName(id);
+    _name = p.getString('${_p}name') ?? await _defaultName(id);
     role =
         SyncRole.values.asNameMap()[p.getString('${_p}role')] ?? SyncRole.alone;
     final k = p.getString('${_p}key');
@@ -64,13 +65,17 @@ class HomeStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  static String _defaultName(String id) {
+  /// "iPad" or "M10", with a short id so two alike screens differ.
+  static Future<String> _defaultName(String id) async {
+    final short = id.substring(0, 4).toUpperCase();
+    final name = (await TabletSensors.deviceName())?.trim();
+    if (name != null && name.isNotEmpty) return '$name $short';
     final kind = switch (defaultTargetPlatform) {
       TargetPlatform.iOS => 'iPad or iPhone',
       TargetPlatform.android => 'Android',
       _ => kIsWeb ? 'Browser' : Platform.operatingSystem,
     };
-    return '$kind ${id.substring(0, 4).toUpperCase()}';
+    return '$kind $short';
   }
 
   Future<void> rename(String name) async {

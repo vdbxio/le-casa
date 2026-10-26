@@ -48,6 +48,10 @@ enum TabletChannel {
           savedBrightness = nil
         }
         result(nil)
+      case "deviceName":
+        // "iPad" or "iPhone": iOS keeps the name the owner gave the device
+        // from apps without a special entitlement.
+        result(UIDevice.current.model)
       case "keepScreenOn":
         UIApplication.shared.isIdleTimerDisabled = (call.arguments as? Bool) ?? false
         result(nil)

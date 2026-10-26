@@ -101,9 +101,10 @@ abstract interface class RemoteLinks {
   /// the user when it cannot.
   Future<void> control(String id, DeviceCommand command);
 
-  /// True when this screen leaves every device connection to the other
-  /// screens in the home (a phone, or a tablet with poor Bluetooth).
-  bool get leavesConnections;
+  /// Why this screen should leave [id] to another screen right now (it is
+  /// locked to another one, or another one hears it better), or null when
+  /// this screen may read it.
+  String? standAside(String id);
 }
 
 /// Opens a connected, service-discovered session to a device id, or throws.
@@ -291,7 +292,9 @@ class ConnectionManager extends ChangeNotifier {
     bool here = false,
   }) async {
     final r = remote;
-    if (!here && r != null && heldElsewhere(id) != null) {
+    if (!here &&
+        r != null &&
+        (heldElsewhere(id) != null || r.standAside(id) != null)) {
       return r.control(id, command);
     }
     final l = _links[id];
@@ -385,8 +388,8 @@ class ConnectionManager extends ChangeNotifier {
     Link? pick;
     for (final l in _links.values) {
       if (!l.enabled || l.busy || l.nextDue.isAfter(now)) continue;
-      if (remote?.leavesConnections ?? false) continue;
       if (heldElsewhere(l.id) != null) continue;
+      if (remote?.standAside(l.id) != null) continue;
       final dev = tracker[l.id];
       if (dev == null || now.difference(dev.lastSeen) > staleAfter) continue;
       if (pick == null || l.nextDue.isBefore(pick.nextDue)) pick = l;

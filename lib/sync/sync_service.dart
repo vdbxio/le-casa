@@ -3,12 +3,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later WITH App-Store-Exception
 //
 // Screen sync: tablets and phones in one home share what they read and
-// the keys they know, over Bluetooth only. One screen is the hub and runs
-// a Le'Casa GATT server; the others connect to it, and it passes messages
-// between them. Whichever screen reads a device over a connection shares
-// the reading, and the others leave that device alone, so a tablet with
-// a poor Bluetooth chip can show a fridge another screen holds. Controls
-// travel to the screen that holds the connection.
+// the keys they know, over Bluetooth only. The screens form a mesh: each
+// one runs a Le'Casa GATT server, advertises the home, and links to the
+// other screens it hears. Messages hop from screen to screen, so a tablet
+// at one end of the van can pass along what a tablet at the other end
+// reads. None is in charge; any of them can leave.
+//
+// Every screen reads the adverts it hears. A device read over a connection
+// (a fridge, a BMS) is read by one screen at a time: the one it is locked
+// to, or else whichever screen hears it best and reads it, and the others
+// show what that screen shares. Controls travel to that screen.
 
 import 'dart:async';
 
@@ -23,6 +27,7 @@ import 'crypto.dart';
 import 'framing.dart';
 import 'home.dart';
 import 'radio.dart';
+import 'read_by.dart';
 import 'session.dart';
 import 'wire.dart';
 
@@ -34,12 +39,87 @@ class PairPrompt {
   PairPrompt(this.code, this.peer);
 }
 
+/// A device a screen hears and could read over a connection.
+class HeardDevice {
+  final String id;
+  final String? name;
+  final String? mac;
+  final int rssi;
+  const HeardDevice(this.id, this.rssi, {this.name, this.mac});
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'name': ?name,
+    'mac': ?mac,
+    'r': rssi,
+  };
+
+  static HeardDevice fromJson(Map<String, Object?> j) => HeardDevice(
+    '${j['id']}',
+    (j['r'] as num?)?.toInt() ?? -127,
+    name: j['name'] as String?,
+    mac: j['mac'] as String?,
+  );
+}
+
+/// Another screen in the home, from the beacon it sends every few seconds.
+class PeerInfo {
+  final ScreenId screen;
+  final bool phone;
+
+  /// When its latest beacon reached this screen.
+  final DateTime heard;
+  final int seq;
+
+  /// Connected devices it hears, with their signal.
+  final List<HeardDevice> hears;
+
+  /// Other screens it hears, by [shortScreen], with their signal.
+  final Map<String, int> sees;
+
+  /// Screens it has a link to.
+  final List<String> links;
+  final Map<String, Object?> _raw;
+
+  PeerInfo._(
+    this.screen,
+    this.phone,
+    this.heard,
+    this.seq,
+    this.hears,
+    this.sees,
+    this.links,
+    this._raw,
+  );
+
+  static PeerInfo fromJson(Map<String, Object?> j, DateTime now) => PeerInfo._(
+    ScreenId('${j['o']}', '${j['n'] ?? 'Screen'}'),
+    j['ph'] == true,
+    now,
+    (j['q'] as num).toInt(),
+    [
+      for (final d in (j['d'] as List? ?? const []))
+        HeardDevice.fromJson((d as Map).cast()),
+    ],
+    {
+      for (final e in ((j['s'] as Map?) ?? const {}).entries)
+        '${e.key}': (e.value as num).toInt(),
+    },
+    [for (final l in (j['l'] as List? ?? const [])) '$l'],
+    j,
+  );
+}
+
+/// One screen hearing another, for working out where a phone is.
+typedef Hearing = ({ScreenId by, int rssi});
+
 class SyncService extends ChangeNotifier implements RemoteLinks {
   final HomeStore home;
   final DeviceTracker tracker;
   final KeyStore keys;
   final ConnectionManager connections;
   final SyncRadio radio;
+  final ReadByStore readBy;
 
   SyncService({
     required this.home,
@@ -47,27 +127,57 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     required this.keys,
     required this.connections,
     required this.radio,
-  });
+    ReadByStore? readBy,
+  }) : readBy = readBy ?? ReadByStore();
 
-  // hub side
-  final Map<String, SyncSession> _members = {};
+  /// Links to other screens, at most [maxLinks]; beyond that, messages
+  /// reach the rest through the screens in between.
+  static const maxLinks = 4;
+
+  /// A screen whose beacon has not arrived for this long has gone.
+  static const _peerGone = Duration(seconds: 45);
+
+  /// How long a screen that hears a device less well leaves it to one that
+  /// hears it better, before reading it itself after all.
+  @visibleForTesting
+  Duration handoverGrace = const Duration(seconds: 90);
+
+  /// How long a screen waits after linking up before it reads connected
+  /// devices, so it learns which ones another screen already reads.
+  @visibleForTesting
+  Duration settleTime = const Duration(seconds: 10);
+
+  /// How long the screen with the larger id waits for the other to dial.
+  @visibleForTesting
+  Duration dialWait = const Duration(seconds: 15);
+
+  /// Wait before trying to start the server again; doubles each time.
+  @visibleForTesting
+  Duration serverRetry = const Duration(seconds: 15);
+
+  final Map<String, _Link> _links = {};
   StreamSubscription? _incoming;
-  bool _hubUp = false;
+  bool _serverUp = false;
+  bool _serverStarting = false;
+  DateTime _nextServerTry = DateTime.now();
+  Duration _serverWait = Duration.zero;
 
-  /// Until when the hub takes new screens.
+  /// Why other screens cannot connect to this one, when they cannot. It
+  /// still connects to them.
+  String? serverError;
+
+  /// Until when this screen takes new screens.
   DateTime? addingUntil;
 
-  // member side
-  SyncSession? _hub;
   bool connecting = false;
-  DateTime _nextTry = DateTime.now();
-  final Map<String, DateTime> _wrongHub = {};
+  final Map<String, DateTime> _backoff = {};
+  final Map<String, DateTime> _firstHeard = {};
+  DateTime? _linkedSince;
 
-  /// Hubs heard lately, for the join list.
-  final Map<String, HubSighting> nearby = {};
+  /// Le'Casa screens heard lately, by scanner id.
+  final Map<String, PeerSighting> nearby = {};
 
-  /// Every screen in the home the hub knows of, this one included.
-  List<ScreenId> screens = const [];
+  final Map<String, PeerInfo> _peers = {};
 
   /// Last thing that went wrong, for the settings page.
   String? error;
@@ -80,24 +190,32 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
   final Map<String, String> _ownerSlotOf = {};
   final Map<String, DateTime> _sentAt = {};
   final Map<String, Completer<String?>> _pending = {};
-  final Map<String, (SyncSession, String)> _forwarded = {};
+  final Map<String, (SyncSession, DateTime)> _routes = {};
+  final Map<String, DateTime> _seenReq = {};
+  final Map<String, DateTime> _unowned = {};
   int _keysSent = 0;
-  bool _applyingKeys = false;
+  int _readBySent = 0;
+  bool _applying = false;
   Timer? _tick;
   int _ticks = 0;
   StreamSubscription? _sightingSub;
 
-  bool get connected => switch (home.role) {
-    SyncRole.hub => _hubUp,
-    SyncRole.member => _hub != null,
-    SyncRole.alone => false,
-  };
+  bool get connected => _links.isNotEmpty;
 
-  @override
-  bool get leavesConnections => !home.holdsDevices && connected;
+  /// Screens this one has a link to.
+  List<ScreenId> get linked => [for (final l in _links.values) l.s.peer];
 
-  /// Screens connected to this hub.
-  List<ScreenId> get members => [for (final s in _members.values) s.peer];
+  /// Every screen in the home heard from lately, this one first.
+  List<ScreenId> get screens {
+    final now = DateTime.now();
+    return [
+      home.me,
+      for (final p in _peers.values)
+        if (now.difference(p.heard) < _peerGone) p.screen,
+    ];
+  }
+
+  PeerInfo? peer(String id) => _peers[id];
 
   bool get adding =>
       addingUntil != null && DateTime.now().isBefore(addingUntil!);
@@ -105,10 +223,12 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
   void start() {
     _sightingSub = radio.sightings.listen(_onSighting);
     keys.addListener(_onKeys);
-    _keysSent = _maxAt(keys.records);
+    readBy.addListener(_onReadBy);
+    _keysSent = _maxAt(keys.records.map((r) => r.at));
+    _readBySent = _maxAt(readBy.records.map((r) => r.at));
     connections.remote = this;
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => tick());
-    unawaited(_applyRole());
+    unawaited(_applyHome());
   }
 
   bool _disposed = false;
@@ -125,45 +245,48 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     _tick?.cancel();
     _sightingSub?.cancel();
     keys.removeListener(_onKeys);
+    readBy.removeListener(_onReadBy);
     unawaited(_shutdown());
     super.dispose();
   }
 
-  // ---- what the settings page calls --------------------------------------
+  // ---- what the settings and device pages call ----------------------------
 
   Future<void> startHome(String name) async {
     await home.startHome(name);
-    await _applyRole();
+    await _applyHome();
   }
 
-  /// Lets new screens pair for a few minutes.
+  /// Lets new screens pair with this one for a few minutes.
   void startAdding() {
     addingUntil = DateTime.now().add(const Duration(minutes: 3));
+    unawaited(_advertise());
     notifyListeners();
   }
 
   void stopAdding() {
     addingUntil = null;
     prompt?._answer.complete(false);
+    unawaited(_advertise());
     notifyListeners();
   }
 
-  /// Pairs with [hub]; the pairing code shows up in [prompt].
-  Future<void> join(HubSighting hub) async {
+  /// Pairs with a screen that is adding; the code shows up in [prompt].
+  Future<void> join(PeerSighting peer) async {
     if (joining) return;
     joining = true;
     error = null;
     notifyListeners();
     MessageLink? link;
     try {
-      link = await radio.connect(hub);
+      link = await radio.connect(peer);
       final joined = await SyncSession.pair(link, home.me, _confirm);
       await home.joined(joined);
-      await _applyRole();
+      await _applyHome();
     } on SyncRefused catch (e) {
       error = e.message == 'Cancelled' ? null : e.message;
     } catch (e) {
-      error = 'Could not reach that hub: $e';
+      error = 'Could not reach that screen: $e';
     } finally {
       await link?.close();
       joining = false;
@@ -180,8 +303,34 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
   Future<void> leave() async {
     await _shutdown();
     await home.leave();
-    screens = const [];
+    _peers.clear();
     notifyListeners();
+  }
+
+  /// Locks [id] to [screen], or with null lets the screens sort it out.
+  Future<void> lock(String id, ScreenId? screen) {
+    final d = tracker[id];
+    return readBy.set(
+      id,
+      screen: screen?.id,
+      screenName: screen?.name,
+      name: d?.latest.name,
+      mac: d?.latest.macString,
+    );
+  }
+
+  /// The screens that hear [screenId], loudest first: where it is.
+  List<Hearing> heardBy(String screenId) {
+    final short = shortScreen(screenId);
+    final now = DateTime.now();
+    final out = <Hearing>[
+      for (final s in nearby.values)
+        if (s.screen == short && s.tag == home.tag) (by: home.me, rssi: s.rssi),
+      for (final p in _peers.values)
+        if (now.difference(p.heard) < _peerGone && p.sees[short] != null)
+          (by: p.screen, rssi: p.sees[short]!),
+    ];
+    return out..sort((a, b) => b.rssi.compareTo(a.rssi));
   }
 
   // ---- RemoteLinks --------------------------------------------------------
@@ -194,25 +343,74 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
   }
 
   @override
+  String? standAside(String id) {
+    if (!home.inHome) return null;
+    final lock = readBy.lockOf(id);
+    if (lock != null) {
+      if (lock.screen == home.me.id) return null;
+      return 'Locked to ${_nameOf(lock.screen!, lock.screenName)}';
+    }
+    if (!connected) return null;
+    final now = DateTime.now();
+    final since = _linkedSince;
+    if (since != null && now.difference(since) < settleTime) {
+      return 'Checking with your other screens first';
+    }
+    final rivals = _hearersOf(id);
+    if (rivals.isEmpty) return null;
+    final best = rivals.first;
+    if (home.phone) {
+      return '${best.by.name} reads it. Phones only read devices locked '
+          'to them';
+    }
+    final mine = tracker[id]?.latest.rssi;
+    if (mine == null || best.rssi <= mine + 6) return null;
+    // Give the screen that hears it better the first go; if it does not
+    // read it in time (its Bluetooth may not get along with this device),
+    // read it here after all.
+    final waiting = _unowned.putIfAbsent(id, () => now);
+    if (now.difference(waiting) < handoverGrace) {
+      return '${best.by.name} hears it better';
+    }
+    return null;
+  }
+
+  @override
   Future<void> control(String id, DeviceCommand command) async {
+    final lock = readBy.lockOf(id);
     final r = _shared[_ownerSlotOf[id]];
-    if (r == null) throw StateError('No screen holds this device');
-    final via = home.role == SyncRole.hub ? _members[r.ownerId] : _hub;
-    if (via == null) throw StateError('${r.ownerName} is not connected');
+    final String owner;
+    final String ownerName;
+    final String deviceId;
+    if (lock != null && lock.screen != home.me.id) {
+      owner = lock.screen!;
+      ownerName = _nameOf(owner, lock.screenName);
+      deviceId = r?.ownerId == owner ? r!.id : id;
+    } else if (r != null) {
+      owner = r.ownerId;
+      ownerName = r.ownerName;
+      deviceId = r.id;
+    } else {
+      throw StateError('No screen reads this device yet');
+    }
     final req = _hex(randomBytes(6));
     final done = _pending[req] = Completer<String?>();
+    _seenReq[req] = DateTime.now();
     try {
-      await via.send({
+      final sent = await _route({
         't': 'control',
         'req': req,
-        'o': r.ownerId,
-        'id': r.id,
+        'o': owner,
+        'id': deviceId,
+        'mac': ?tracker[id]?.latest.macString,
+        'name': ?tracker[id]?.latest.name,
         's': command.setting,
         'v': command.value,
       });
+      if (!sent) throw StateError('$ownerName is not connected');
       final err = await done.future.timeout(
         const Duration(seconds: 70),
-        onTimeout: () => '${r.ownerName} did not answer',
+        onTimeout: () => '$ownerName did not answer',
       );
       if (err != null) throw StateError(err);
     } finally {
@@ -220,61 +418,91 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     }
   }
 
-  // ---- roles --------------------------------------------------------------
+  String _nameOf(String screen, String? fallback) =>
+      _peers[screen]?.screen.name ??
+      (screen == home.me.id ? home.me.name : null) ??
+      fallback ??
+      'another screen';
 
-  Future<void> _applyRole() async {
+  /// Other screens (not phones) that hear [id], loudest first.
+  List<Hearing> _hearersOf(String id) {
+    final now = DateTime.now();
+    final out = <Hearing>[];
+    for (final p in _peers.values) {
+      if (p.phone || now.difference(p.heard) >= _peerGone) continue;
+      for (final d in p.hears) {
+        if (_resolve(d.id, d.mac, d.name) == id) {
+          out.add((by: p.screen, rssi: d.rssi));
+          break;
+        }
+      }
+    }
+    return out..sort((a, b) => b.rssi.compareTo(a.rssi));
+  }
+
+  // ---- links --------------------------------------------------------------
+
+  Future<void> _applyHome() async {
     await _shutdown();
     error = null;
-    switch (home.role) {
-      case SyncRole.hub:
-        _incoming = radio.incoming.listen(_onIncoming);
-        screens = [home.me];
-        await _startHub();
-      case SyncRole.member:
-        _nextTry = DateTime.now();
-      case SyncRole.alone:
-        break;
+    if (home.inHome) {
+      _incoming = radio.incoming.listen(_onIncoming);
+      _serverWait = Duration.zero;
+      await _startServer();
     }
     notifyListeners();
   }
 
-  bool _hubStarting = false;
+  PeerAdvert get _advert =>
+      PeerAdvert(home.tag, shortScreen(home.me.id), adding: adding);
 
-  /// Wait before trying to start the hub again.
-  @visibleForTesting
-  Duration hubRetry = const Duration(seconds: 15);
-
-  /// Starts advertising; on failure [tick] tries again a little later.
-  Future<void> _startHub() async {
-    if (_hubUp || _hubStarting) return;
-    _hubStarting = true;
+  /// Starts serving; on failure [tick] tries again a little later.
+  Future<void> _startServer() async {
+    if (_serverUp || _serverStarting || !home.inHome) return;
+    _serverStarting = true;
     try {
-      await radio.startHub(home.tag);
-      _hubUp = true;
-      error = null;
+      await radio.startServer(_advert);
+      _serverUp = true;
+      serverError = null;
     } catch (e) {
-      error = 'Could not start the hub: ${_plainError(e)}. Trying again…';
-      _nextTry = DateTime.now().add(hubRetry);
+      serverError =
+          'Other screens cannot connect to this one (${_plainError(e)}). '
+          'It still connects to them.';
+      _serverWait = _serverWait == Duration.zero
+          ? serverRetry
+          : _serverWait * 2 > const Duration(minutes: 5)
+          ? const Duration(minutes: 5)
+          : _serverWait * 2;
+      _nextServerTry = DateTime.now().add(_serverWait);
     } finally {
-      _hubStarting = false;
+      _serverStarting = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> _advertise() async {
+    if (!_serverUp) return;
+    try {
+      await radio.startServer(_advert);
+    } catch (e) {
+      debugPrint('sync: advert update failed: $e');
     }
   }
 
   Future<void> _shutdown() async {
     await _incoming?.cancel();
     _incoming = null;
-    if (_hubUp) {
-      _hubUp = false;
+    if (_serverUp) {
+      _serverUp = false;
       try {
-        await radio.stopHub();
+        await radio.stopServer();
       } catch (_) {}
     }
-    for (final s in [..._members.values, ?_hub]) {
-      await s.close();
+    for (final l in _links.values.toList()) {
+      await l.s.close();
     }
-    _members.clear();
-    _hub = null;
+    _links.clear();
+    _linkedSince = null;
     addingUntil = null;
   }
 
@@ -287,35 +515,20 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       homeKey: key,
       homeName: home.homeName,
       confirm: adding ? _confirm : null,
-      onPaired: (m) {
-        addingUntil = null;
-        notifyListeners();
-      },
+      onPaired: (m) => stopAdding(),
     );
     if (s == null) {
       await link.close();
       return;
     }
-    await _members.remove(s.peer.id)?.close();
-    _members[s.peer.id] = s;
-    _listen(s);
-    unawaited(
-      s.closed.then((_) {
-        if (_members[s.peer.id] == s) _members.remove(s.peer.id);
-        _sendScreens();
-        notifyListeners();
-      }),
-    );
-    _sendScreens();
-    await _sendSnapshot(s);
-    notifyListeners();
+    await _addLink(s, mine: false);
   }
 
-  void _onSighting(HubSighting h) {
+  void _onSighting(PeerSighting h) {
     nearby[h.id] = h;
   }
 
-  Future<void> _connectHub(HubSighting h) async {
+  Future<void> _connectPeer(PeerSighting h) async {
     final key = home.key;
     if (key == null) return;
     connecting = true;
@@ -324,37 +537,56 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     try {
       link = await radio.connect(h);
       final s = await SyncSession.connect(link, home.me, key);
-      if (home.role != SyncRole.member) {
+      if (!home.inHome || s.peer.id == home.me.id) {
         await s.close();
         return;
       }
-      _hub = s;
       error = null;
-      await home.setHubName(s.peer.name);
-      _listen(s);
-      unawaited(
-        s.closed.then((_) {
-          if (_hub == s) {
-            _hub = null;
-            _nextTry = DateTime.now().add(const Duration(seconds: 3));
-            notifyListeners();
-          }
-        }),
-      );
-      await _sendSnapshot(s);
+      await _addLink(s, mine: true);
     } on SyncRefused catch (e) {
+      debugPrint('sync: ${h.id} refused: $e');
       await link?.close();
-      _wrongHub[h.id] = DateTime.now().add(const Duration(minutes: 5));
-      error = e.message;
-      _nextTry = DateTime.now().add(const Duration(seconds: 5));
+      _backoff[h.id] = DateTime.now().add(const Duration(minutes: 5));
+      if (!connected) error = e.message;
     } catch (e) {
+      debugPrint('sync: link to ${h.id} failed: $e');
       await link?.close();
-      error = 'Could not reach the hub: $e';
-      _nextTry = DateTime.now().add(const Duration(seconds: 10));
+      _backoff[h.id] = DateTime.now().add(const Duration(seconds: 20));
+      if (!connected) error = 'Could not reach a screen: ${_plainError(e)}';
     } finally {
       connecting = false;
       notifyListeners();
     }
+  }
+
+  Future<void> _addLink(SyncSession s, {required bool mine}) async {
+    final old = _links[s.peer.id];
+    if (old != null) {
+      // Both screens connected to each other at once. Keep the link the
+      // screen with the smaller id opened; the other end decides the same.
+      final keepNew = mine == (home.me.id.compareTo(s.peer.id) < 0);
+      if (!keepNew) {
+        await s.close();
+        return;
+      }
+      _links.remove(s.peer.id);
+      await old.s.close();
+    }
+    final l = _links[s.peer.id] = _Link(s, mine);
+    _linkedSince ??= DateTime.now();
+    debugPrint('sync: linked to ${s.peer.name} (${mine ? 'out' : 'in'})');
+    _listen(s);
+    unawaited(
+      s.closed.then((_) {
+        if (_links[s.peer.id] == l) {
+          _links.remove(s.peer.id);
+          if (_links.isEmpty) _linkedSince = null;
+          notifyListeners();
+        }
+      }),
+    );
+    await _sendSnapshot(s);
+    notifyListeners();
   }
 
   Future<bool> _confirm(String code, ScreenId peer, Future<void> abandoned) {
@@ -380,28 +612,50 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     nearby.removeWhere(
       (_, h) => now.difference(h.seen) > const Duration(seconds: 30),
     );
-    if (addingUntil != null && !adding) {
-      addingUntil = null;
-      notifyListeners();
+    _peers.removeWhere(
+      (_, p) => now.difference(p.heard) > const Duration(minutes: 5),
+    );
+    _seenReq.removeWhere(
+      (_, t) => now.difference(t) > const Duration(minutes: 3),
+    );
+    _routes.removeWhere(
+      (_, r) => now.difference(r.$2) > const Duration(minutes: 3),
+    );
+    _unowned.removeWhere((id, _) => ownerOf(id) != null);
+    if (addingUntil != null && !adding) stopAdding();
+    if (!home.inHome) return;
+    if (!_serverUp && !now.isBefore(_nextServerTry)) {
+      unawaited(_startServer());
     }
-    if (home.role == SyncRole.hub && !_hubUp && !now.isBefore(_nextTry)) {
-      unawaited(_startHub());
-    }
-    if (home.role == SyncRole.member &&
-        _hub == null &&
-        !connecting &&
-        !now.isBefore(_nextTry)) {
-      final tag = home.tag;
-      final ours =
-          nearby.values
-              .where((h) => h.tag == tag)
-              .where((h) => !(_wrongHub[h.id]?.isAfter(now) ?? false))
-              .toList()
-            ..sort((a, b) => b.rssi.compareTo(a.rssi));
-      if (ours.isNotEmpty) unawaited(_connectHub(ours.first));
+    if (!connecting && _links.length < maxLinks) {
+      final pick = _nextPeer(now);
+      if (pick != null) unawaited(_connectPeer(pick));
     }
     await _publishOwn();
+    if (_ticks % 10 == 1) await _beacon();
     if (_ticks % 5 == 0) await _adoptKeys();
+  }
+
+  /// The screen of this home to link to next, if any.
+  PeerSighting? _nextPeer(DateTime now) {
+    final me = shortScreen(home.me.id);
+    final linkedShort = {for (final id in _links.keys) shortScreen(id)};
+    PeerSighting? best;
+    for (final h in nearby.values) {
+      final s = h.screen;
+      if (h.tag != home.tag || s == null || s == me) continue;
+      if (linkedShort.contains(s)) continue;
+      if (_backoff[h.id]?.isAfter(now) ?? false) continue;
+      // To keep two screens from dialling each other at once, the one with
+      // the smaller id goes first. The other waits, then goes anyway: the
+      // smaller one may not be able to hear it (no advertising allowed).
+      final first = _firstHeard.putIfAbsent(s, () => now);
+      if (me.compareTo(s) > 0 && now.difference(first) < dialWait) {
+        continue;
+      }
+      if (best == null || h.rssi > best.rssi) best = h;
+    }
+    return best;
   }
 
   /// Sends readings this screen took itself since the last tick.
@@ -414,7 +668,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       _sentAt[d.id] = at;
       out.add(_own(d));
     }
-    if (out.isEmpty) return;
+    if (out.isEmpty || !connected) return;
     await _broadcast({
       't': 'state',
       'r': [for (final r in out) r.toJson()],
@@ -436,8 +690,50 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     );
   }
 
+  /// Who this screen is and what it hears, for the whole mesh.
+  Map<String, Object?> _myBeacon() {
+    final now = DateTime.now();
+    return {
+      't': 'hi',
+      'o': home.me.id,
+      'n': home.me.name,
+      'q': now.millisecondsSinceEpoch,
+      'ph': home.phone,
+      'd': [
+        for (final l in connections.links)
+          if (tracker[l.id] case final d?
+              when !d.remoteOnly &&
+                  now.difference(d.lastSeen) < const Duration(seconds: 30))
+            HeardDevice(
+              d.id,
+              d.latest.rssi,
+              name: d.latest.name,
+              mac: d.latest.macString,
+            ).toJson(),
+      ],
+      's': {
+        for (final h in nearby.values)
+          if (h.tag == home.tag && h.screen != null) h.screen!: h.rssi,
+      },
+      'l': _links.keys.toList(),
+    };
+  }
+
+  @visibleForTesting
+  Future<void> beacon() => _beacon();
+
+  Future<void> _beacon() async {
+    if (connected) await _broadcast(_myBeacon());
+  }
+
   Future<void> _sendSnapshot(SyncSession s) async {
     final now = DateTime.now();
+    await _sendTo(s, _myBeacon());
+    for (final p in _peers.values.toList()) {
+      if (p.screen.id != s.peer.id && now.difference(p.heard) < _peerGone) {
+        await _sendTo(s, p._raw);
+      }
+    }
     final readings = [
       for (final d in tracker.devices)
         if (d.polled != null && d.polledBy == null && d.polledAt != null)
@@ -458,28 +754,37 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
         'k': [for (final r in recs) r.toJson()],
       });
     }
-  }
-
-  void _sendScreens() {
-    if (home.role != SyncRole.hub) return;
-    screens = [home.me, ...members];
-    final msg = {
-      't': 'screens',
-      's': [for (final s in screens) s.toJson()],
-    };
-    for (final s in _members.values) {
-      unawaited(_sendTo(s, msg));
+    final locks = readBy.records;
+    if (locks.isNotEmpty) {
+      await _sendTo(s, {
+        't': 'readby',
+        'b': [for (final r in locks) r.toJson()],
+      });
     }
   }
 
-  /// To everyone this screen talks to, except [skip].
+  /// To every linked screen, except [skip].
   Future<void> _broadcast(Map<String, Object?> msg, {SyncSession? skip}) async {
-    final targets = home.role == SyncRole.hub
-        ? _members.values.toList()
-        : [?_hub];
-    for (final s in targets) {
-      if (s != skip) await _sendTo(s, msg);
+    for (final l in _links.values.toList()) {
+      if (l.s != skip) await _sendTo(l.s, msg);
     }
+  }
+
+  /// Sends a message meant for screen `o`: straight to it when linked,
+  /// otherwise to every link but [from], to pass along. Returns false when
+  /// there was nobody to send it to.
+  Future<bool> _route(Map<String, Object?> msg, {SyncSession? from}) async {
+    final direct = _links['${msg['o']}'];
+    final targets = direct != null
+        ? [direct.s]
+        : [
+            for (final l in _links.values)
+              if (l.s != from) l.s,
+          ];
+    for (final s in targets) {
+      await _sendTo(s, msg);
+    }
+    return targets.isNotEmpty;
   }
 
   Future<void> _sendTo(SyncSession s, Map<String, Object?> msg) async {
@@ -502,8 +807,18 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     });
   }
 
+  // Readings, keys, locks and beacons pass along only when they are news to
+  // this screen, so a message never goes round in circles.
   Future<void> _onMessage(SyncSession from, Map<String, Object?> m) async {
     switch (m['t']) {
+      case 'hi':
+        final id = '${m['o']}';
+        if (id == home.me.id) return;
+        final old = _peers[id];
+        if (old != null && (m['q'] as num).toInt() <= old.seq) return;
+        _peers[id] = PeerInfo.fromJson(m, DateTime.now());
+        await _broadcast(m, skip: from);
+        notifyListeners();
       case 'state':
         final fresh = <SharedReading>[];
         for (final j in (m['r'] as List? ?? const [])) {
@@ -524,7 +839,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
             mac: parseMac(r.mac),
           );
         }
-        if (home.role == SyncRole.hub && fresh.isNotEmpty) {
+        if (fresh.isNotEmpty) {
           await _broadcast({
             't': 'state',
             'r': [for (final r in fresh) r.toJson()],
@@ -532,7 +847,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
         }
       case 'keys':
         final changed = <KeyRecord>[];
-        _applyingKeys = true;
+        _applying = true;
         try {
           for (final j in (m['k'] as List? ?? const [])) {
             final r = KeyRecord.fromJson((j as Map).cast());
@@ -541,46 +856,64 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
             }
           }
         } finally {
-          _applyingKeys = false;
+          _applying = false;
         }
-        _keysSent = [
-          _keysSent,
-          _maxAt(changed),
-        ].reduce((a, b) => a > b ? a : b);
-        if (home.role == SyncRole.hub && changed.isNotEmpty) {
+        _keysSent = _max(_keysSent, _maxAt(changed.map((r) => r.at)));
+        if (changed.isNotEmpty) {
           await _broadcast({
             't': 'keys',
             'k': [for (final r in changed) r.toJson()],
+          }, skip: from);
+        }
+      case 'readby':
+        final changed = <ReadByRecord>[];
+        _applying = true;
+        try {
+          for (final j in (m['b'] as List? ?? const [])) {
+            final r = ReadByRecord.fromJson((j as Map).cast());
+            if (await readBy.apply(r, asId: _resolve(r.id, r.mac, r.name))) {
+              changed.add(r);
+            }
+          }
+        } finally {
+          _applying = false;
+        }
+        _readBySent = _max(_readBySent, _maxAt(changed.map((r) => r.at)));
+        if (changed.isNotEmpty) {
+          await _broadcast({
+            't': 'readby',
+            'b': [for (final r in changed) r.toJson()],
           }, skip: from);
         }
       case 'control':
         await _onControl(from, m);
       case 'result':
         final req = '${m['req']}';
-        final err = m['err'] as String?;
-        final fwd = _forwarded.remove(req);
-        if (fwd != null) {
-          await _sendTo(fwd.$1, {'t': 'result', 'req': fwd.$2, 'err': ?err});
+        final route = _routes.remove(req);
+        if (route != null) {
+          await _sendTo(route.$1, m);
         } else {
-          _pending[req]?.complete(err);
+          _pending[req]?.complete(m['err'] as String?);
         }
-      case 'screens':
-        screens = [
-          for (final j in (m['s'] as List? ?? const []))
-            ScreenId.fromJson((j as Map).cast()),
-        ];
-        notifyListeners();
     }
   }
 
   Future<void> _onControl(SyncSession from, Map<String, Object?> m) async {
     final req = '${m['req']}';
+    // The same request can arrive by two paths through the mesh.
+    if (_seenReq.containsKey(req)) return;
+    _seenReq[req] = DateTime.now();
     final owner = '${m['o']}';
     if (owner == home.me.id) {
       String? err;
       try {
-        await connections.control(
+        final id = _resolve(
           '${m['id']}',
+          m['mac'] as String?,
+          m['name'] as String?,
+        );
+        await connections.control(
+          id,
           DeviceCommand('${m['s']}', m['v'] as Object),
           here: true,
         );
@@ -590,27 +923,26 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       await _sendTo(from, {'t': 'result', 'req': req, 'err': ?err});
       return;
     }
-    final to = home.role == SyncRole.hub ? _members[owner] : null;
-    if (to == null) {
+    final hops = (m['h'] as num?)?.toInt() ?? 0;
+    _routes[req] = (from, DateTime.now());
+    final sent = hops < 6 && await _route({...m, 'h': hops + 1}, from: from);
+    if (!sent) {
+      _routes.remove(req);
       await _sendTo(from, {
         't': 'result',
         'req': req,
-        'err': 'The screen holding that device is not connected',
+        'err': 'The screen that reads that device is not connected',
       });
-      return;
     }
-    final fwd = _hex(randomBytes(6));
-    _forwarded[fwd] = (from, req);
-    await _sendTo(to, {...m, 'req': fwd});
   }
 
-  // ---- keys ---------------------------------------------------------------
+  // ---- keys and locks -----------------------------------------------------
 
   void _onKeys() {
-    if (_applyingKeys) return;
+    if (_applying) return;
     final news = keys.records.where((r) => r.at > _keysSent).toList();
     if (news.isEmpty) return;
-    _keysSent = _maxAt(news);
+    _keysSent = _maxAt(news.map((r) => r.at));
     unawaited(
       _broadcast({
         't': 'keys',
@@ -619,20 +951,38 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     );
   }
 
+  void _onReadBy() {
+    _unowned.clear();
+    if (_applying) return;
+    final news = readBy.records.where((r) => r.at > _readBySent).toList();
+    if (news.isEmpty) return;
+    _readBySent = _maxAt(news.map((r) => r.at));
+    unawaited(
+      _broadcast({
+        't': 'readby',
+        'b': [for (final r in news) r.toJson()],
+      }),
+    );
+  }
+
   /// A key that came from a screen that knows the device under another id
   /// (iOS), for a device this screen had not heard yet: copy it to this
-  /// screen's id once the device shows up.
+  /// screen's id once the device shows up. Locks likewise.
   Future<void> _adoptKeys() async {
-    for (final r in keys.records) {
-      if (r.value == null || tracker[r.id] != null) continue;
-      final local = _resolve(r.id, r.mac, r.name);
-      if (local == r.id) continue;
-      _applyingKeys = true;
-      try {
-        await keys.apply(r, asId: local);
-      } finally {
-        _applyingKeys = false;
+    _applying = true;
+    try {
+      for (final r in keys.records) {
+        if (r.value == null || tracker[r.id] != null) continue;
+        final local = _resolve(r.id, r.mac, r.name);
+        if (local != r.id) await keys.apply(r, asId: local);
       }
+      for (final r in readBy.records) {
+        if (tracker[r.id] != null) continue;
+        final local = _resolve(r.id, r.mac, r.name);
+        if (local != r.id) await readBy.apply(r, asId: local);
+      }
+    } finally {
+      _applying = false;
     }
   }
 
@@ -654,10 +1004,20 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
   }
 }
 
+class _Link {
+  final SyncSession s;
+
+  /// This screen opened it.
+  final bool mine;
+  _Link(this.s, this.mine);
+}
+
 String _plainError(Object e) =>
     '$e'.replaceFirst(RegExp(r'^(Bad state|StateError|Exception): '), '');
 
-int _maxAt(Iterable<KeyRecord> rs) => rs.fold(0, (m, r) => r.at > m ? r.at : m);
+int _maxAt(Iterable<int> ats) => ats.fold(0, _max);
+
+int _max(int a, int b) => a > b ? a : b;
 
 String _hex(List<int> b) =>
     b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();

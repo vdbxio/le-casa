@@ -52,31 +52,54 @@ void main() {
     );
   });
 
-  test('hub adverts from Android and iOS give their home tag', () {
-    RawAdvertisement adv({String? name, Map<int, Uint8List> mfr = const {}}) =>
-        RawAdvertisement(
-          id: 'x',
-          rssi: -40,
-          seenAt: DateTime.now(),
-          name: name,
-          manufacturerData: mfr,
-          longServiceUuids: const [syncServiceUuid],
-        );
+  test('screen adverts from Android and iOS give home, screen and adding', () {
+    RawAdvertisement adv({
+      String? name,
+      Map<int, Uint8List> mfr = const {},
+      List<String> uuids = const [syncServiceUuid],
+    }) => RawAdvertisement(
+      id: 'x',
+      rssi: -40,
+      seenAt: DateTime.now(),
+      name: name,
+      manufacturerData: mfr,
+      longServiceUuids: uuids,
+    );
+    // Android: "LC", flags, tag, screen; no service UUID.
+    final android = BleSyncRadio.sightingOf(
+      adv(
+        uuids: const [],
+        mfr: {
+          syncCompanyId: Uint8List.fromList([
+            0x4c, 0x43, 0x01, //
+            0x1a, 0x2b, 0x3c, 0x4d, //
+            0x0f, 0x1e, 0x2d, 0x3c,
+          ]),
+        },
+      ),
+    );
+    expect(android?.tag, '1a2b3c4d');
+    expect(android?.screen, '0f1e2d3c');
+    expect(android?.adding, isTrue);
+    final ios = BleSyncRadio.sightingOf(adv(name: 'LeCasa 1A2B3C4D.0F1E2D3C'));
+    expect(ios?.tag, '1a2b3c4d');
+    expect(ios?.screen, '0f1e2d3c');
+    expect(ios?.adding, isFalse);
+    expect(
+      BleSyncRadio.sightingOf(adv(name: 'LeCasa 1a2b3c4d.0f1e2d3c+'))?.adding,
+      isTrue,
+    );
+    // Other test gear on 0xFFFF, and anything else, is not a screen.
     expect(
       BleSyncRadio.sightingOf(
         adv(
-          mfr: {
-            syncCompanyId: Uint8List.fromList([0x1a, 0x2b, 0x3c, 0x4d]),
-          },
+          uuids: const [],
+          mfr: {syncCompanyId: Uint8List.fromList(List.filled(11, 7))},
         ),
-      )?.tag,
-      '1a2b3c4d',
+      ),
+      isNull,
     );
-    expect(
-      BleSyncRadio.sightingOf(adv(name: 'LeCasa 1A2B3C4D'))?.tag,
-      '1a2b3c4d',
-    );
-    expect(BleSyncRadio.sightingOf(adv())?.tag, isNull);
+    expect(BleSyncRadio.sightingOf(adv()), isNull);
     expect(
       BleSyncRadio.sightingOf(
         RawAdvertisement(id: 'y', rssi: -40, seenAt: DateTime.now()),

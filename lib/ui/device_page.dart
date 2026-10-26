@@ -334,12 +334,12 @@ class _ConnectionSection extends StatelessWidget {
     final theme = Theme.of(context);
     final connections = AppServices.of(context).connections;
     final elsewhere = connections.heldElsewhere(link.id);
+    final aside = connections.remote?.standAside(link.id);
     final status = elsewhere != null
         ? '${elsewhere.screen} holds this connection and shares what it '
               'reads, so this screen leaves the device alone'
-        : (connections.remote?.leavesConnections ?? false)
-        ? 'This screen leaves device connections to your other screens '
-              '(Settings › Screens and phones)'
+        : aside != null
+        ? '$aside, so this screen leaves the device alone'
         : switch (link.phase) {
             LinkPhase.ok when link.lastOk != null =>
               'Last read ${ago(link.lastOk!)}, next in '
@@ -369,6 +369,7 @@ class _ConnectionSection extends StatelessWidget {
               ? null
               : (v) => connections.setDeviceEnabled(link.id, v),
         ),
+        if (AppServices.of(context).home.inHome) _ReadBy(id: link.id),
         if (link.keepsDropping && elsewhere == null)
           Card(
             color: theme.colorScheme.tertiaryContainer,
@@ -420,4 +421,52 @@ class _ConnectionSection extends StatelessWidget {
 
   static String _duration(Duration d) =>
       d.inMinutes >= 1 ? '${d.inMinutes} min' : '${d.inSeconds} s';
+}
+
+/// Which screen in the home reads this device: automatic, or locked to one.
+class _ReadBy extends StatelessWidget {
+  final String id;
+  const _ReadBy({required this.id});
+
+  @override
+  Widget build(BuildContext context) {
+    final sync = AppServices.of(context).sync;
+    return ListenableBuilder(
+      listenable: Listenable.merge([sync, sync.readBy]),
+      builder: (context, _) {
+        final lock = sync.readBy.lockOf(id);
+        final screens = sync.screens;
+        final locked = lock?.screen;
+        return ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Read by'),
+          subtitle: const Text(
+            'Automatic lets the screen that hears it best read it, and '
+            'another takes over if that one stops. Lock it to one screen '
+            'when another keeps failing to connect.',
+          ),
+          trailing: DropdownButton<String?>(
+            value: locked,
+            onChanged: (v) => sync.lock(
+              id,
+              v == null ? null : screens.firstWhere((s) => s.id == v),
+            ),
+            items: [
+              const DropdownMenuItem(value: null, child: Text('Automatic')),
+              for (final s in screens)
+                DropdownMenuItem(
+                  value: s.id,
+                  child: Text(s == sync.home.me ? '${s.name} (this)' : s.name),
+                ),
+              if (locked != null && !screens.any((s) => s.id == locked))
+                DropdownMenuItem(
+                  value: locked,
+                  child: Text('${lock?.screenName ?? 'Gone screen'} (away)'),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }

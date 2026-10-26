@@ -5,7 +5,6 @@
 import 'package:flutter/material.dart';
 
 import '../app.dart';
-import '../sync/home.dart';
 import '../sync/sync_page.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -74,15 +73,13 @@ class SettingsPage extends StatelessWidget {
               listenable: Listenable.merge([s.sync, s.home]),
               builder: (context, _) => ListTile(
                 title: const Text('Screens and phones'),
-                subtitle: Text(switch (s.home.role) {
-                  SyncRole.alone => 'Share readings, keys and controls with your other screens over Bluetooth',
-                  SyncRole.hub =>
-                    'Hub of ${s.home.homeName} · ${s.sync.members.length} connected',
-                  SyncRole.member =>
-                    s.sync.connected
-                        ? 'Part of ${s.home.homeName} · connected to ${s.home.hubName}'
-                        : 'Part of ${s.home.homeName} · looking for ${s.home.hubName}',
-                }),
+                subtitle: Text(
+                  !s.home.inHome
+                      ? 'Share readings, keys and controls with your other screens over Bluetooth'
+                      : s.sync.connected
+                      ? '${s.home.homeName} · linked to ${s.sync.linked.map((p) => p.name).join(', ')}'
+                      : '${s.home.homeName} · looking for your other screens',
+                ),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.push(
                   context,

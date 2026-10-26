@@ -150,7 +150,11 @@ class _LeCasaAppState extends State<LeCasaApp> {
       final d = tracker[id];
       return (name: d?.latest.name, mac: d?.latest.macString);
     };
-    keys.load().then((_) => home.load()).then((_) => sync.start());
+    keys
+        .load()
+        .then((_) => home.load())
+        .then((_) => sync.readBy.load())
+        .then((_) => sync.start());
     connections.load();
     dashboard.load();
     keys.addListener(tracker.redecodeAll);

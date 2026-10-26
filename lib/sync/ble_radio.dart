@@ -2,10 +2,10 @@
 // Copyright (C) 2026 Chloe Madison and contributors.
 // SPDX-License-Identifier: GPL-3.0-or-later WITH App-Store-Exception
 //
-// Screen sync over real Bluetooth. The hub runs the Le'Casa GATT service
-// with the plugin's PeripheralManager and advertises its home tag; members
-// find it through the normal scan and connect with a GattLink, the same
-// way the app talks to a fridge or a BMS.
+// Screen sync over real Bluetooth. Every screen in a home runs the Le'Casa
+// GATT service with the plugin's PeripheralManager and advertises its home
+// tag; other screens find it through the normal scan and connect with a
+// GattLink, the same way the app talks to a fridge or a BMS.
 
 import 'dart:async';
 import 'dart:convert';
@@ -42,24 +42,86 @@ class BleSyncRadio implements SyncRadio {
   Stream<MessageLink> get incoming => _incoming.stream;
 
   @override
-  Stream<HubSighting> get sightings =>
+  Stream<PeerSighting> get sightings =>
       scanner.advertisements.map(sightingOf).where((s) => s != null).cast();
 
-  /// A Le'Casa hub's advert, or null for anything else. Public for tests.
-  static HubSighting? sightingOf(RawAdvertisement a) {
-    if (!a.longServiceUuids.contains(syncServiceUuid)) return null;
-    String? tag;
+  /// A Le'Casa screen's advert, or null for anything else. Public for tests.
+  static PeerSighting? sightingOf(RawAdvertisement a) {
     final m = a.manufacturerData[syncCompanyId];
-    if (m != null && m.length >= 4) {
-      tag = hex(m.sublist(0, 4), sep: '');
-    } else if (a.name?.startsWith(syncNamePrefix) ?? false) {
-      tag = a.name!.substring(syncNamePrefix.length).trim().toLowerCase();
+    if (m != null &&
+        m.length >= 11 &&
+        m[0] == syncMagic[0] &&
+        m[1] == syncMagic[1]) {
+      return PeerSighting(
+        a.id,
+        hex(m.sublist(3, 7), sep: ''),
+        a.rssi,
+        a.seenAt,
+        screen: hex(m.sublist(7, 11), sep: ''),
+        adding: m[2] & 1 != 0,
+      );
     }
-    return HubSighting(a.id, tag, a.rssi, a.seenAt);
+    final name = a.name;
+    if (name == null || !name.startsWith(syncNamePrefix)) return null;
+    if (!a.longServiceUuids.contains(syncServiceUuid)) return null;
+    var rest = name.substring(syncNamePrefix.length).trim().toLowerCase();
+    final adding = rest.endsWith('+');
+    if (adding) rest = rest.substring(0, rest.length - 1);
+    final parts = rest.split('.');
+    return PeerSighting(
+      a.id,
+      parts.first,
+      a.rssi,
+      a.seenAt,
+      screen: parts.length > 1 ? parts[1] : null,
+      adding: adding,
+    );
   }
 
+  bool _serving = false;
+
   @override
-  Future<void> startHub(String tag) async {
+  Future<void> startServer(PeerAdvert ad) async {
+    if (!_serving) await _serve(ad.tag);
+    _serving = true;
+    final pm = _pm;
+    try {
+      await pm.stopAdvertising();
+    } catch (_) {
+      // Was not advertising.
+    }
+    final apple =
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS;
+    await pm.startAdvertising(
+      // iOS adverts carry only a name and service UUIDs, so everything goes
+      // in the name there. On Android a name would rename the tablet's
+      // Bluetooth, so it rides in manufacturer data instead, without the
+      // 16-byte service UUID: both do not fit in a legacy advert.
+      apple
+          ? Advertisement(
+              name:
+                  '$syncNamePrefix${ad.tag}.${ad.screen}${ad.adding ? '+' : ''}',
+              serviceUUIDs: [UUID.fromString(syncServiceUuid)],
+            )
+          : Advertisement(
+              manufacturerSpecificData: [
+                ManufacturerSpecificData(
+                  id: syncCompanyId,
+                  data: Uint8List.fromList([
+                    ...syncMagic,
+                    ad.adding ? 1 : 0,
+                    ...fromHexString(ad.tag),
+                    ...fromHexString(ad.screen),
+                  ]),
+                ),
+              ],
+            ),
+    );
+    debugPrint('sync: advertising ${ad.tag} as ${ad.screen}');
+  }
+
+  Future<void> _serve(String tag) async {
     final pm = _pm;
     for (final sub in _subs) {
       await sub.cancel();
@@ -85,7 +147,7 @@ class BleSyncRadio implements SyncRadio {
       }
       await Future<void>.delayed(const Duration(milliseconds: 200));
     }
-    _info = Uint8List.fromList(utf8.encode(jsonEncode({'v': 1, 'tag': tag})));
+    _info = Uint8List.fromList(utf8.encode(jsonEncode({'v': 2, 'tag': tag})));
     final rx = GATTCharacteristic.mutable(
       uuid: UUID.fromString(syncRxUuid),
       // With response only: chunks must not get lost or overtake each other.
@@ -114,7 +176,7 @@ class BleSyncRadio implements SyncRadio {
             value: Uint8List.sublistView(_info, off),
           );
         } catch (err) {
-          debugPrint('sync hub: read reply failed: $err');
+          debugPrint('sync server: read reply failed: $err');
         }
       }),
       pm.characteristicWriteRequested.listen((e) async {
@@ -129,7 +191,7 @@ class BleSyncRadio implements SyncRadio {
         try {
           await pm.respondWriteRequest(e.request);
         } catch (err) {
-          debugPrint('sync hub: write reply failed: $err');
+          debugPrint('sync server: write reply failed: $err');
         }
         if (!link._closed.isCompleted) link._in.add(e.request.value);
       }),
@@ -142,7 +204,7 @@ class BleSyncRadio implements SyncRadio {
         }
       }),
     ]);
-    // Android also says when a member's link drops; iOS only unsubscribes.
+    // Android also says when a screen's link drops; iOS only unsubscribes.
     try {
       _subs.add(
         pm.connectionStateChanged.listen((e) {
@@ -163,27 +225,6 @@ class BleSyncRadio implements SyncRadio {
         characteristics: [info, rx, tx],
       ),
     );
-    final apple =
-        defaultTargetPlatform == TargetPlatform.iOS ||
-        defaultTargetPlatform == TargetPlatform.macOS;
-    await pm.startAdvertising(
-      Advertisement(
-        // iOS adverts carry only a name and service UUIDs, so the tag goes
-        // in the name there. On Android a name would rename the tablet's
-        // Bluetooth, so it rides in manufacturer data instead.
-        name: apple ? '$syncNamePrefix$tag' : null,
-        serviceUUIDs: [UUID.fromString(syncServiceUuid)],
-        manufacturerSpecificData: apple
-            ? const []
-            : [
-                ManufacturerSpecificData(
-                  id: syncCompanyId,
-                  data: fromHexString(tag),
-                ),
-              ],
-      ),
-    );
-    debugPrint('sync hub: advertising $tag');
   }
 
   Future<_CentralLink> _linkFor(Central c) async {
@@ -194,18 +235,19 @@ class BleSyncRadio implements SyncRadio {
     try {
       max = await _pm.getMaximumNotifyLength(c);
     } catch (e) {
-      debugPrint('sync hub: notify length unknown: $e');
+      debugPrint('sync server: notify length unknown: $e');
     }
     final again = _links[key];
     if (again != null) return again;
     final link = _links[key] = _CentralLink(_pm, c, _tx!, max.clamp(20, 512));
-    debugPrint('sync hub: ${c.uuid} joined, chunks of $max');
+    debugPrint('sync server: ${c.uuid} linked, chunks of $max');
     _incoming.add(MessageLink(link));
     return link;
   }
 
   @override
-  Future<void> stopHub() async {
+  Future<void> stopServer() async {
+    _serving = false;
     for (final s in _subs) {
       await s.cancel();
     }
@@ -220,21 +262,21 @@ class BleSyncRadio implements SyncRadio {
       await pm.stopAdvertising();
       await pm.removeAllServices();
     } catch (e) {
-      debugPrint('sync hub: stop failed: $e');
+      debugPrint('sync server: stop failed: $e');
     }
   }
 
   @override
-  Future<MessageLink> connect(HubSighting hub) {
+  Future<MessageLink> connect(PeerSighting peer) {
     final c = connections;
     return c == null
-        ? _connect(hub)
-        : c.exclusive('sync hub', () => _connect(hub));
+        ? _connect(peer)
+        : c.exclusive('screen sync', () => _connect(peer));
   }
 
-  Future<MessageLink> _connect(HubSighting hub) async {
-    final p = scanner.peripheralFor(hub.id);
-    if (p == null) throw StateError('Hub not heard yet');
+  Future<MessageLink> _connect(PeerSighting peer) async {
+    final p = scanner.peripheralFor(peer.id);
+    if (p == null) throw StateError('Screen not heard yet');
     // Scanning while connecting is the classic cause of status 133 on
     // cheap tablets; pause it for the connect, as device polls do.
     final wasScanning = scanner.scanning;
@@ -247,7 +289,7 @@ class BleSyncRadio implements SyncRadio {
           break;
         } catch (e) {
           if (attempt >= 3 || !'$e'.contains('133')) rethrow;
-          debugPrint('sync: hub connect got 133, retry $attempt');
+          debugPrint('sync: connect got 133, retry $attempt');
           await Future<void>.delayed(Duration(milliseconds: 700 * attempt));
         }
       }
@@ -260,7 +302,7 @@ class BleSyncRadio implements SyncRadio {
       final tx = l.require(syncTxUuid, 'sync notify');
       final stream = await l.subscribe(tx);
       final max = await l.maxWriteLength();
-      debugPrint('sync: connected to hub ${hub.id}, chunks of $max');
+      debugPrint('sync: connected to ${peer.id}, chunks of $max');
       return MessageLink(_GattChunkLink(l, rx, stream, max.clamp(20, 512)));
     } catch (_) {
       await l.close();
@@ -269,7 +311,7 @@ class BleSyncRadio implements SyncRadio {
   }
 }
 
-/// Hub end of one member's link.
+/// Server end of a link from a screen that connected to this one.
 class _CentralLink implements ChunkLink {
   final PeripheralManager _pm;
   final Central central;
@@ -289,7 +331,7 @@ class _CentralLink implements ChunkLink {
 
   @override
   Future<void> sendChunk(Uint8List chunk) {
-    if (_closed.isCompleted) throw StateError('Member gone');
+    if (_closed.isCompleted) throw StateError('Screen gone');
     return _pm.notifyCharacteristic(central, _tx, value: chunk);
   }
 
@@ -311,7 +353,7 @@ class _CentralLink implements ChunkLink {
   }
 }
 
-/// Member end: a GATT client link to the hub.
+/// Client end: a GATT link to a screen this one connected to.
 class _GattChunkLink implements ChunkLink {
   final GattLink _link;
   final GattChar _rx;

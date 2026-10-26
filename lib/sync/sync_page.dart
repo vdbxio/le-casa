@@ -10,10 +10,11 @@ import '../app.dart';
 import '../ui/palette.dart';
 import 'home.dart';
 import 'radio.dart';
+import 'session.dart';
 import 'sync_service.dart';
 
-/// Settings › Screens and phones: make this screen the hub, join one, add
-/// screens, and compare pairing codes.
+/// Settings › Screens and phones: start a home, join one, add screens,
+/// compare pairing codes, and see where the other screens are.
 class SyncPage extends StatefulWidget {
   const SyncPage({super.key});
 
@@ -93,24 +94,9 @@ class _SyncPageState extends State<SyncPage> {
               trailing: const Icon(Icons.edit_outlined),
               onTap: () => _rename(home),
             ),
-            if (home.role != SyncRole.alone)
-              SwitchListTile(
-                title: const Text('Hold device connections'),
-                subtitle: const Text(
-                  'Connect to fridges, batteries and other connected devices '
-                  'from this screen. Turn off on phones and on tablets with '
-                  'poor Bluetooth; the other screens will read them instead.',
-                ),
-                value: home.holdsDevices,
-                onChanged: home.setHoldsDevices,
-              ),
             if (sync.error != null)
               _Note(sync.error!, color: Theme.of(context).colorScheme.error),
-            ...switch (home.role) {
-              SyncRole.alone => _alone(sync),
-              SyncRole.hub => _hub(sync, home),
-              SyncRole.member => _member(sync, home),
-            },
+            ...home.inHome ? _inHome(sync, home) : _alone(sync),
           ],
         ),
       ),
@@ -120,9 +106,9 @@ class _SyncPageState extends State<SyncPage> {
   List<Widget> _alone(SyncService sync) => [
     const _Note(
       'Share readings, keys and controls with your other tablets and phones, '
-      'over Bluetooth only. One screen is the hub: pick one with good '
-      'Bluetooth that stays on. Each device is read by one screen and shown '
-      'on all of them.',
+      'over Bluetooth only. Every screen links to the others it can hear and '
+      'passes messages along, so screens out of each other\'s range still '
+      'talk through the ones in between.',
     ),
     Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -132,29 +118,29 @@ class _SyncPageState extends State<SyncPage> {
         children: [
           FilledButton.icon(
             onPressed: () => _startHome(sync),
-            icon: const Icon(Icons.hub_outlined),
-            label: const Text('Make this screen the hub'),
+            icon: const Icon(Icons.home_outlined),
+            label: const Text('Start a home'),
           ),
           OutlinedButton.icon(
             onPressed: () => setState(() => _looking = true),
             icon: const Icon(Icons.link),
-            label: const Text('Join a hub'),
+            label: const Text('Join a home'),
           ),
         ],
       ),
     ),
     if (_looking) ...[
-      const _Header('Hubs nearby'),
-      if (sync.nearby.isEmpty)
+      const _Header('Screens nearby'),
+      if (!sync.nearby.values.any((h) => h.adding))
         const _Note(
-          'Looking… On the hub, open Settings › Screens and phones and tap '
-          '"Add a screen or phone".',
+          'Looking… On any screen already in the home, phone included, open '
+          'Settings › Screens and phones and tap "Add a screen or phone".',
         ),
-      for (final h in _sorted(sync.nearby.values))
+      for (final h in _sorted(sync.nearby.values.where((h) => h.adding)))
         ListTile(
-          leading: const Icon(Icons.hub_outlined),
-          title: Text("Le'Casa hub ${h.tag ?? ''}".trim()),
-          subtitle: Text('Signal ${h.rssi} dBm'),
+          leading: const Icon(Icons.devices_other),
+          title: Text("Le'Casa screen ${h.screen ?? ''}".trim()),
+          subtitle: Text('Adding screens · signal ${h.rssi} dBm'),
           trailing: sync.joining
               ? const SizedBox(
                   width: 20,
@@ -167,16 +153,20 @@ class _SyncPageState extends State<SyncPage> {
     ],
   ];
 
-  List<Widget> _hub(SyncService sync, HomeStore home) => [
+  List<Widget> _inHome(SyncService sync, HomeStore home) => [
     ListTile(
-      leading: const Icon(Icons.hub),
-      title: Text('Hub of ${home.homeName}'),
+      leading: Icon(sync.connected ? Icons.hub : Icons.hub_outlined),
+      title: Text(home.homeName),
       subtitle: Text(
         sync.connected
-            ? 'Other screens find this one over Bluetooth'
-            : 'Starting…',
+            ? 'Linked to ${sync.linked.map((p) => p.name).join(', ')}'
+            : sync.connecting
+            ? 'Linking…'
+            : 'Looking for your other screens…',
       ),
     ),
+    if (sync.serverError != null)
+      _Note(sync.serverError!, color: Theme.of(context).colorScheme.tertiary),
     Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       child: sync.adding
@@ -191,8 +181,8 @@ class _SyncPageState extends State<SyncPage> {
                 Expanded(
                   child: Text(
                     'Waiting for a screen to join (${_left(sync.addingUntil!)}). '
-                    'On the other screen, open Settings › Screens and phones '
-                    '› Join a hub.',
+                    'On the new screen, open Settings › Screens and phones '
+                    '› Join a home.',
                   ),
                 ),
                 TextButton(
@@ -204,45 +194,50 @@ class _SyncPageState extends State<SyncPage> {
           : Align(
               alignment: Alignment.centerLeft,
               child: FilledButton.icon(
-                onPressed: sync.connected ? sync.startAdding : null,
+                onPressed: sync.serverError == null ? sync.startAdding : null,
                 icon: const Icon(Icons.add),
                 label: const Text('Add a screen or phone'),
               ),
             ),
     ),
-    const _Header('Connected now'),
-    if (sync.members.isEmpty) const _Note('No other screens yet.'),
-    for (final m in sync.members)
-      ListTile(leading: const Icon(Icons.tablet_android), title: Text(m.name)),
+    const _Header('Screens in this home'),
+    for (final m in sync.screens) _screenTile(sync, home, m),
+    if (sync.screens.length == 1) const _Note('No other screens heard yet.'),
     const _Header('Home'),
     _leaveTile(sync),
   ];
 
-  List<Widget> _member(SyncService sync, HomeStore home) => [
-    ListTile(
-      leading: Icon(sync.connected ? Icons.link : Icons.link_off),
-      title: Text('Part of ${home.homeName}'),
-      subtitle: Text(
-        sync.connected
-            ? 'Connected to ${home.hubName}'
-            : sync.connecting
-            ? 'Connecting to ${home.hubName}…'
-            : 'Looking for ${home.hubName}…',
-      ),
-    ),
-    if (sync.connected) ...[
-      const _Header('Screens in this home'),
-      for (final m in sync.screens)
-        ListTile(
-          leading: Icon(
-            m.name == home.hubName ? Icons.hub : Icons.tablet_android,
-          ),
-          title: Text(m == home.me ? '${m.name} (this screen)' : m.name),
-        ),
-    ],
-    const _Header('Home'),
-    _leaveTile(sync),
-  ];
+  Widget _screenTile(SyncService sync, HomeStore home, ScreenId m) {
+    final me = m == home.me;
+    final info = sync.peer(m.id);
+    final phone = me ? home.phone : info?.phone ?? false;
+    final lines = <String>[
+      if (me)
+        'This screen'
+      else if (sync.linked.contains(m))
+        'Linked directly'
+      else
+        'Reached through your other screens',
+      ?_where(sync, home, m),
+    ];
+    return ListTile(
+      leading: Icon(phone ? Icons.phone_iphone : Icons.tablet_android),
+      title: Text(m.name),
+      subtitle: Text(lines.join('\n')),
+    );
+  }
+
+  /// "Nearest Kitchen iPad (-48 dBm), then M10 -71": which screens hear
+  /// [m] and how loudly, for a rough idea of where it is.
+  static String? _where(SyncService sync, HomeStore home, ScreenId m) {
+    final heard = sync.heardBy(m.id);
+    if (heard.isEmpty) return null;
+    String name(ScreenId s) => s == home.me ? 'this screen' : s.name;
+    final first = heard.first;
+    final rest = [for (final h in heard.skip(1)) '${name(h.by)} ${h.rssi}'];
+    return 'Nearest ${name(first.by)} (${first.rssi} dBm)'
+        '${rest.isEmpty ? '' : ', then ${rest.join(', ')}'}';
+  }
 
   Widget _leaveTile(SyncService sync) => ListTile(
     leading: const Icon(Icons.logout),
@@ -257,7 +252,7 @@ class _SyncPageState extends State<SyncPage> {
         builder: (context) => AlertDialog(
           title: const Text('Leave this home?'),
           content: const Text(
-            'To join again you will need to pair with the hub again.',
+            'To join again, pair with any screen still in the home.',
           ),
           actions: [
             TextButton(
@@ -294,7 +289,7 @@ class _SyncPageState extends State<SyncPage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, ctl.text),
-            child: const Text('Make hub'),
+            child: const Text('Start'),
           ),
         ],
       ),
@@ -329,7 +324,7 @@ class _SyncPageState extends State<SyncPage> {
     if (name != null) await home.rename(name);
   }
 
-  static List<HubSighting> _sorted(Iterable<HubSighting> hs) =>
+  static List<PeerSighting> _sorted(Iterable<PeerSighting> hs) =>
       hs.toList()..sort((a, b) => b.rssi.compareTo(a.rssi));
 
   static String _left(DateTime until) {

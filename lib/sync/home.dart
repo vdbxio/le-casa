@@ -11,44 +11,33 @@ import '../platform/tablet.dart';
 import 'crypto.dart';
 import 'session.dart';
 
-enum SyncRole {
-  /// Not in a home: this screen works on its own.
-  alone,
-
-  /// Other screens connect to this one; it passes everything between them.
-  hub,
-
-  /// Connects to the hub.
-  member,
-}
-
-/// Which home this screen belongs to, and as what. Kept on the screen;
-/// there is no account anywhere.
+/// Which home this screen belongs to. Kept on the screen; there is no
+/// account anywhere. Every screen in a home is equal: none is in charge.
 class HomeStore extends ChangeNotifier {
   static const _p = 'sync:';
   SharedPreferences? _prefs;
 
   late String _id;
   String _name = '';
-  SyncRole role = SyncRole.alone;
   Uint8List? key;
   String homeName = '';
 
-  /// The hub's name, on a member.
-  String hubName = '';
-
-  /// Whether this screen connects to devices while it is in a home. Off
-  /// by default on phones, which come and go and have batteries to save.
-  bool holdsDevices = true;
+  /// A phone. Phones come and go and have batteries to save, so they only
+  /// read a device over a connection when it is locked to them.
+  bool phone = false;
 
   ScreenId get me => ScreenId(_id, _name);
+
+  bool get inHome => key != null;
 
   String get tag => key == null ? '' : homeTag(key!);
 
   HomeStore();
 
   /// For tests: a store that is never saved.
-  HomeStore.memory(String id, String name) : _id = id, _name = name;
+  HomeStore.memory(String id, String name, {this.phone = false})
+    : _id = id,
+      _name = name;
 
   Future<void> load() async {
     final p = _prefs = await SharedPreferences.getInstance();
@@ -58,30 +47,19 @@ class HomeStore extends ChangeNotifier {
       await p.setString('${_p}id', id);
     }
     _id = id;
-    _name = p.getString('${_p}name') ?? await _defaultName(id);
-    role =
-        SyncRole.values.asNameMap()[p.getString('${_p}role')] ?? SyncRole.alone;
+    final device = await TabletSensors.deviceName();
+    _name = p.getString('${_p}name') ?? _defaultName(id, device);
     final k = p.getString('${_p}key');
     key = k == null ? null : fromHexString(k);
-    if (key == null) role = SyncRole.alone;
     homeName = p.getString('${_p}home') ?? '';
-    hubName = p.getString('${_p}hub') ?? '';
-    holdsDevices =
-        p.getBool('${_p}holds') ??
-        !((await TabletSensors.deviceName())?.startsWith('iPhone') ?? false);
-    notifyListeners();
-  }
-
-  Future<void> setHoldsDevices(bool v) async {
-    holdsDevices = v;
-    await _prefs?.setBool('${_p}holds', v);
+    phone = device?.startsWith('iPhone') ?? false;
     notifyListeners();
   }
 
   /// "iPad" or "M10", with a short id so two alike screens differ.
-  static Future<String> _defaultName(String id) async {
+  static String _defaultName(String id, String? device) {
     final short = id.substring(0, 4).toUpperCase();
-    final name = (await TabletSensors.deviceName())?.trim();
+    final name = device?.trim();
     if (name != null && name.isNotEmpty) return '$name $short';
     final kind = switch (defaultTargetPlatform) {
       TargetPlatform.iOS => 'iPad or iPhone',
@@ -99,47 +77,29 @@ class HomeStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Makes this screen the hub of a new home.
-  Future<void> startHome(String name) => _save(
-    SyncRole.hub,
-    randomBytes(32),
-    name.trim().isEmpty ? 'Home' : name.trim(),
-    '',
-  );
+  /// Starts a new home with this screen in it.
+  Future<void> startHome(String name) =>
+      _save(randomBytes(32), name.trim().isEmpty ? 'Home' : name.trim());
 
-  Future<void> joined(JoinedHome h) =>
-      _save(SyncRole.member, h.key, h.name, h.hub.name);
-
-  Future<void> setHubName(String name) async {
-    if (name == hubName) return;
-    hubName = name;
-    await _prefs?.setString('${_p}hub', name);
-    notifyListeners();
-  }
+  Future<void> joined(JoinedHome h) => _save(h.key, h.name);
 
   /// Leaves the home. Keys and readings already shared stay where they are.
   Future<void> leave() async {
-    role = SyncRole.alone;
     key = null;
     homeName = '';
-    hubName = '';
     for (final k in ['role', 'key', 'home', 'hub']) {
       await _prefs?.remove('$_p$k');
     }
     notifyListeners();
   }
 
-  Future<void> _save(SyncRole r, Uint8List k, String home, String hub) async {
-    role = r;
+  Future<void> _save(Uint8List k, String home) async {
     key = k;
     homeName = home;
-    hubName = hub;
     final p = _prefs;
     if (p != null) {
-      await p.setString('${_p}role', r.name);
       await p.setString('${_p}key', _hex(k));
       await p.setString('${_p}home', home);
-      await p.setString('${_p}hub', hub);
     }
     notifyListeners();
   }

@@ -12,65 +12,78 @@ import 'package:lecasa/keys/key_store.dart';
 import 'package:lecasa/sync/framing.dart';
 import 'package:lecasa/sync/home.dart';
 import 'package:lecasa/sync/radio.dart';
+import 'package:lecasa/sync/read_by.dart';
 import 'package:lecasa/sync/sync_service.dart';
 
 import '../fake_session.dart';
 import 'pipe.dart';
 
-/// The air between fake radios: hubs advertise here, members connect.
+/// The air between fake radios: screens advertise here, others connect.
 class Air {
-  final hubs = <String, FakeRadio>{};
+  final servers = <String, FakeRadio>{};
   final listeners = <FakeRadio>[];
+
+  /// Signal [listener] hears [server] at, or null when out of range.
+  int? Function(FakeRadio listener, FakeRadio server) signal = (_, _) => -50;
 }
 
 class FakeRadio implements SyncRadio {
   final Air air;
   final String id;
   final _incoming = StreamController<MessageLink>.broadcast();
-  final _sightings = StreamController<HubSighting>.broadcast();
-  String? tag;
+  final _sightings = StreamController<PeerSighting>.broadcast();
+  PeerAdvert? ad;
 
-  /// How many more startHub calls fail, like iOS before Bluetooth is up.
+  /// How many more startServer calls fail, like iOS before Bluetooth is up.
   int failStarts = 0;
 
   FakeRadio(this.air, this.id) {
     air.listeners.add(this);
   }
 
-  /// Every listener hears every hub, as a scan would.
+  /// Every listener in range hears every server, as a scan would.
   static Future<void> advertise(Air air) async {
-    for (final h in air.hubs.values) {
+    for (final h in air.servers.values) {
       for (final l in air.listeners) {
-        if (l != h) {
-          l._sightings.add(HubSighting(h.id, h.tag, -50, DateTime.now()));
-        }
+        final rssi = l == h ? null : air.signal(l, h);
+        if (rssi == null) continue;
+        l._sightings.add(
+          PeerSighting(
+            h.id,
+            h.ad!.tag,
+            rssi,
+            DateTime.now(),
+            screen: h.ad!.screen,
+            adding: h.ad!.adding,
+          ),
+        );
       }
     }
     await pumpEventQueue();
   }
 
   @override
-  Future<void> startHub(String tag) async {
+  Future<void> startServer(PeerAdvert ad) async {
     if (failStarts > 0) {
       failStarts--;
       throw StateError('Bluetooth is unknown');
     }
-    this.tag = tag;
-    air.hubs[id] = this;
+    this.ad = ad;
+    air.servers[id] = this;
   }
 
   @override
-  Future<void> stopHub() async => air.hubs.remove(id);
+  Future<void> stopServer() async => air.servers.remove(id);
 
   @override
   Stream<MessageLink> get incoming => _incoming.stream;
 
   @override
-  Stream<HubSighting> get sightings => _sightings.stream;
+  Stream<PeerSighting> get sightings => _sightings.stream;
 
   @override
-  Future<MessageLink> connect(HubSighting hub) async {
-    final h = air.hubs[hub.id];
+  Future<MessageLink> connect(PeerSighting peer) async {
+    final h = air.servers[peer.id];
     if (h == null) throw StateError('not there');
     final (a, b) = PipeEnd.pair(maxChunk: 64);
     h._incoming.add(MessageLink(b));
@@ -123,8 +136,8 @@ class Screen {
   late final SyncService sync;
   final FakeRadio radio;
 
-  Screen(Air air, String id, String name)
-    : home = HomeStore.memory(id, name),
+  Screen(Air air, String id, String name, {bool phone = false})
+    : home = HomeStore.memory(id, name, phone: phone),
       radio = FakeRadio(air, id) {
     connections = ConnectionManager(
       tracker,
@@ -132,21 +145,25 @@ class Screen {
       drivers: GattDriverRegistry([driver]),
       tick: const Duration(days: 1),
     );
-    sync = SyncService(
-      home: home,
-      tracker: tracker,
-      keys: keys,
-      connections: connections,
-      radio: radio,
-    )..start();
+    sync =
+        SyncService(
+            home: home,
+            tracker: tracker,
+            keys: keys,
+            connections: connections,
+            radio: radio,
+            readBy: ReadByStore.memory(),
+          )
+          ..settleTime = Duration.zero
+          ..start();
     keys.label = (id) =>
         (name: tracker[id]?.latest.name, mac: tracker[id]?.latest.macString);
   }
 
-  void hear(String id, String name) {
+  void hear(String id, String name, {int rssi = -60}) {
     final adv = RawAdvertisement(
       id: id,
-      rssi: -60,
+      rssi: rssi,
       seenAt: DateTime.now(),
       name: name,
       mac: parseMac(id),
@@ -169,6 +186,37 @@ Future<void> settle([int rounds = 5]) async {
   }
 }
 
+/// Pairs [newcomer] through [via], which must already be in a home.
+Future<void> pairThrough(Air air, Screen via, Screen newcomer) async {
+  via.sync.startAdding();
+  await settle();
+  await FakeRadio.advertise(air);
+  final peer = newcomer.sync.nearby.values.singleWhere(
+    (h) => h.id == via.radio.id && h.adding,
+  );
+  final join = newcomer.sync.join(peer);
+  await settle();
+  expect(via.sync.prompt, isNotNull);
+  expect(newcomer.sync.prompt?.code, via.sync.prompt!.code);
+  via.sync.answer(true);
+  newcomer.sync.answer(true);
+  await join;
+  expect(newcomer.home.key, via.home.key);
+  await settle();
+}
+
+/// Lets every screen hear the others and dial the ones it should.
+Future<void> link(Air air, List<Screen> screens) async {
+  for (final s in screens) {
+    s.sync.dialWait = Duration.zero;
+  }
+  await FakeRadio.advertise(air);
+  for (final s in screens) {
+    await s.sync.tick();
+    await settle();
+  }
+}
+
 void main() {
   late Air air;
   late Screen ipad, m10;
@@ -183,23 +231,12 @@ void main() {
     ipad = Screen(air, 'ipad', 'Kitchen iPad');
     m10 = Screen(air, 'm10', 'M10');
     await ipad.sync.startHome('Van');
-    ipad.sync.startAdding();
-    await FakeRadio.advertise(air);
-    final hub = m10.sync.nearby.values.single;
-    final join = m10.sync.join(hub);
-    await settle();
-    expect(ipad.sync.prompt, isNotNull);
-    expect(m10.sync.prompt?.code, ipad.sync.prompt!.code);
-    ipad.sync.answer(true);
-    m10.sync.answer(true);
-    await join;
-    expect(m10.home.role, SyncRole.member);
-    expect(m10.home.key, ipad.home.key);
-    await FakeRadio.advertise(air);
-    await m10.sync.tick();
-    await settle();
+    await pairThrough(air, ipad, m10);
+    expect(m10.home.inHome, isTrue);
+    await link(air, [ipad, m10]);
     expect(m10.sync.connected, isTrue);
-    expect(ipad.sync.members.single.name, 'M10');
+    expect(ipad.sync.linked.single.name, 'M10');
+    expect(m10.sync.linked.single.name, 'Kitchen iPad');
   });
 
   tearDown(() {
@@ -207,13 +244,13 @@ void main() {
     m10.dispose();
   });
 
-  test('the hub screen list reaches members', () {
-    expect(m10.sync.screens.map((s) => s.name), ['Kitchen iPad', 'M10']);
-    expect(m10.home.hubName, 'Kitchen iPad');
+  test('each screen knows the others', () {
+    expect(m10.sync.screens.map((s) => s.name), ['M10', 'Kitchen iPad']);
+    expect(ipad.sync.screens.map((s) => s.name), ['Kitchen iPad', 'M10']);
   });
 
   test(
-    'a reading the hub takes shows on the member, which backs off',
+    'a reading one screen takes shows on the other, which backs off',
     () async {
       ipad.hear(ipadFridge, 'AK1-AAFE13156431');
       m10.hear(m10Fridge, 'AK1-AAFE13156431');
@@ -231,18 +268,61 @@ void main() {
     },
   );
 
-  test('a screen set not to hold connections leaves devices alone', () async {
-    await m10.home.setHoldsDevices(false);
+  test('a device locked to one screen is left alone by the others', () async {
+    ipad.hear(ipadFridge, 'AK1-AAFE13156431');
     m10.hear(m10Fridge, 'AK1-AAFE13156431');
-    await m10.connections.pump();
-    expect(m10.connections[m10Fridge]!.lastAttempt, isNull);
-    // Outside a home it reads everything itself again.
-    await m10.sync.leave();
+    await ipad.sync.lock(ipadFridge, m10.home.me);
+    await settle();
+    expect(m10.sync.readBy.lockOf(m10Fridge)?.screen, 'm10');
+    expect(ipad.sync.standAside(ipadFridge), 'Locked to M10');
+    await ipad.connections.pump();
+    expect(ipad.connections[ipadFridge]!.lastAttempt, isNull);
+    expect(m10.sync.standAside(m10Fridge), isNull);
     await m10.connections.pump();
     expect(m10.connections[m10Fridge]!.lastOk, isNotNull);
+    // A control on the iPad goes to the M10 even before it shares a reading.
+    await ipad.connections.control(
+      ipadFridge,
+      const DeviceCommand('target', 41),
+    );
+    expect(m10.driver.commands.single.value, 41);
+    // Back to automatic.
+    await m10.sync.lock(m10Fridge, null);
+    await settle();
+    expect(ipad.sync.readBy.lockOf(ipadFridge), isNull);
   });
 
-  test('a device the member never heard still shows up', () async {
+  test('the screen that hears a device better goes first', () async {
+    ipad.sync.handoverGrace = const Duration(hours: 1);
+    ipad.hear(ipadFridge, 'AK1-AAFE13156431', rssi: -85);
+    m10.hear(m10Fridge, 'AK1-AAFE13156431', rssi: -40);
+    await m10.sync.beacon();
+    await ipad.sync.beacon();
+    await settle();
+    expect(ipad.sync.standAside(ipadFridge), 'M10 hears it better');
+    expect(m10.sync.standAside(m10Fridge), isNull);
+    // If the M10 never reads it, the iPad takes it after the grace period.
+    ipad.sync.handoverGrace = Duration.zero;
+    expect(ipad.sync.standAside(ipadFridge), isNull);
+  });
+
+  test('a phone leaves devices to the tablets that hear them', () async {
+    final phone = Screen(air, 'phone', 'iPhone', phone: true);
+    addTearDown(phone.dispose);
+    await pairThrough(air, ipad, phone);
+    await link(air, [ipad, m10, phone]);
+    const phoneFridge = '0C0C0C0C-0000-4000-8000-000000000009';
+    phone.hear(phoneFridge, 'AK1-AAFE13156431', rssi: -30);
+    m10.hear(m10Fridge, 'AK1-AAFE13156431', rssi: -70);
+    await m10.sync.beacon();
+    await settle();
+    expect(phone.sync.standAside(phoneFridge), contains('M10 reads it'));
+    // Unless it is locked to the phone.
+    await phone.sync.lock(phoneFridge, phone.home.me);
+    expect(phone.sync.standAside(phoneFridge), isNull);
+  });
+
+  test('a device the other screen never heard still shows up', () async {
     ipad.hear(ipadFridge, 'AK1-AAFE13156431');
     await ipad.connections.readNow(ipadFridge);
     await ipad.sync.tick();
@@ -252,7 +332,7 @@ void main() {
     expect(d.title, 'Fridge');
   });
 
-  test('a control on the member runs on the hub', () async {
+  test('a control on one screen runs on the one that reads it', () async {
     ipad.hear(ipadFridge, 'AK1-AAFE13156431');
     m10.hear(m10Fridge, 'AK1-AAFE13156431');
     await ipad.connections.readNow(ipadFridge);
@@ -270,7 +350,6 @@ void main() {
     await settle();
     expect(m10.tracker[m10Fridge]!.polled!.readings.single.value, 46);
   });
-
   test('a failed control comes back as an error', () async {
     ipad.hear(ipadFridge, 'AK1-AAFE13156431');
     m10.hear(m10Fridge, 'AK1-AAFE13156431');
@@ -331,74 +410,111 @@ void main() {
     },
   );
 
-  test('a third screen gets everything through the hub', () async {
-    final phone = Screen(air, 'phone', 'iPhone');
+  test(
+    'a third screen joins through any screen and extends the mesh',
+    () async {
+      // The phone is only in range of the M10, and pairs through it.
+      final phone = Screen(air, 'phone', 'iPhone', phone: true);
+      addTearDown(phone.dispose);
+      air.signal = (l, h) =>
+          {l.id, h.id}.containsAll(['phone', 'ipad']) ? null : -50;
+      await pairThrough(air, m10, phone);
+      await link(air, [ipad, m10, phone]);
+      expect(phone.sync.linked.map((s) => s.name), ['M10']);
+      expect(ipad.sync.linked.map((s) => s.name), ['M10']);
+      // The iPad and the phone still know of each other, through the M10.
+      expect(phone.sync.screens.map((s) => s.name), contains('Kitchen iPad'));
+      expect(ipad.sync.screens.map((s) => s.name), contains('iPhone'));
+      // A reading the iPad takes travels iPad -> M10 -> phone.
+      ipad.hear(ipadFridge, 'AK1-AAFE13156431');
+      await ipad.connections.readNow(ipadFridge);
+      await ipad.sync.tick();
+      await settle();
+      expect(phone.tracker[ipadFridge]?.polledBy, 'Kitchen iPad');
+      // And a control from the phone travels phone -> M10 -> iPad.
+      final done = phone.connections.control(
+        ipadFridge,
+        const DeviceCommand('target', 44),
+      );
+      await settle(10);
+      await done;
+      expect(ipad.driver.commands.single.value, 44);
+    },
+  );
+
+  test('two screens that dial each other at once keep one link', () async {
+    final phone = Screen(air, 'phone', 'iPhone', phone: true);
     addTearDown(phone.dispose);
-    ipad.sync.startAdding();
+    await pairThrough(air, ipad, phone);
+    for (final s in [ipad, m10, phone]) {
+      s.sync.dialWait = Duration.zero;
+    }
     await FakeRadio.advertise(air);
-    final join = phone.sync.join(phone.sync.nearby.values.single);
-    await settle();
-    ipad.sync.answer(true);
-    phone.sync.answer(true);
-    await join;
-    await FakeRadio.advertise(air);
-    await phone.sync.tick();
-    await settle();
-    // A reading the M10 takes travels M10 -> hub -> phone.
-    m10.hear(m10Fridge, 'AK1-AAFE13156431');
-    await m10.connections.readNow(m10Fridge);
-    await m10.sync.tick();
-    await settle();
-    expect(phone.tracker[m10Fridge]?.polledBy, 'M10');
-    expect(ipad.tracker[m10Fridge]?.polledBy, 'M10');
-    // And a control from the phone travels phone -> hub -> M10.
-    final done = phone.connections.control(
-      m10Fridge,
-      const DeviceCommand('target', 44),
-    );
+    await Future.wait([
+      for (final s in [ipad, m10, phone]) s.sync.tick(),
+    ]);
     await settle(10);
-    await done;
-    expect(m10.driver.commands.single.value, 44);
+    await Future.wait([
+      for (final s in [ipad, m10, phone]) s.sync.tick(),
+    ]);
+    await settle(10);
+    for (final s in [ipad, m10, phone]) {
+      expect(s.sync.linked.length, 2, reason: s.home.me.name);
+    }
   });
 
-  test('a screen from another home is turned away', () async {
+  test('screens report where a phone is', () async {
+    final phone = Screen(air, 'phone', 'iPhone', phone: true);
+    addTearDown(phone.dispose);
+    air.signal = (l, h) => switch ((l.id, h.id)) {
+      ('m10', 'phone') => -45,
+      ('ipad', 'phone') => -72,
+      _ => -50,
+    };
+    await pairThrough(air, ipad, phone);
+    await link(air, [ipad, m10, phone]);
+    await m10.sync.beacon();
+    await settle();
+    final where = ipad.sync.heardBy('phone');
+    expect(where.map((h) => (h.by.name, h.rssi)), [
+      ('M10', -45),
+      ('Kitchen iPad', -72),
+    ]);
+  });
+
+  test('a screen from another home is not linked', () async {
     final stranger = Screen(air, 'x', 'Neighbour');
     addTearDown(stranger.dispose);
     await stranger.sync.startHome('Other van');
-    // Pretend the neighbour's hub went away and m10 needs to reconnect.
-    await ipad.sync.leave();
-    await settle();
-    await FakeRadio.advertise(air);
-    await m10.sync.tick();
-    await settle();
-    expect(m10.sync.connected, isFalse);
-    expect(stranger.sync.members, isEmpty);
+    await link(air, [ipad, m10, stranger]);
+    expect(stranger.sync.connected, isFalse);
+    expect(ipad.sync.linked.map((s) => s.name), ['M10']);
   });
 
-  test('the hub refuses to pair unless asked', () async {
+  test('a screen refuses to pair unless asked', () async {
     final stranger = Screen(air, 'x', 'Neighbour');
     addTearDown(stranger.dispose);
     ipad.sync.stopAdding();
+    await settle();
     await FakeRadio.advertise(air);
     await stranger.sync.join(
       stranger.sync.nearby.values.firstWhere((h) => h.id == 'ipad'),
     );
-    expect(stranger.home.role, SyncRole.alone);
+    expect(stranger.home.inHome, isFalse);
     expect(stranger.sync.error, contains('not adding screens'));
   });
 
-  test('a hub that fails to start tries again', () async {
+  test('a server that fails to start tries again', () async {
     final pad = Screen(air, 'pad2', 'Spare iPad');
     addTearDown(pad.dispose);
     pad.radio.failStarts = 1;
-    pad.sync.hubRetry = Duration.zero;
+    pad.sync.serverRetry = Duration.zero;
     await settle();
     await pad.sync.startHome('Cabin');
-    expect(pad.sync.connected, isFalse);
-    expect(pad.sync.error, contains('Bluetooth is unknown'));
+    expect(pad.sync.serverError, contains('Bluetooth is unknown'));
     await pad.sync.tick();
     await settle();
-    expect(pad.sync.connected, isTrue);
-    expect(pad.sync.error, isNull);
+    expect(pad.sync.serverError, isNull);
+    expect(air.servers.keys, contains('pad2'));
   });
 }

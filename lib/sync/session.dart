@@ -2,19 +2,20 @@
 // Copyright (C) 2026 Chloe Madison and contributors.
 // SPDX-License-Identifier: GPL-3.0-or-later WITH App-Store-Exception
 //
-// One link between a member screen and the hub, after framing: the
-// pairing handshake, the hello that proves both sides hold the home key,
-// and sealed JSON messages from then on. No Bluetooth in here, so it runs
+// One link between two screens, after framing: the pairing handshake, the
+// hello that proves both sides hold the home key, and sealed JSON messages
+// from then on. M is the screen that connected, H the one it connected to
+// (H for host; any screen in a home can be either). No Bluetooth in here, so it runs
 // in unit tests over an in-memory pipe.
 //
-// Pairing, member (M) and hub (H):
+// Pairing, a new screen (M) and one already in the home (H):
 //   M -> H  pair   {pub, id, name}
 //   H -> M  pair   {pub, commit = SHA-256(nonce H), id, name}
 //   M -> H  nonce  {nonce M}
 //   H -> M  reveal {nonce H}          M checks it against the commitment
 //   both show the six-digit code; each person taps Match
 //   H -> M  sealed {t: home, key, name}  (key from the ECDH secret)
-// The hub commits to its nonce before it sees the member's, so a device in
+// H commits to its nonce before it sees M's, so a device in
 // the middle cannot search for keys that make the two codes agree.
 //
 // Every later link:
@@ -74,12 +75,14 @@ class SyncRefused implements Exception {
   String toString() => message;
 }
 
-/// What a member gets out of pairing.
+/// What a new screen gets out of pairing.
 class JoinedHome {
   final Uint8List key;
   final String name;
-  final ScreenId hub;
-  const JoinedHome(this.key, this.name, this.hub);
+
+  /// The screen that let this one in.
+  final ScreenId via;
+  const JoinedHome(this.key, this.name, this.via);
 }
 
 /// An authenticated link, either end. Messages are JSON objects with a
@@ -126,10 +129,10 @@ class SyncSession {
     if (!_in.isClosed) await _in.close();
   }
 
-  // ---- member side --------------------------------------------------------
+  // ---- connecting side --------------------------------------------------------
 
-  /// Opens a session to the hub with the home key. Throws [SyncRefused]
-  /// when the hub belongs to another home or the key is wrong.
+  /// Opens a session to another screen with the home key. Throws
+  /// [SyncRefused] when it belongs to another home or the key is wrong.
   static Future<SyncSession> connect(
     MessageLink link,
     ScreenId me,
@@ -158,7 +161,9 @@ class SyncSession {
       final rx = SealKey(hkdf(homeKey, salt, 'lecasa h2m'));
       await link.send(_seal(tx, {'t': 'join'}));
       final w = await inbox.sealed(rx, timeout);
-      if (w['t'] != 'welcome') throw const SyncRefused('Hub did not let us in');
+      if (w['t'] != 'welcome') {
+        throw const SyncRefused('That screen did not let us in');
+      }
       final s = SyncSession._(link, hub, tx, rx);
       s._start(inbox.rest());
       return s;
@@ -168,7 +173,7 @@ class SyncSession {
     }
   }
 
-  /// Pairs with a hub that is waiting for new screens. Returns the home
+  /// Pairs with a screen that is adding new ones. Returns the home
   /// key once both people have confirmed the code. The link is spent
   /// afterwards; connect again with [connect].
   static Future<JoinedHome> pair(
@@ -200,7 +205,9 @@ class SyncSession {
       _refusedIf(r2);
       final hubNonce = _unhex(r2['nonce']);
       if (!_same(sha256(hubNonce), commit)) {
-        throw const SyncRefused('The hub broke its promise; try again');
+        throw const SyncRefused(
+          'The other screen broke its promise; try again',
+        );
       }
       final shared = key.agree(hubPub);
       final code = pairingCode(
@@ -236,7 +243,7 @@ class SyncSession {
       } on SyncRefused {
         rethrow;
       } on TimeoutException {
-        throw const SyncRefused('The hub did not confirm in time');
+        throw const SyncRefused('The other screen did not confirm in time');
       }
       if (h['t'] != 'home') throw const SyncRefused('Unexpected reply');
       final homeKey = _unhex(h['key']);
@@ -247,13 +254,14 @@ class SyncSession {
     }
   }
 
-  // ---- hub side -----------------------------------------------------------
+  // ---- host side -----------------------------------------------------------
 
-  /// Handles a new link on the hub. Returns a session for a member that
+  /// Handles a link from a screen that connected to this one. Returns a
+  /// session for a screen that
   /// proved it has the home key, or null after a pairing (successful or
   /// not), after which the link should be closed.
   ///
-  /// [confirm] is null while the hub is not taking new screens.
+  /// [confirm] is null while this screen is not adding new ones.
   static Future<SyncSession?> accept(
     MessageLink link,
     ScreenId me, {
@@ -301,7 +309,9 @@ class SyncSession {
             await link.send(
               _plainMsg({
                 't': 'no',
-                'why': 'The hub is not adding screens. Tap "Add a screen" on the hub first.',
+                'why':
+                    'That screen is not adding screens. Tap "Add a screen or '
+                    'phone" on it first.',
               }),
             );
             return null;

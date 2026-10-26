@@ -88,7 +88,8 @@ class _DevicePageState extends State<DevicePage> {
         // A BMS waits for a connection, not for a key.
         final bms = bmsSpecFor(dev.lastRecognised ?? a);
         final isBms = bms != null || (d?.protocol.startsWith('Daly') ?? false);
-        final wantsKey = (d?.needs != null && !isBms) || hasKey;
+        // Devices read over a connection wait for it, not for a key.
+        final wantsKey = (d?.needs != null && !isBms && link == null) || hasKey;
         final hasPin = services.keys.secretFor(widget.id) != null;
         return Scaffold(
           appBar: AppBar(title: Text(dev.title)),

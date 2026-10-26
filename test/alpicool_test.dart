@@ -198,6 +198,24 @@ void main() {
       expect(writes[1], alpicoolSetTarget(1, -4));
     });
 
+    test('the Eco frame matches what the real fridge accepted', () async {
+      await const AlpicoolDriver().control(
+        fridge(),
+        a,
+        const DeviceCommand(FridgeSetting.eco, true),
+      );
+      // Sent from the Mac to Chloe's fridge on 2026-10-26; the next status
+      // differed from the original only in the Eco byte.
+      expect(
+        hex(writes[1], sep: ''),
+        'fefe1c020001010030'
+        '44fc020001'
+        '0000fb00'
+        '0000000000000000000000'
+        '048a',
+      );
+    });
+
     test('power off sends the whole settings block', () async {
       await const AlpicoolDriver().control(
         fridge(),

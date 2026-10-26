@@ -82,6 +82,26 @@ class Link {
   };
 }
 
+/// Another screen in the home that read a device recently and shares it.
+class RemoteOwner {
+  final String screen;
+  final DateTime at;
+  final bool controllable;
+  const RemoteOwner(this.screen, this.at, {this.controllable = false});
+}
+
+/// What screen sync tells the connection manager: who else holds which
+/// device, and how to send that screen a command. One connection per
+/// device across the whole home.
+abstract interface class RemoteLinks {
+  /// The screen that read [id] most recently, if its reading is fresh.
+  RemoteOwner? ownerOf(String id);
+
+  /// Asks the owning screen to change a setting. Throws with a message for
+  /// the user when it cannot.
+  Future<void> control(String id, DeviceCommand command);
+}
+
 /// Opens a connected, service-discovered session to a device id, or throws.
 /// The real one goes through the scanner and [GattLink]; tests fake it.
 typedef SessionOpener = Future<ClosableSession> Function(String id);
@@ -154,6 +174,9 @@ class ConnectionManager extends ChangeNotifier {
   Timer? _tick;
   bool _enabled = true;
   String? _busy;
+
+  /// Screen sync, once it is running.
+  RemoteLinks? remote;
 
   ConnectionManager(
     this.tracker, {
@@ -237,13 +260,36 @@ class ConnectionManager extends ChangeNotifier {
     return pump();
   }
 
-  /// Whether [id] has a driver that can change its settings.
-  bool canControl(String id) => _links[id]?.driver is ControllableDriver;
+  /// Whether [id] has a driver that can change its settings, here or on
+  /// the screen that holds its connection.
+  bool canControl(String id) =>
+      _links[id]?.driver is ControllableDriver ||
+      (remote?.ownerOf(id)?.controllable ?? false);
+
+  /// The other screen that holds [id]'s connection, when it has a newer
+  /// reading than this one. This screen then leaves the device alone: most
+  /// take one connection at a time.
+  RemoteOwner? heldElsewhere(String id) {
+    final o = remote?.ownerOf(id);
+    if (o == null) return null;
+    final ok = _links[id]?.lastOk;
+    return ok == null || o.at.isAfter(ok) ? o : null;
+  }
 
   /// Changes a setting on the device: waits for the radio, connects, sends
-  /// [command] and stores the state read back. Throws with a message for
-  /// the user when it cannot.
-  Future<void> control(String id, DeviceCommand command) async {
+  /// [command] and stores the state read back. When another screen holds
+  /// the device, the command goes to that screen instead, unless [here]
+  /// (a command that already came from another screen). Throws with a
+  /// message for the user when it cannot.
+  Future<void> control(
+    String id,
+    DeviceCommand command, {
+    bool here = false,
+  }) async {
+    final r = remote;
+    if (!here && r != null && heldElsewhere(id) != null) {
+      return r.control(id, command);
+    }
     final l = _links[id];
     final driver = l?.driver;
     if (l == null || driver is! ControllableDriver) {
@@ -314,6 +360,7 @@ class ConnectionManager extends ChangeNotifier {
     Link? pick;
     for (final l in _links.values) {
       if (!l.enabled || l.busy || l.nextDue.isAfter(now)) continue;
+      if (heldElsewhere(l.id) != null) continue;
       final dev = tracker[l.id];
       if (dev == null || now.difference(dev.lastSeen) > staleAfter) continue;
       if (pick == null || l.nextDue.isBefore(pick.nextDue)) pick = l;

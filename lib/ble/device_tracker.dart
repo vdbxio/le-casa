@@ -30,6 +30,14 @@ class TrackedDevice {
   /// advertisements; [view] prefers it over [decoded].
   Decoded? polled;
   DateTime? polledAt;
+
+  /// The screen that took [polled], when it was not this one: another
+  /// tablet or phone in the home that holds the connection and shares
+  /// what it reads.
+  String? polledBy;
+
+  /// True for a device this screen only knows from another screen.
+  bool remoteOnly = false;
   final DateTime firstSeen;
   int packets = 1;
   String? lastPacketId;
@@ -95,6 +103,35 @@ class DeviceTracker extends ChangeNotifier {
     if (d == null) return;
     d.polled = decoded;
     d.polledAt = DateTime.now();
+    d.polledBy = null;
+    notifyListeners();
+  }
+
+  /// Stores a reading another screen took over its connection. Creates the
+  /// device when this screen has never heard it (out of range, or iOS and
+  /// Android know it under different ids). Ignored when this screen has a
+  /// newer reading of its own.
+  void setRemote(
+    String id, {
+    required Decoded decoded,
+    required DateTime at,
+    required String by,
+    String? name,
+    Uint8List? mac,
+  }) {
+    var d = _devices[id];
+    if (d == null) {
+      d = TrackedDevice(
+        RawAdvertisement(id: id, rssi: 0, seenAt: at, name: name, mac: mac),
+      )..remoteOnly = true;
+      _devices[id] = d;
+    } else if (d.polledAt != null && !at.isAfter(d.polledAt!)) {
+      return;
+    }
+    if (d.remoteOnly) d.latest = d.latest.withSeenAt(at);
+    d.polled = decoded;
+    d.polledAt = at;
+    d.polledBy = by;
     notifyListeners();
   }
 
@@ -117,6 +154,7 @@ class DeviceTracker extends ChangeNotifier {
         .._logEvents(decoded);
     } else {
       d.latest = adv;
+      d.remoteOnly = false;
       d.packets++;
       if (decoded != null) {
         d.decoded = decoded;

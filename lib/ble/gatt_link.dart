@@ -125,6 +125,15 @@ class GattLink implements ClosableSession {
   GATTCharacteristic _platform(GattChar c) =>
       _platformChars[characteristics.indexOf(c)];
 
+  /// Most bytes one write can carry on this link (MTU less the header).
+  Future<int> maxWriteLength({bool withResponse = true}) =>
+      _central.getMaximumWriteLength(
+        peripheral,
+        type: withResponse
+            ? GATTCharacteristicWriteType.withResponse
+            : GATTCharacteristicWriteType.withoutResponse,
+      );
+
   @override
   Future<Uint8List> read(GattChar c) =>
       _central.readCharacteristic(peripheral, _platform(c));

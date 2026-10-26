@@ -62,6 +62,19 @@ class RawAdvertisement {
     longServiceUuids: longServiceUuids,
   );
 
+  /// Same packet, heard at another time.
+  RawAdvertisement withSeenAt(DateTime at) => RawAdvertisement(
+    id: id,
+    rssi: rssi,
+    seenAt: at,
+    mac: mac,
+    name: name,
+    serviceData: serviceData,
+    manufacturerData: manufacturerData,
+    serviceUuids: serviceUuids,
+    longServiceUuids: longServiceUuids,
+  );
+
   /// MAC as `AA:BB:CC:DD:EE:FF`, or null when unknown.
   String? get macString => mac
       ?.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase())

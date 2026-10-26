@@ -5,6 +5,8 @@
 import 'package:flutter/material.dart';
 
 import '../app.dart';
+import '../sync/home.dart';
+import '../sync/sync_page.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -66,6 +68,27 @@ class SettingsPage extends StatelessWidget {
               subtitle: const Text('For a tablet on the wall or on a charger'),
               value: st.keepScreenOn,
               onChanged: (v) => st.update(keepScreenOn: v),
+            ),
+            const _Header('Sync'),
+            ListenableBuilder(
+              listenable: Listenable.merge([s.sync, s.home]),
+              builder: (context, _) => ListTile(
+                title: const Text('Screens and phones'),
+                subtitle: Text(switch (s.home.role) {
+                  SyncRole.alone => 'Share readings, keys and controls with your other screens over Bluetooth',
+                  SyncRole.hub =>
+                    'Hub of ${s.home.homeName} · ${s.sync.members.length} connected',
+                  SyncRole.member =>
+                    s.sync.connected
+                        ? 'Part of ${s.home.homeName} · connected to ${s.home.hubName}'
+                        : 'Part of ${s.home.homeName} · looking for ${s.home.hubName}',
+                }),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(builder: (_) => const SyncPage()),
+                ),
+              ),
             ),
             const _Header('Dashboard'),
             ListTile(

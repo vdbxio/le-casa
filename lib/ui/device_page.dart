@@ -125,7 +125,9 @@ class _DevicePageState extends State<DevicePage> {
                 const SizedBox(height: 8),
                 if (dev.polled != null && dev.polledAt != null)
                   Text(
-                    'Read over connection ${ago(dev.polledAt!)}',
+                    dev.polledBy == null
+                        ? 'Read over connection ${ago(dev.polledAt!)}'
+                        : 'Read by ${dev.polledBy} ${ago(dev.polledAt!)}',
                     style: theme.textTheme.bodySmall,
                   ),
                 if (d.needs != null)
@@ -331,14 +333,18 @@ class _ConnectionSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final connections = AppServices.of(context).connections;
-    final status = switch (link.phase) {
-      LinkPhase.ok when link.lastOk != null =>
-        'Last read ${ago(link.lastOk!)}, next in '
-            '${_inSeconds(link.nextDue)}',
-      LinkPhase.failed =>
-        '${link.statusText}. Retry in ${_inSeconds(link.nextDue)}',
-      _ => link.statusText,
-    };
+    final elsewhere = connections.heldElsewhere(link.id);
+    final status = elsewhere != null
+        ? '${elsewhere.screen} holds this connection and shares what it '
+              'reads, so this screen leaves the device alone'
+        : switch (link.phase) {
+            LinkPhase.ok when link.lastOk != null =>
+              'Last read ${ago(link.lastOk!)}, next in '
+                  '${_inSeconds(link.nextDue)}',
+            LinkPhase.failed =>
+              '${link.statusText}. Retry in ${_inSeconds(link.nextDue)}',
+            _ => link.statusText,
+          };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -360,7 +366,7 @@ class _ConnectionSection extends StatelessWidget {
               ? null
               : (v) => connections.setDeviceEnabled(link.id, v),
         ),
-        if (link.keepsDropping)
+        if (link.keepsDropping && elsewhere == null)
           Card(
             color: theme.colorScheme.tertiaryContainer,
             child: const Padding(

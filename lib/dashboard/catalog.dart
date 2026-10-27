@@ -206,6 +206,19 @@ num? _n(Decoded d, String label) {
   return v is num ? v : null;
 }
 
+/// A charger's state, short enough for a chip. The device page keeps the
+/// full name.
+String? _chargeChip(Decoded v) {
+  final s = _r(v, 'charge state')?.value?.toString();
+  return switch (s) {
+    'External control' => 'EXT',
+    'Repeated absorption' => 'Re-absorb',
+    'Equalize (manual)' => 'Equalize',
+    'Not available' => null,
+    _ => s,
+  };
+}
+
 String _fmt(num? v, int digits) {
   if (v == null) return '–';
   final t = v.toStringAsFixed(digits);
@@ -335,7 +348,7 @@ CardModel _solar(TrackedDevice d, Decoded v, String name, CardSources s) {
     icon: Icons.wb_sunny_outlined,
     tone: Tone.solar,
     headline: Metric('Solar', _fmt(w, 0), 'W'),
-    state: _r(v, 'charge state')?.value?.toString(),
+    state: _chargeChip(v),
     details: [
       Metric('Battery', _fmt(_n(v, 'battery voltage'), 2), 'V'),
       Metric('Charging', _fmt(_n(v, 'battery current'), 1), 'A'),
@@ -389,7 +402,7 @@ CardModel _solarTotal(CardSources s) {
     icon: Icons.wb_sunny_outlined,
     tone: Tone.solar,
     headline: Metric('Solar', _fmt(sum('solar power'), 0), 'W'),
-    state: _r(first, 'charge state')?.value?.toString(),
+    state: _chargeChip(first),
     shares: shares,
     details: [
       Metric('Battery', _fmt(_n(first, 'battery voltage'), 2), 'V'),

@@ -75,8 +75,17 @@ double minExtent(CardBox b, SplitAxis axis) {
   }
 }
 
+/// Boxes that keep their own height in a stack: a title, a chip, a note,
+/// or a row made only of those (the title with the state beside it).
 bool _fixed(CardBox b, SplitAxis axis) =>
-    axis == SplitAxis.vertical && b is BoxPart && (b.kind?.fixed ?? false);
+    axis == SplitAxis.vertical &&
+    switch (b) {
+      BoxPart(:final kind) => kind?.fixed ?? false,
+      BoxSplit(axis: SplitAxis.horizontal, :final children) => children.every(
+        (c) => _fixed(c, axis),
+      ),
+      _ => false,
+    };
 
 /// Where every box of [t] goes in [area]. Boxes that do not fit drop out
 /// from the end of their stack, so the top of the card stays; with
@@ -411,25 +420,12 @@ class TemplateCard extends StatelessWidget {
             final size = math.min(110.0, math.max(20.0, box.maxHeight * 0.86));
             return Align(
               alignment: _align(align, y: 0.4),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: _align(align),
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(text: m.value, style: numberStyle(size, c.ink)),
-                      if (m.unit.isNotEmpty)
-                        TextSpan(
-                          text: ' ${m.unit}',
-                          style: numberStyle(
-                            size * 0.42,
-                            c.muted,
-                          ).copyWith(fontWeight: FontWeight.w500),
-                        ),
-                    ],
-                  ),
-                  maxLines: 1,
-                ),
+              child: BigNumber(
+                m.value,
+                m.unit,
+                size: size,
+                color: c.ink,
+                unit: c.muted,
               ),
             );
           },

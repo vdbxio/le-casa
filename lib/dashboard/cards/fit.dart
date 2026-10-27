@@ -66,10 +66,9 @@ double minHeight(CardModel m, CardSize size, double w) {
     case CardSize.large:
       final cw = w - p - 4;
       if (m.ring != null && cw >= ringLargeMinWidth) {
-        // Ring on the left, state chip and a two-column grid beside it.
+        // Ring on the left, a two-column grid beside it.
         final rows = (m.details.length / 2).ceil();
         final grid =
-            (m.state == null ? 0 : 34) +
             rows * CardMetrics.detailHeight +
             math.max(0, rows - 1) * CardMetrics.detailGap;
         return p +

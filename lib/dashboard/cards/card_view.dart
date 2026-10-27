@@ -13,6 +13,85 @@ import 'fit.dart';
 
 const _radius = BorderRadius.all(Radius.circular(20));
 
+/// A big number that keeps its size as its digits change. League Spartan
+/// has no fixed-width figures (a 1 is about half as wide as a 0), so
+/// shrinking whatever number arrives to fit made it grow and shrink with
+/// every reading. Instead the size is worked out as if every digit were a
+/// 0, the widest one, and only that decides how much it shrinks.
+class BigNumber extends StatelessWidget {
+  final String value;
+  final String suffix;
+  final double size;
+  final Color color;
+  final Color unit;
+  const BigNumber(
+    this.value,
+    this.suffix, {
+    super.key,
+    required this.size,
+    required this.color,
+    required this.unit,
+  });
+
+  TextSpan _span(String v, double s) => TextSpan(
+    children: [
+      TextSpan(text: v, style: numberStyle(s, color)),
+      if (suffix.isNotEmpty)
+        TextSpan(
+          text: ' $suffix',
+          style: numberStyle(
+            s * 0.42,
+            unit,
+          ).copyWith(fontWeight: FontWeight.w500),
+        ),
+    ],
+  );
+
+  /// The size [value] is drawn at in [width].
+  static double fitted(
+    String value,
+    String suffix,
+    double size,
+    double width,
+    TextScaler scaler,
+  ) {
+    if (!width.isFinite) return size;
+    final widest = BigNumber(
+      value.replaceAll(RegExp(r'[0-9]'), '0'),
+      suffix,
+      size: size,
+      color: const Color(0xFF000000),
+      unit: const Color(0xFF000000),
+    );
+    final w = (TextPainter(
+      text: widest._span(widest.value, size),
+      textDirection: TextDirection.ltr,
+      textScaler: scaler,
+      maxLines: 1,
+    )..layout()).width;
+    return w <= width ? size : size * width / w;
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      final s = fitted(
+        value,
+        suffix,
+        size,
+        box.maxWidth,
+        MediaQuery.textScalerOf(context),
+      );
+      return Text.rich(
+        _span(value, s),
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.clip,
+      );
+    },
+  );
+}
+
 /// Draws any [CardModel] at any [CardSize].
 class DashCard extends StatelessWidget {
   final CardModel model;
@@ -84,67 +163,60 @@ class DashCard extends StatelessWidget {
     BuildContext context,
     LeColors c, {
     bool showSubtitle = false,
-  }) => SizedBox(
-    height: CardMetrics.header,
-    child: Row(
-      children: [
-        Icon(model.icon, size: 20, color: _tone(c)),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Text(
-            model.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 15,
-              color: c.ink,
-            ),
-          ),
-        ),
-        if (showSubtitle && model.subtitle.isNotEmpty) ...[
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              model.subtitle,
-              maxLines: 1,
-              textAlign: TextAlign.right,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                color: c.muted,
-                fontFamily: 'monospace',
+  }) {
+    final subtitle = showSubtitle && model.subtitle.isNotEmpty;
+    final title = Text(
+      model.title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: c.ink),
+    );
+    return SizedBox(
+      height: CardMetrics.header,
+      child: LayoutBuilder(
+        builder: (context, box) => Row(
+          children: [
+            Icon(model.icon, size: 20, color: _tone(c)),
+            const SizedBox(width: 8),
+            if (subtitle) ...[
+              Flexible(child: title),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  model.subtitle,
+                  maxLines: 1,
+                  textAlign: TextAlign.right,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: c.muted,
+                    fontFamily: 'monospace',
+                  ),
+                ),
               ),
-            ),
-          ),
-        ],
-      ],
-    ),
-  );
+            ] else
+              Expanded(child: title),
+            // The state rides at the right end of the title line, so the
+            // big number below keeps the card's full width.
+            if (model.state != null) ...[
+              const SizedBox(width: 8),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: math.min(140, box.maxWidth * 0.45),
+                ),
+                child: _chip(c, model.state!),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _headline(LeColors c, double size) {
     final h = model.headline;
     if (h == null) return const SizedBox.shrink();
-    return FittedBox(
-      fit: BoxFit.scaleDown,
-      alignment: Alignment.centerLeft,
-      child: Text.rich(
-        TextSpan(
-          children: [
-            TextSpan(text: h.value, style: numberStyle(size, c.ink)),
-            if (h.unit.isNotEmpty)
-              TextSpan(
-                text: ' ${h.unit}',
-                style: numberStyle(
-                  size * 0.42,
-                  c.muted,
-                ).copyWith(fontWeight: FontWeight.w500),
-              ),
-          ],
-        ),
-        maxLines: 1,
-      ),
-    );
+    return BigNumber(h.value, h.unit, size: size, color: c.ink, unit: c.muted);
   }
 
   Widget _chip(LeColors c, String text) => Container(
@@ -156,6 +228,7 @@ class DashCard extends StatelessWidget {
     child: Text(
       text.isEmpty ? text : text[0].toUpperCase() + text.substring(1),
       maxLines: 1,
+      overflow: TextOverflow.ellipsis,
       style: TextStyle(
         fontSize: 12,
         fontWeight: FontWeight.w600,
@@ -211,48 +284,31 @@ class DashCard extends StatelessWidget {
         },
       );
 
-  Widget _headlineRow(LeColors c, CardSize s, {double? fontSize}) => Row(
-    crossAxisAlignment: CrossAxisAlignment.end,
-    children: [
-      Flexible(child: _headline(c, fontSize ?? CardMetrics.headlineSize(s))),
-      if (model.state != null && s != CardSize.small) ...[
-        const SizedBox(width: 10),
-        Padding(
-          padding: EdgeInsets.only(bottom: s == CardSize.large ? 8 : 0),
-          child: _chip(c, model.state!),
-        ),
-      ],
-    ],
-  );
-
   /// The headline grown into the spare height (up to about twice its
   /// size), so a card without a graph of its own has no empty band.
-  Widget _grownHeadline(LeColors c, CardSize s, {bool withState = true}) =>
-      Expanded(
-        child: LayoutBuilder(
-          builder: (context, box) {
-            final base = CardMetrics.headlineSize(s);
-            final most = switch (s) {
-              CardSize.large => 1.5,
-              CardSize.medium => 1.8,
-              _ => 2.0,
-            };
-            final size = math.min(
-              base * most,
-              math.max(base, box.maxHeight * 0.85),
-            );
-            return Align(
-              alignment: Alignment.bottomLeft,
-              child: withState
-                  ? _headlineRow(c, s, fontSize: size)
-                  : _headline(c, size),
-            );
-          },
-        ),
-      );
+  Widget _grownHeadline(LeColors c, CardSize s) => Expanded(
+    child: LayoutBuilder(
+      builder: (context, box) {
+        final base = CardMetrics.headlineSize(s);
+        final most = switch (s) {
+          CardSize.large => 1.5,
+          CardSize.medium => 1.8,
+          _ => 2.0,
+        };
+        final size = math.min(
+          base * most,
+          math.max(base, box.maxHeight * 0.85),
+        );
+        return Align(
+          alignment: Alignment.bottomLeft,
+          child: _headline(c, size),
+        );
+      },
+    ),
+  );
 
   Widget _small(BuildContext context, LeColors c, bool inline) {
-    final second = model.note ?? model.state ?? _major.firstOrNull?.summary;
+    final second = model.note ?? _major.firstOrNull?.summary;
     final numbers = [
       if (model.headline != null)
         _headline(c, CardMetrics.headlineSize(CardSize.small)),
@@ -269,7 +325,7 @@ class DashCard extends StatelessWidget {
           Expanded(child: _chart(c)),
         ] else ...[
           if (model.headline != null)
-            _grownHeadline(c, CardSize.small, withState: false)
+            _grownHeadline(c, CardSize.small)
           else
             const Spacer(),
           if (second != null) ...[const SizedBox(height: 4), _line(c, second)],
@@ -335,7 +391,7 @@ class DashCard extends StatelessWidget {
     final top = [
       _header(context, c),
       const SizedBox(height: CardMetrics.gap),
-      _headlineRow(c, CardSize.medium),
+      _headline(c, CardMetrics.headlineSize(CardSize.medium)),
     ];
     if (inline) {
       return Column(
@@ -416,10 +472,6 @@ class DashCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (model.state != null) ...[
-                  _chip(c, model.state!),
-                  const SizedBox(height: 10),
-                ],
                 _detailGrid(c, model.details, w - ring - 20, maxCols: 2),
               ],
             ),
@@ -468,7 +520,7 @@ class DashCard extends StatelessWidget {
         if (grow)
           _grownHeadline(c, CardSize.large)
         else
-          _headlineRow(c, CardSize.large),
+          _headline(c, CardMetrics.headlineSize(CardSize.large)),
         if (model.shares.isNotEmpty) ...[
           const SizedBox(height: 12),
           ShareBar(model.shares, c),
@@ -596,22 +648,15 @@ class DashCard extends StatelessWidget {
   /// readings) on the right.
   Widget _side(BuildContext context, LeColors c, Size box) {
     final leftW = (box.width * 0.45).clamp(170.0, 300.0);
-    final medium = size == CardSize.medium;
-    // The state gets its own chip on a medium card, so the number keeps
-    // its full size.
-    final chip = medium ? model.state : null;
     final second = model.shares.isNotEmpty
         ? null
-        : (model.note ??
-              (medium ? null : model.state) ??
-              _major.firstOrNull?.summary);
+        : (model.note ?? _major.firstOrNull?.summary);
     final left = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _header(context, c),
         const Spacer(),
         _headline(c, CardMetrics.headlineSize(size)),
-        if (chip != null) ...[const SizedBox(height: 6), _chip(c, chip)],
         if (model.shares.isNotEmpty) ...[
           const SizedBox(height: 6),
           ShareLine(model.shares, c),

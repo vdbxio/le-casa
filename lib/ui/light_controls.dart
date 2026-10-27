@@ -41,6 +41,7 @@ const _colours = <(String, int)>[
 class _LightControlsState extends State<LightControls> {
   bool _sending = false;
   double? _dragging;
+  double? _speedDrag;
 
   /// The colour picked here, kept while the page is open so a command that
   /// fails does not lose it.
@@ -66,8 +67,32 @@ class _LightControlsState extends State<LightControls> {
         setState(() {
           _sending = false;
           _dragging = null;
+          _speedDrag = null;
         });
       }
+    }
+  }
+
+  /// The pattern picked here, kept like [_picked].
+  String? _pickedPattern;
+
+  /// Sends the whole look again with one part changed: brightness and
+  /// speed have no command of their own.
+  void _apply({
+    required IdealPattern? pattern,
+    required int? rgb,
+    required int brightness,
+    required int speed,
+  }) {
+    if (pattern != null) {
+      _send(LightSetting.pattern, {
+        'pattern': pattern.name,
+        'rgb': rgb ?? 0xFFFFFF,
+        'speed': speed,
+        'brightness': brightness,
+      });
+    } else if (rgb != null) {
+      _send(LightSetting.colour, {'rgb': rgb, 'brightness': brightness});
     }
   }
 
@@ -76,7 +101,44 @@ class _LightControlsState extends State<LightControls> {
     final on = _value(LightSetting.on) == true;
     final brightness = (_value(LightSetting.brightness) as num? ?? 100)
         .toDouble();
+    final speed = (_value(LightSetting.speed) as num? ?? 80).toDouble();
     final rgb = _picked ?? idealLedRgb(_value(LightSetting.colour));
+    final patternName = _pickedPattern ?? _value(LightSetting.pattern);
+    final pattern = idealPatternNamed(patternName);
+    // Brightness and speed re-send a look Le'Casa set; with none known,
+    // guessing would replace a pattern from the remote with a solid colour.
+    final known = pattern != null || rgb != null;
+    final theme = Theme.of(context);
+    void apply({IdealPattern? p, int? colour, double? b, double? sp}) => _apply(
+      pattern: p ?? pattern,
+      rgb: colour ?? rgb,
+      brightness: (b ?? brightness).round(),
+      speed: (sp ?? speed).round(),
+    );
+    Widget slider({
+      required IconData low,
+      required IconData high,
+      required double value,
+      required void Function(double) onEnd,
+    }) => Row(
+      children: [
+        Icon(low),
+        Expanded(
+          child: Slider(
+            min: 1,
+            max: 100,
+            divisions: 99,
+            label: '${value.round()} %',
+            value: value,
+            onChanged: _sending || !known
+                ? null
+                : (v) => setState(() => _dragging = v),
+            onChangeEnd: _sending || !known ? null : onEnd,
+          ),
+        ),
+        Icon(high),
+      ],
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -84,46 +146,54 @@ class _LightControlsState extends State<LightControls> {
           contentPadding: EdgeInsets.zero,
           title: const Text('Power'),
           subtitle: Text(
-            _sending ? 'Sending…' : 'Shows what Le\'Casa last set',
+            _sending
+                ? 'Sending…'
+                : '${patternName ?? 'Nothing set yet'} · as Le\'Casa last set it',
           ),
           value: on,
           onChanged: _sending ? null : (v) => _send(LightSetting.on, v),
         ),
-        Row(
-          children: [
-            const Icon(Icons.brightness_low),
-            Expanded(
-              child: Slider(
-                min: 1,
-                max: 100,
-                divisions: 99,
-                label: '${(_dragging ?? brightness).round()} %',
-                value: _dragging ?? brightness,
-                // The strip has no brightness command: dimming re-sends the
-                // colour scaled down. With no colour set from Le'Casa there
-                // is nothing to re-send, and guessing would replace a
-                // pattern from the remote with a solid colour.
-                onChanged: _sending || rgb == null
-                    ? null
-                    : (v) => setState(() => _dragging = v),
-                onChangeEnd: _sending || rgb == null
-                    ? null
-                    : (v) => _send(LightSetting.colour, {
-                        'rgb': rgb,
-                        'brightness': v.round(),
-                      }),
-              ),
-            ),
-            const Icon(Icons.brightness_high),
-          ],
+        Text('Brightness', style: theme.textTheme.labelLarge),
+        slider(
+          low: Icons.brightness_low,
+          high: Icons.brightness_high,
+          value: _dragging ?? brightness,
+          onEnd: (v) => apply(b: v),
         ),
-        if (rgb == null)
-          Text(
-            'Pick a colour to set brightness. The strip cannot say what it is '
-            'showing, so a pattern from its remote or app is left alone.',
-            style: Theme.of(context).textTheme.bodySmall,
+        if (pattern != null) ...[
+          Text('Speed', style: theme.textTheme.labelLarge),
+          Row(
+            children: [
+              const Icon(Icons.slow_motion_video),
+              Expanded(
+                child: Slider(
+                  min: 0,
+                  max: 100,
+                  divisions: 100,
+                  label: '${(_speedDrag ?? speed).round()} %',
+                  value: _speedDrag ?? speed,
+                  onChanged: _sending
+                      ? null
+                      : (v) => setState(() => _speedDrag = v),
+                  onChangeEnd: _sending ? null : (v) => apply(sp: v),
+                ),
+              ),
+              const Icon(Icons.speed),
+            ],
           ),
-        const SizedBox(height: 8),
+        ],
+        if (!known)
+          Text(
+            'Pick a colour or pattern first. The strip cannot say what it is '
+            'showing, so a pattern from its remote or app is left alone.',
+            style: theme.textTheme.bodySmall,
+          ),
+        const SizedBox(height: 12),
+        Text(
+          pattern?.effect != null ? 'Effect colour' : 'Colour',
+          style: theme.textTheme.labelLarge,
+        ),
+        const SizedBox(height: 4),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -134,15 +204,47 @@ class _LightControlsState extends State<LightControls> {
                   backgroundColor: Color(0xFF000000 | colour),
                 ),
                 label: Text(name),
-                selected: on && rgb == colour,
+                selected:
+                    rgb == colour &&
+                    (pattern == null || pattern.effect != null),
                 onSelected: _sending
                     ? null
                     : (_) {
                         _picked = colour;
-                        _send(LightSetting.colour, {
-                          'rgb': colour,
-                          'brightness': brightness.round(),
-                        });
+                        // A colour recolours an effect; over a rainbow scene
+                        // it means "just this colour".
+                        if (pattern?.effect == null) {
+                          _pickedPattern = idealSolid;
+                        }
+                        _apply(
+                          pattern: pattern?.effect != null ? pattern : null,
+                          rgb: colour,
+                          brightness: brightness.round(),
+                          speed: speed.round(),
+                        );
+                      },
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text('Patterns', style: theme.textTheme.labelLarge),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final p in idealPatterns)
+              ChoiceChip(
+                avatar: p.scene != null
+                    ? _Swatch(p.colours)
+                    : _Swatch([rgb ?? 0xFFFFFF, 0]),
+                label: Text(p.name),
+                selected: pattern == p,
+                onSelected: _sending
+                    ? null
+                    : (_) {
+                        _pickedPattern = p.name;
+                        apply(p: p);
                       },
               ),
           ],
@@ -150,4 +252,22 @@ class _LightControlsState extends State<LightControls> {
       ],
     );
   }
+}
+
+/// A pattern's colours as a small round gradient.
+class _Swatch extends StatelessWidget {
+  final List<int> colours;
+  const _Swatch(this.colours);
+
+  @override
+  Widget build(BuildContext context) => Container(
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      gradient: SweepGradient(
+        colors: [
+          for (final c in [...colours, colours.first]) Color(0xFF000000 | c),
+        ],
+      ),
+    ),
+  );
 }

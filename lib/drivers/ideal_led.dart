@@ -27,6 +27,9 @@ import 'driver.dart';
 
 const idealLedWrite = 'd44bc439-abfd-45a2-b575-925416129600';
 const idealLedNotify = 'd44bc439-abfd-45a2-b575-925416129601';
+
+/// Takes scene colours, unencrypted, after a `MULT` header.
+const idealLedBulk = 'd44bc439-abfd-45a2-b575-92541612960a';
 const idealLedCompanyId = 0x5254; // "TR", the firmware family
 
 final _key = Uint8List.fromList([
@@ -58,16 +61,128 @@ Uint8List idealLedPower(bool on) => _tagged('TURN', [on ? 1 : 0]);
 /// The vendor app never sends a lit channel below this.
 const _minLit = 2;
 
-/// `SGLS` with mode 0 (static colour): [rgb] as 0xRRGGBB, scaled to
-/// [brightness] percent, the way the app does brightness. Plaintext.
-Uint8List idealLedColour(int rgb, int brightness) {
+int _scale(int v, int pct) => v == 0 ? 0 : (v * pct ~/ 100).clamp(_minLit, 255);
+
+/// `SGLS`: effect [mode] (0 is a solid colour) in [fg] over [bg], each
+/// 0xRRGGBB scaled to [brightness] percent, the way the app does
+/// brightness. Byte 7 stays 100 and the last byte 0x32, as captured.
+/// Plaintext.
+Uint8List idealLedEffect(
+  int mode,
+  int fg,
+  int bg, {
+  int brightness = 100,
+  int speed = 0x50,
+}) {
+  RangeError.checkValueInInterval(mode, 0, idealEffectCount - 1, 'mode');
   final pct = brightness.clamp(0, 100);
-  int ch(int v) => v == 0 ? 0 : (v * pct ~/ 100).clamp(_minLit, 255);
-  final r = ch((rgb >> 16) & 0xFF);
-  final g = ch((rgb >> 8) & 0xFF);
-  final b = ch(rgb & 0xFF);
-  return _tagged('SGLS', [0, 0, 0x64, 0x50, r, g, b, r, g, b, 0x32]);
+  List<int> rgb(int c) => [
+    _scale((c >> 16) & 0xFF, pct),
+    _scale((c >> 8) & 0xFF, pct),
+    _scale(c & 0xFF, pct),
+  ];
+  return _tagged('SGLS', [
+    mode,
+    0,
+    0x64,
+    speed.clamp(0, 100),
+    ...rgb(fg),
+    ...rgb(bg),
+    0x32,
+  ]);
 }
+
+/// A solid colour: `SGLS` mode 0 with the colour twice.
+Uint8List idealLedColour(int rgb, int brightness) =>
+    idealLedEffect(0, rgb, rgb, brightness: brightness);
+
+/// The firmware indexes 10 `SGLS` and 12 `MULT` slots with these values
+/// unchecked and saves them to flash, so nothing outside them is ever sent.
+const idealEffectCount = 10;
+const idealSceneCount = 12;
+const idealSceneMaxColours = 7;
+
+/// `MULT` header for a multi-colour scene; its colours follow as
+/// [idealLedSceneFrame] on [idealLedBulk]. The last byte repeats the
+/// brightness the frame is scaled to, as the app sends it. Plaintext.
+Uint8List idealLedScene(
+  int effect,
+  int colours, {
+  int speed = 0x50,
+  int brightness = 100,
+}) {
+  RangeError.checkValueInInterval(effect, 0, idealSceneCount - 1, 'effect');
+  RangeError.checkValueInInterval(colours, 1, idealSceneMaxColours, 'colours');
+  return _tagged('MULT', [
+    effect,
+    0,
+    0x64,
+    speed.clamp(0, 100),
+    colours,
+    brightness.clamp(0, 100),
+  ]);
+}
+
+/// The scene's colours, scaled to [brightness] percent and truncated (no
+/// floor here, as the app does), in the 98-byte frame the app writes:
+/// `<data length + 1> <frame index 0> R G B ...`.
+Uint8List idealLedSceneFrame(List<int> colours, int brightness) {
+  final pct = brightness.clamp(0, 100);
+  final f = Uint8List(98);
+  f[0] = colours.length * 3 + 1;
+  for (var i = 0; i < colours.length; i++) {
+    final c = colours[i];
+    f[2 + i * 3] = ((c >> 16) & 0xFF) * pct ~/ 100;
+    f[3 + i * 3] = ((c >> 8) & 0xFF) * pct ~/ 100;
+    f[4 + i * 3] = (c & 0xFF) * pct ~/ 100;
+  }
+  return f;
+}
+
+/// The vendor app's rainbow (red, orange, yellow, green, blue, purple,
+/// white), as captured at 50 % and doubled.
+const idealRainbow = [
+  0xFF0000, 0xFFA200, 0xFFFF00, 0x00FF00, 0x0000FF, 0xFF00FF, 0xFFFFFF, //
+];
+
+/// A named look: a `MULT` scene in [colours], or (with [effect]) an `SGLS`
+/// effect in the colour picked on the light page over black.
+class IdealPattern {
+  final String name;
+  final int? scene;
+  final int? effect;
+  final List<int> colours;
+  const IdealPattern(
+    this.name, {
+    this.scene,
+    this.effect,
+    this.colours = idealRainbow,
+  });
+}
+
+/// Scenes 0, 1, 7, 8 and 9 and effects 0 and 1 were captured from the
+/// vendor app; the rest differ only in that index, inside the range the
+/// firmware draws.
+const idealPatterns = [
+  IdealPattern('Rainbow flow', scene: 9),
+  IdealPattern('Rainbow bands', scene: 0),
+  IdealPattern('Rainbow waves', scene: 8),
+  IdealPattern('Rainbow meteors', scene: 7),
+  IdealPattern('Twinkle', scene: 1),
+  IdealPattern('Colour jump', scene: 10),
+  IdealPattern('Colour fade', scene: 11),
+  IdealPattern('Colour wipe', scene: 2),
+  IdealPattern('Chase', effect: 5),
+  IdealPattern('Meteor', effect: 3),
+  IdealPattern('Pulse', effect: 4),
+  IdealPattern('Running dot', effect: 6),
+  IdealPattern('Stacking', effect: 2),
+  IdealPattern('Breathe', effect: 8),
+  IdealPattern('Strobe', effect: 9),
+];
+
+IdealPattern? idealPatternNamed(Object? name) =>
+    idealPatterns.where((p) => p.name == name).firstOrNull;
 
 /// Setting names [IdealLedDriver.control] understands.
 abstract final class LightSetting {
@@ -75,8 +190,16 @@ abstract final class LightSetting {
   /// `{'rgb': 0xRRGGBB, 'brightness': 1..100}`: the whole look at once, so
   /// any screen can send it without knowing what another one set.
   static const colour = 'colour';
+
+  /// `{'pattern': name, 'rgb': 0xRRGGBB, 'speed': 0..100,
+  /// 'brightness': 1..100}`, a pattern from [idealPatterns].
+  static const pattern = 'pattern';
   static const brightness = 'brightness'; // reading only, percent
+  static const speed = 'speed'; // reading only, percent
 }
+
+/// What a solid colour shows as in the pattern reading.
+const idealSolid = 'Solid colour';
 
 String idealLedHex(int rgb) =>
     '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
@@ -99,10 +222,6 @@ Decoded _decoded(String? name, [List<Reading> readings = const []]) => Decoded(
     'state': 'as last set from Le\'Casa; the controller does not report it',
   },
 );
-
-/// The colour and brightness this screen last sent, by device id, so that
-/// switching back on still shows them.
-final Map<String, (int, int)> _lastLook = {};
 
 class IdealLedDecoder implements Decoder {
   const IdealLedDecoder();
@@ -152,33 +271,89 @@ class IdealLedDriver implements ControllableDriver {
     final tx = s.require(idealLedWrite, 'iDeal LED command');
     final rx = s.require(idealLedNotify, 'iDeal LED ack');
     final acks = (await s.subscribe(rx)).map(idealLedDecrypt);
+    int pctOf(Map v) => (v['brightness'] as num? ?? 100).toInt().clamp(1, 100);
+    int rgbOf(Map v) => (v['rgb'] as num? ?? 0xFFFFFF).toInt() & 0xFFFFFF;
     switch (command.setting) {
       case LightSetting.on when v is bool:
+        // The connection manager keeps the look shown alongside.
         await _send(s, tx, acks, 'TURN', idealLedPower(v));
-        final look = _lastLook[adv.id];
-        return _decoded(adv.name, [
-          Reading(LightSetting.on, v),
-          if (look != null) ...[
-            Reading(LightSetting.colour, idealLedHex(look.$1)),
-            Reading(LightSetting.brightness, look.$2, '%'),
-          ],
-        ]);
+        return _decoded(adv.name, [Reading(LightSetting.on, v)]);
       case LightSetting.colour when v is Map:
-        final rgb = (v['rgb'] as num? ?? 0xFFFFFF).toInt() & 0xFFFFFF;
-        final pct = (v['brightness'] as num? ?? 100).toInt().clamp(1, 100);
+        final rgb = rgbOf(v);
+        final pct = pctOf(v);
         // A colour on a dark strip turns it on, as the app does; sending
         // TURN first does no harm when it is already on.
         await _send(s, tx, acks, 'TURN', idealLedPower(true));
         await _send(s, tx, acks, 'SGLS', idealLedColour(rgb, pct));
-        _lastLook[adv.id] = (rgb, pct);
         return _decoded(adv.name, [
           const Reading(LightSetting.on, true),
+          const Reading(LightSetting.pattern, idealSolid),
           Reading(LightSetting.colour, idealLedHex(rgb)),
           Reading(LightSetting.brightness, pct, '%'),
+        ]);
+      case LightSetting.pattern when v is Map:
+        final p = idealPatternNamed(v['pattern']);
+        if (p == null) throw ArgumentError('Unknown pattern ${v['pattern']}');
+        final rgb = rgbOf(v);
+        final pct = pctOf(v);
+        final speed = (v['speed'] as num? ?? 80).toInt().clamp(0, 100);
+        await _send(s, tx, acks, 'TURN', idealLedPower(true));
+        if (p.scene case final scene?) {
+          final bulk = s.require(idealLedBulk, 'iDeal LED scene data');
+          await _send(
+            s,
+            tx,
+            acks,
+            'MULT',
+            idealLedScene(
+              scene,
+              p.colours.length,
+              speed: speed,
+              brightness: pct,
+            ),
+          );
+          final done = _ack(acks, 'MULTCP');
+          try {
+            await s.write(
+              bulk,
+              idealLedSceneFrame(p.colours, pct),
+              withResponse: bulk.canWrite || !bulk.canWriteWithoutResponse,
+            );
+          } catch (_) {
+            done.ignore();
+            rethrow;
+          }
+          await done;
+        } else {
+          await _send(
+            s,
+            tx,
+            acks,
+            'SGLS',
+            idealLedEffect(p.effect!, rgb, 0, brightness: pct, speed: speed),
+          );
+        }
+        return _decoded(adv.name, [
+          const Reading(LightSetting.on, true),
+          Reading(LightSetting.pattern, p.name),
+          Reading(LightSetting.colour, idealLedHex(rgb)),
+          Reading(LightSetting.brightness, pct, '%'),
+          Reading(LightSetting.speed, speed, '%'),
         ]);
       default:
         throw ArgumentError('Unknown setting $command');
     }
+  }
+
+  /// The ack for [tag]: `<len> <tag>OK`. Only the first len + 1 bytes count;
+  /// the firmware sends the next reply in its table after them, so an
+  /// SGLS ack also holds "MULTOK".
+  Future<void> _ack(Stream<Uint8List> acks, String tag) {
+    final ok = ascii.encode('${tag}OK');
+    return acks
+        .where((a) => _isAck(a, ok))
+        .first
+        .timeout(const Duration(seconds: 3));
   }
 
   /// Writes one command and waits for its ack ("TURNOK"); a second try if
@@ -190,12 +365,8 @@ class IdealLedDriver implements ControllableDriver {
     String tag,
     Uint8List plain,
   ) async {
-    final ok = ascii.encode('${tag}OK');
     for (var attempt = 1; ; attempt++) {
-      final ack = acks
-          .where((a) => _contains(a, ok))
-          .first
-          .timeout(const Duration(seconds: 3));
+      final ack = _ack(acks, tag);
       try {
         await s.write(tx, idealLedEncrypt(plain), withResponse: false);
       } catch (_) {
@@ -214,13 +385,10 @@ class IdealLedDriver implements ControllableDriver {
   }
 }
 
-bool _contains(List<int> hay, List<int> needle) {
-  outer:
-  for (var i = 0; i + needle.length <= hay.length; i++) {
-    for (var j = 0; j < needle.length; j++) {
-      if (hay[i + j] != needle[j]) continue outer;
-    }
-    return true;
+bool _isAck(List<int> a, List<int> ok) {
+  if (a.length < ok.length + 1 || a[0] != ok.length) return false;
+  for (var i = 0; i < ok.length; i++) {
+    if (a[i + 1] != ok[i]) return false;
   }
-  return false;
+  return true;
 }

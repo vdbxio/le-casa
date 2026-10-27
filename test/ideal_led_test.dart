@@ -42,6 +42,45 @@ void main() {
     );
   });
 
+  test('effects and scenes encrypt to the blocks the vendor app sent', () {
+    // Captured by glowmote from the vendor app, 2026-10-24.
+    expect(
+      enc(idealLedEffect(1, 0x00FF00, 0x0000FF, brightness: 50)),
+      'abc14c153ede82e54b7e050132c329d8',
+    );
+    for (final (effect, speed, cipher) in [
+      (0, 0x50, '78a285cda85bf710f8bcbb1eae183bd8'),
+      (1, 0x09, '7a0e16c5439b21ad54cf9a2e6745f1aa'),
+      (8, 0x50, '173a9afca7ae6d41a8c794c4fdbb5c08'),
+      (9, 0x50, '6912a67bf156ae6fbc63c7b36e5bfbcd'),
+    ]) {
+      expect(
+        enc(idealLedScene(effect, 7, speed: speed, brightness: 50)),
+        cipher,
+        reason: 'scene $effect',
+      );
+    }
+    final f = idealLedSceneFrame(idealRainbow, 50);
+    expect(f, hasLength(98));
+    expect(
+      hex(f.sublist(0, 23), sep: ''),
+      '16007f00007f51007f7f00007f0000007f7f007f7f7f7f',
+    );
+    expect(f.sublist(23).every((b) => b == 0), isTrue);
+  });
+
+  test('never builds an effect or scene the firmware cannot index', () {
+    expect(() => idealLedEffect(10, 0, 0), throwsRangeError);
+    expect(() => idealLedScene(12, 7), throwsRangeError);
+    expect(() => idealLedScene(0, 8), throwsRangeError);
+    expect(() => idealLedScene(0, 0), throwsRangeError);
+    for (final p in idealPatterns) {
+      expect((p.scene ?? 0) < idealSceneCount, isTrue);
+      expect((p.effect ?? 0) < idealEffectCount, isTrue);
+      expect(p.colours.length, inInclusiveRange(1, idealSceneMaxColours));
+    }
+  });
+
   test('brightness scales the colour and keeps a lit channel lit', () {
     final p = idealLedColour(0xFF0102, 10);
     expect(p.sublist(9, 12), [25, 2, 2]);
@@ -61,17 +100,35 @@ void main() {
     );
   });
 
+  // As the firmware answers: the reply, then the next one in its table
+  // (an SGLS ack also spells MULTOK).
+  Uint8List reply(String text) {
+    final r = Uint8List(16)
+      ..[0] = text.length
+      ..setRange(1, 1 + text.length, ascii.encode(text));
+    if (text.length <= 6) {
+      r
+        ..[8] = 6
+        ..setRange(9, 15, ascii.encode('MULTOK'));
+    }
+    return idealLedEncrypt(r);
+  }
+
   FakeSession session(List<Uint8List> writes, {bool ack = true}) => FakeSession(
     characteristics: const [
       GattChar(idealLedWrite, canWriteWithoutResponse: true),
       GattChar(idealLedNotify, canNotify: true),
+      GattChar(idealLedBulk, canWriteWithoutResponse: true),
     ],
     onWrite: (c, data) {
+      if (c.uuid == normalizeUuid(idealLedBulk)) {
+        writes.add(data);
+        return ack ? [reply('MULTCPOK')] : const [];
+      }
       writes.add(idealLedDecrypt(data));
       if (!ack) return const [];
       final tag = ascii.decode(idealLedDecrypt(data).sublist(1, 5));
-      final reply = Uint8List(16)..setRange(1, 7, ascii.encode('${tag}OK'));
-      return [idealLedEncrypt(reply)];
+      return [reply('${tag}OK')];
     },
   );
 
@@ -88,28 +145,71 @@ void main() {
     expect(writes[0][5], 1);
     expect(writes[1].sublist(9, 12), [0, 0, 127]);
     final r = {for (final x in out.readings) x.label: x.value};
-    expect(r, {'on': true, 'colour': '#0000FF', 'brightness': 50});
+    expect(r, {
+      'on': true,
+      'pattern': 'Solid colour',
+      'colour': '#0000FF',
+      'brightness': 50,
+    });
     expect(idealLedRgb(r['colour']), 0x0000FF);
     // The broadcast only names it.
     expect(const IdealLedDecoder().decode(strip)!.readings, isEmpty);
   });
 
-  test('switching off and on keeps the look it was given', () async {
+  test('a rainbow scene sends its header, then its colours in clear', () async {
     final writes = <Uint8List>[];
-    final s = session(writes);
-    const d = IdealLedDriver();
-    final x = adv(id: 'other', name: 'ISP-000001');
-    var out = await d.control(s, x, const DeviceCommand('on', false));
-    expect(out.readings.map((r) => r.label), ['on']);
-    await d.control(
-      s,
-      x,
-      const DeviceCommand('colour', {'rgb': 0xFF0000, 'brightness': 80}),
+    final out = await const IdealLedDriver().control(
+      session(writes),
+      strip,
+      const DeviceCommand('pattern', {
+        'pattern': 'Rainbow flow',
+        'speed': 80,
+        'brightness': 50,
+      }),
     );
-    out = await d.control(s, x, const DeviceCommand('on', true));
-    expect(writes.last[5], 1);
-    final r = {for (final y in out.readings) y.label: y.value};
-    expect(r, {'on': true, 'colour': '#FF0000', 'brightness': 80});
+    expect(writes, hasLength(3));
+    expect(ascii.decode(writes[0].sublist(1, 5)), 'TURN');
+    // 0a 'MULT' effect 9, forward, 100, speed 80, 7 colours, 50 %.
+    expect(
+      hex(writes[1].sublist(0, 11), sep: ''),
+      '0a${hex(ascii.encode('MULT'), sep: '')}090064500732',
+    );
+    expect(writes[2], idealLedSceneFrame(idealRainbow, 50));
+    final r = {for (final x in out.readings) x.label: x.value};
+    expect(r['pattern'], 'Rainbow flow');
+    expect(r['speed'], 80);
+    expect(r['brightness'], 50);
+  });
+
+  test('an effect uses the picked colour over black', () async {
+    final writes = <Uint8List>[];
+    await const IdealLedDriver().control(
+      session(writes),
+      strip,
+      const DeviceCommand('pattern', {
+        'pattern': 'Chase',
+        'rgb': 0xFF0000,
+        'speed': 30,
+      }),
+    );
+    expect(
+      hex(writes.last, sep: ''),
+      // mode 5, forward, 100, speed 30, red over black.
+      '0f${hex(ascii.encode('SGLS'), sep: '')}0500641eff000000000032',
+    );
+  });
+
+  test('an unknown pattern is refused before anything is sent', () async {
+    final writes = <Uint8List>[];
+    await expectLater(
+      const IdealLedDriver().control(
+        session(writes),
+        strip,
+        const DeviceCommand('pattern', {'pattern': 'Made up'}),
+      ),
+      throwsArgumentError,
+    );
+    expect(writes, isEmpty);
   });
 
   test('no ack after two tries is an error', () async {

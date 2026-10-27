@@ -14,6 +14,10 @@ Tested on Chloe's ISP-820ED3 (firmware family TR2309R012) on 2026-10-27.
   so Le'Casa scales the colour the same way the vendor app does.
 - A set of fixed colours on the device page: warm, white, red, orange,
   green, blue and purple.
+- Patterns: rainbow scenes (flow, bands, waves, meteors, twinkle, jump,
+  fade, wipe) and one-colour effects (chase, meteor, pulse, running dot,
+  stacking, breathe, strobe), each with a speed slider. The card shows the
+  pattern's name.
 
 ## What to know
 
@@ -38,10 +42,19 @@ The controller answers on `…9601`. Each answer decrypts to the command's
 tag followed by `OK`, for example `TURNOK` or `SGLSOK`.
 
 - `TURN 01` / `TURN 00` switches the strip on and off.
-- `SGLS` with mode 0 sets a static colour: `0f 'SGLS' 00 00 64 50 r g b r g b 32`.
+- `SGLS` sets a static colour (mode 0) or a two-colour effect (modes
+  1-9): `0f 'SGLS' mode 00 64 speed r g b r g b 32`.
+- `MULT` starts a multi-colour scene (effects 0-11, 1-7 colours):
+  `0a 'MULT' effect 00 64 speed count brightness`. The controller answers
+  `MULTOK`, then takes the colours unencrypted on `…960a` as one 98-byte
+  frame `<count × 3 + 1> 00 R G B …`, and answers `MULTCPOK`.
+- Brightness is the colours scaled down; the strip has no brightness
+  command, so Le'Casa can only dim a look it set itself.
 
-Le'Casa sends only these two commands, in the exact layouts captured from
-the vendor app. The authors of idealLED bricked controllers by sending
+Le'Casa sends only these three commands, in the layouts captured from the
+vendor app. Scenes 0, 1, 7, 8 and 9 and effects 0 and 1 were captured; the
+rest change only the effect index, within the range the firmware draws
+(SGLS 0-9, MULT 0-11). The authors of idealLED bricked controllers by sending
 made-up commands, such as the calibration and test commands (`CT`,
 `TEST`, `LAMPT`, `LAMPN`, `SPLAY`). Don't send those.
 

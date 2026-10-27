@@ -549,9 +549,12 @@ CardModel _light(Decoded v, String name) {
     tone: Tone.solar,
     headline: Metric('Light', onText ?? 'Tap to turn on'),
     details: [
+      if (_r(v, 'pattern')?.value case final String p when on == true)
+        Metric('Pattern', p),
       if (_n(v, 'brightness') case final b? when on == true)
         Metric('Brightness', _fmt(b, 0), '%'),
-      if (_r(v, 'colour')?.value case final String c when on == true)
+      if (_r(v, 'colour')?.value case final String c
+          when on == true && _r(v, 'pattern')?.value == 'Solid colour')
         Metric('Colour', c),
     ],
     pillLabel: onText?.toLowerCase() ?? 'light',

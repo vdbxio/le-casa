@@ -15,7 +15,10 @@ import 'layout.dart';
 ///
 /// Columns with nothing in them are left out. Devices that still need setup
 /// are not placed; they stay in the card picker.
-DashboardLayout autoLayout(List<CatalogEntry> entries) {
+///
+/// An [upright] screen (a phone held in portrait) gets the same groups as
+/// rows instead, with cards side by side inside each row.
+DashboardLayout autoLayout(List<CatalogEntry> entries, {bool upright = false}) {
   final usable = [
     for (final e in entries)
       if (!e.needsSetup) e,
@@ -35,6 +38,10 @@ DashboardLayout autoLayout(List<CatalogEntry> entries) {
   final batteries = role(CardRole.battery);
   final climate = role(CardRole.climate);
   final appliances = role(CardRole.appliance);
+
+  if (upright) {
+    return _upright(solar, extraSolar, batteries, climate, appliances, role);
+  }
 
   final columns = <(Node, double)>[];
 
@@ -97,6 +104,57 @@ DashboardLayout autoLayout(List<CatalogEntry> entries) {
       SplitAxis.horizontal,
       [for (final c in columns) c.$1],
       [for (final c in columns) c.$2],
+    ),
+  );
+}
+
+DashboardLayout _upright(
+  List<CatalogEntry> solar,
+  List<CatalogEntry> extraSolar,
+  List<CatalogEntry> batteries,
+  List<CatalogEntry> climate,
+  List<CatalogEntry> appliances,
+  List<CatalogEntry> Function(CardRole) role,
+) {
+  Node side(List<CardSpec> specs) => specs.length == 1
+      ? Slot(specs.single)
+      : Split(
+          SplitAxis.horizontal,
+          [for (final s in specs) Slot(s)],
+          [for (final _ in specs) 1.0],
+        );
+
+  final chips = <CardSpec>[
+    for (final e in [
+      ...climate.skip(2),
+      ...extraSolar,
+      ...batteries.skip(2),
+      ...appliances.skip(1),
+      ...role(CardRole.other),
+    ])
+      e.spec,
+    const CardSpec('tablet'),
+  ];
+  final rows = <(Node, double)>[
+    (side([const CardSpec('clock'), ?solar.firstOrNull?.spec]), 1.0),
+    if (batteries.isNotEmpty)
+      (side([for (final b in batteries.take(2)) b.spec]), 1.0),
+    (
+      side([
+        const CardSpec('weather'),
+        for (final a in appliances.take(1)) a.spec,
+      ]),
+      0.7,
+    ),
+    if (climate.isNotEmpty)
+      (side([for (final c in climate.take(2)) c.spec]), 0.7),
+    (Slot(CardSpec('chips', items: chips)), 0.45),
+  ];
+  return DashboardLayout(
+    Split(
+      SplitAxis.vertical,
+      [for (final r in rows) r.$1],
+      [for (final r in rows) r.$2],
     ),
   );
 }

@@ -276,6 +276,22 @@ class TemplateCard extends StatelessWidget {
                   ),
                 if (edit != null)
                   for (final s in plan.seams) _handle(c, s, edit),
+                // Cards built without a message box still say why they
+                // are faded.
+                if (edit == null &&
+                    model.quiet != null &&
+                    !shown.contains(PartKind.note))
+                  Positioned(
+                    right: 10,
+                    bottom: 8,
+                    left: 10,
+                    child: IgnorePointer(
+                      child: Align(
+                        alignment: Alignment.bottomRight,
+                        child: _QuietBadge(model.quiet!, c),
+                      ),
+                    ),
+                  ),
               ],
             );
           },
@@ -659,3 +675,28 @@ class _EditableBox extends StatelessWidget {
 bool _samePath(NodePath a, NodePath b) =>
     a.length == b.length &&
     [for (var i = 0; i < a.length; i++) a[i] == b[i]].every((x) => x);
+
+/// "Not heard for 5h", over a faded card that has no message box.
+class _QuietBadge extends StatelessWidget {
+  final String text;
+  final LeColors c;
+  const _QuietBadge(this.text, this.c);
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: c.card,
+      borderRadius: BorderRadius.circular(999),
+      border: Border.all(color: c.muted.withValues(alpha: 0.4)),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: 12, color: c.ink),
+      ),
+    ),
+  );
+}

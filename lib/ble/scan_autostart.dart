@@ -14,7 +14,15 @@ import 'ble_scanner.dart';
 /// dashboard (the home screen now) gets data without visiting it.
 class ScanAutostart extends ChangeNotifier {
   final BleScanner scanner;
-  BluetoothLowEnergyState state = BluetoothLowEnergyState.unknown;
+  BluetoothLowEnergyState _state = BluetoothLowEnergyState.unknown;
+
+  /// What Bluetooth last reported. iOS can report "on" before this listens
+  /// (another part of the app started the radio first) and then stay quiet,
+  /// so a scan that is running counts as "on".
+  BluetoothLowEnergyState get state =>
+      _state == BluetoothLowEnergyState.unknown && scanner.scanning
+      ? BluetoothLowEnergyState.poweredOn
+      : _state;
   String? error;
   StreamSubscription? _sub;
   bool _asking = false;
@@ -22,13 +30,13 @@ class ScanAutostart extends ChangeNotifier {
   ScanAutostart(this.scanner);
 
   void start() {
-    state = scanner.state;
+    _state = scanner.state;
     _sub = scanner.stateChanges.listen((st) {
-      state = st;
+      _state = st;
       notifyListeners();
       _react(st);
     });
-    _react(state);
+    _react(_state);
   }
 
   /// The plugin starts in `unknown`, then reports the real state once the
@@ -58,8 +66,8 @@ class ScanAutostart extends ChangeNotifier {
       // The plugin refreshes its state when the app resumes after the
       // permission dialog; give it a moment, then start if it is ready.
       await Future<void>.delayed(const Duration(milliseconds: 500));
-      state = scanner.state;
-      if (state == BluetoothLowEnergyState.poweredOn) await startScan();
+      _state = scanner.state;
+      if (_state == BluetoothLowEnergyState.poweredOn) await startScan();
       notifyListeners();
     } finally {
       _asking = false;

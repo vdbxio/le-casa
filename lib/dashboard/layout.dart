@@ -279,6 +279,15 @@ class DashboardLayout {
 
   /// Records device names on cards placed before names were saved, or
   /// whose device was renamed. Returns true if anything changed.
+  /// The devices the page shows, chip rows included.
+  Set<String> get devices => {
+    for (final (_, s) in slots)
+      if (s.card case final c?) ...[
+        ?c.device,
+        for (final i in c.items) ?i.device,
+      ],
+  };
+
   bool rememberNames(String? Function(String deviceId) nameOf) {
     var changed = false;
     CardSpec named(CardSpec c) {

@@ -44,6 +44,17 @@ class DashboardController extends ChangeNotifier {
       debugPrint('Dashboard layout could not be read, starting fresh: $e');
       _doc = null;
     }
+    try {
+      final p = await SharedPreferences.getInstance();
+      final raw = p.getString(_heardKey);
+      if (raw != null) {
+        for (final e in (jsonDecode(raw) as Map).entries) {
+          heard['${e.key}'] = DateTime.fromMillisecondsSinceEpoch(
+            (e.value as num).toInt(),
+          );
+        }
+      }
+    } catch (_) {}
     _loaded = true;
     notifyListeners();
   }
@@ -64,6 +75,33 @@ class DashboardController extends ChangeNotifier {
     notifyListeners();
     final p = await SharedPreferences.getInstance();
     await p.remove(prefsKey);
+  }
+
+  /// When each device on the dashboard was last heard, kept over a
+  /// restart so a card can say "Not heard for 5h" before the device is
+  /// heard again.
+  final Map<String, DateTime> heard = {};
+  static const _heardKey = 'dashboard:heard';
+
+  /// Remembers [times], saving only when one moved by a minute or more.
+  Future<void> rememberHeard(Map<String, DateTime> times) async {
+    var moved = false;
+    for (final e in times.entries) {
+      final was = heard[e.key];
+      if (was != null && e.value.difference(was).inMinutes < 1) continue;
+      heard[e.key] = e.value;
+      moved = true;
+    }
+    if (!moved) return;
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString(
+        _heardKey,
+        jsonEncode({
+          for (final e in heard.entries) e.key: e.value.millisecondsSinceEpoch,
+        }),
+      );
+    } catch (_) {}
   }
 
   void setEditing(bool on) {

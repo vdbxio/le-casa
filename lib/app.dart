@@ -23,6 +23,8 @@ import 'settings/settings_store.dart';
 import 'sync/ble_radio.dart';
 import 'sync/home.dart';
 import 'sync/sync_service.dart';
+import 'sync/wire.dart';
+import 'ui/bluetooth_gate.dart';
 import 'ui/palette.dart';
 import 'weather/weather.dart';
 
@@ -153,7 +155,13 @@ class _LeCasaAppState extends State<LeCasaApp> {
     super.initState();
     keys.label = (id) {
       final d = tracker[id];
-      return (name: d?.latest.name, mac: d?.mac);
+      return (
+        name: d?.latest.name,
+        mac: d?.mac,
+        fp: d == null || d.remoteOnly
+            ? null
+            : advertFingerprint(d.lastRecognised ?? d.latest),
+      );
     };
     keys
         .load()
@@ -223,6 +231,8 @@ class _LeCasaAppState extends State<LeCasaApp> {
           themeMode: settings.themeMode,
           theme: leCasaTheme(Brightness.light),
           darkTheme: leCasaTheme(Brightness.dark),
+          builder: (context, child) =>
+              BluetoothGate(child: child ?? const SizedBox()),
           home: const DashboardPage(),
         ),
       ),

@@ -23,13 +23,20 @@ class CardSources {
   final WeatherService? weather;
   final DateTime Function() now;
 
+  /// When a device was last heard before the app started, if known.
+  final DateTime? Function(String id) heardBefore;
+
   CardSources({
     required this.tracker,
     this.history,
     this.tablet,
     this.weather,
     DateTime Function()? now,
-  }) : now = now ?? DateTime.now;
+    DateTime? Function(String id)? heardBefore,
+  }) : now = now ?? DateTime.now,
+       heardBefore = heardBefore ?? _never;
+
+  static DateTime? _never(String _) => null;
 
   final Map<String, CardModel> _models = {};
 
@@ -40,6 +47,7 @@ class CardSources {
     tablet: tablet,
     weather: weather,
     now: now,
+    heardBefore: heardBefore,
   );
 
   /// [modelFor], remembered for as long as these sources live. The
@@ -87,6 +95,10 @@ const _hiddenKinds = {DeviceKind.background, DeviceKind.improv};
 
 /// Devices that have gone quiet for this long are drawn faded.
 const staleAfter = Duration(minutes: 5);
+
+/// The forecast refreshes every half hour; one older than this is kept only
+/// because the internet is down.
+const weatherStaleAfter = Duration(minutes: 75);
 
 /// Every card on offer right now: devices the tablet hears, then widgets.
 List<CatalogEntry> catalog(CardSources s) {
@@ -142,14 +154,18 @@ List<CatalogEntry> catalog(CardSources s) {
   return out;
 }
 
-/// A readable name. Uses the advertised name where it is a real one (Victron
+/// A readable name: the one the person gave it, if any. Otherwise the
+/// advertised name where it is a real one (Victron
 /// devices carry the name set in VictronConnect), otherwise the model plus
 /// the end of the MAC so identical sensors can be told apart, and read the
 /// same on every screen. iOS hides MACs, so there it is the MAC the device
 /// sends in its broadcasts. Devices whose name carries a serial (Daly,
 /// Alpicool) use the end of that instead, and the rest the end of iOS's own
 /// id, which means something only on that one screen.
-String deviceName(TrackedDevice d) {
+String deviceName(TrackedDevice d) => d.label ?? autoDeviceName(d);
+
+/// The name Le'Casa makes up for [d], ignoring any the person gave it.
+String autoDeviceName(TrackedDevice d) {
   final v = d.view;
   final name = d.latest.name;
   final isModuleId =
@@ -206,30 +222,42 @@ String _duration(num? minutes) {
   return m >= 60 ? '${m ~/ 60}h ${m % 60}m' : '${m}m';
 }
 
-String _quiet(TrackedDevice d, DateTime now) =>
-    'Not heard for ${ago(d.lastSeen, now).replaceAll(' ago', '')}';
+/// When this screen last had news of [d]: an advert, or a reading over a
+/// connection (a device held open stops advertising), here or on another
+/// screen.
+DateTime heardAt(TrackedDevice d) {
+  final polled = d.polled == null ? null : d.polledAt;
+  return polled != null && polled.isAfter(d.lastSeen) ? polled : d.lastSeen;
+}
+
+String _quiet(DateTime heard, DateTime now, {String what = 'heard'}) =>
+    'Not $what for ${ago(heard, now).replaceAll(' ago', '')}';
 
 // ---------------------------------------------------------------- devices
 
 CardModel _device(String id, CardSources s, String? savedName) {
-  final d = s.tracker[id];
+  final d = s.tracker.find(id);
   // Right after a restart a placed device may not have been heard, or its
   // first packet may not carry readings yet (Victron sends its name in a
   // separate scan response). Show the name it had when placed.
-  CardModel waiting(String? name) => CardModel(
-    title: savedName ?? name ?? 'Not found yet',
-    icon: Icons.bluetooth_searching,
-    note: 'Listening for this device…',
-    pillLabel: 'listening',
-    stale: true,
-  );
+  CardModel waiting(String? name) {
+    final before = s.heardBefore(id);
+    final quiet = before == null ? null : _quiet(before, s.now());
+    return CardModel(
+      title: savedName ?? name ?? 'Not found yet',
+      icon: Icons.bluetooth_searching,
+      note: quiet ?? 'Listening for this device…',
+      pillLabel: 'listening',
+      stale: true,
+      quiet: quiet,
+    );
+  }
+
   if (d == null) return waiting(null);
   final v = d.view;
   final name = deviceName(d);
   final now = s.now();
-  final heard = d.polledAt != null && d.polled != null
-      ? (d.polledAt!.isAfter(d.lastSeen) ? d.polledAt! : d.lastSeen)
-      : d.lastSeen;
+  final heard = heardAt(d);
   final stale = now.difference(heard) > staleAfter;
   if (v == null) return waiting(name);
   if (!v.isReadable) {
@@ -272,8 +300,9 @@ CardModel _device(String id, CardSources s, String? savedName) {
     shares: m.shares,
     ring: m.ring,
     series: m.series,
-    note: _quiet(d, now),
+    note: _quiet(heard, now),
     stale: true,
+    quiet: _quiet(heard, now),
     pillLabel: m.pillLabel,
   );
 }
@@ -346,8 +375,16 @@ CardModel _solarTotal(CardSources s) {
       ),
   ];
   final first = chargers.first.view!;
+  // Faded only when every charger has gone quiet: one still talking keeps
+  // the total meaningful.
+  final now = s.now();
+  final last = chargers.map(heardAt).reduce((a, b) => a.isAfter(b) ? a : b);
+  final stale = now.difference(last) > staleAfter;
   return CardModel(
     title: 'Solar',
+    stale: stale,
+    quiet: stale ? _quiet(last, now) : null,
+    note: stale ? _quiet(last, now) : null,
     subtitle: '${chargers.length} chargers',
     icon: Icons.wb_sunny_outlined,
     tone: Tone.solar,
@@ -636,6 +673,9 @@ CardModel _weather(CardSources s) {
       );
     case WeatherStatus.ok:
       final n = w.now!;
+      // A forecast kept through an outage: say how old it is.
+      final old = s.now().difference(n.fetchedAt) > weatherStaleAfter;
+      final quiet = old ? _quiet(n.fetchedAt, s.now(), what: 'updated') : null;
       final hourNow = s.now().hour;
       final night = hourNow < 6 || hourNow >= 20;
       return CardModel(
@@ -666,6 +706,9 @@ CardModel _weather(CardSources s) {
         ],
         hoursLabel: 'Next ${n.hours.length} hours',
         pillLabel: n.condition,
+        note: quiet,
+        stale: old,
+        quiet: quiet,
       );
   }
 }

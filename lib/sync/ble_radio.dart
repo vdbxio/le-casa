@@ -309,7 +309,9 @@ class BleSyncRadio implements SyncRadio {
       _tx!,
       max.clamp(20, syncChunkMax),
     );
-    debugPrint('sync server: ${c.uuid} linked, chunks of $max');
+    debugPrint(
+      'sync server: ${c.uuid} linked, chunks of ${link.maxChunk} (MTU allows $max)',
+    );
     _incoming.add(MessageLink(link));
     return link;
   }
@@ -381,10 +383,11 @@ class BleSyncRadio implements SyncRadio {
       final tx = l.require(syncTxUuid, 'sync notify');
       final stream = await l.subscribe(tx);
       final max = await l.maxWriteLength();
-      debugPrint('sync: connected to ${peer.id}, chunks of $max');
-      return MessageLink(
-        _GattChunkLink(l, rx, stream, max.clamp(20, syncChunkMax)),
+      final chunk = max.clamp(20, syncChunkMax);
+      debugPrint(
+        'sync: connected to ${peer.id}, chunks of $chunk (MTU allows $max)',
       );
+      return MessageLink(_GattChunkLink(l, rx, stream, chunk));
     } catch (_) {
       await l.close();
       rethrow;

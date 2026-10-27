@@ -6,6 +6,29 @@ The protocols are a line-by-line Dart port of
 commit `75f1f1e`, October 2026), and every driver is checked against the
 GATT traces of aiobmsble's own test suite (`test/bms/replay_test.dart`).
 
+> **Machine-translated and mostly untested on real batteries.** The Dart
+> drivers were machine-translated from aiobmsble's Python code. They pass
+> every recorded trace from aiobmsble's test suite, but so far only a
+> **Daly** BMS has been tested with Le'Casa on real hardware, and `DL-…`
+> Daly modules are read by Le'Casa's own Daly driver rather than the port.
+> Every other type on this page should work, but none has been seen
+> working on a real battery yet.
+>
+> If you try Le'Casa with your battery, please
+> [open an issue](https://github.com/vdbxio/le-casa/issues/new?title=BMS%20report%3A%20&labels=bms),
+> whether it works or not. Useful details:
+>
+> - battery make and model, and the name it advertises over Bluetooth;
+> - the type Le'Casa picked for it (the protocol line on the device page);
+> - phone or tablet, and Android or iPadOS version;
+> - what read correctly and what looked wrong, compared with the
+>   battery's own app (a screenshot of each helps);
+> - the raw advertisement from the device page if it was not recognised
+>   at all.
+>
+> Reports that "it just works" are just as welcome: they let us mark a
+> type as tested.
+
 A battery is picked up when its advertisement matches one of the patterns
 below. Its card shows charge, voltage, current, power, cells, temperatures,
 MOSFETs, cycles and alarms where the BMS reports them, polled every 30 s.

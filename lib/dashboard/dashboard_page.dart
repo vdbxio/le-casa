@@ -8,6 +8,7 @@ import 'package:flutter/material.dart' hide Split;
 import 'package:flutter/services.dart';
 
 import '../app.dart';
+import '../drivers/driver.dart' show DeviceCommand;
 import '../ui/dashed_outline.dart';
 import '../ui/palette.dart';
 import '../platform/form_factor.dart';
@@ -549,7 +550,27 @@ class _SlotView extends StatelessWidget {
         : cardContent(card, box.rect.size, sources);
     if (!editing) {
       if (content == null) return const SizedBox.shrink();
-      return CardSetupScope(onSetup: onOptions, child: content);
+      final scoped = CardSetupScope(onSetup: onOptions, child: content);
+      final id = card!.device;
+      final action = card.type == 'device' ? sources.model(card).action : null;
+      final connections = AppServices.of(context).connections;
+      if (id == null || action == null || !connections.canControl(id)) {
+        return scoped;
+      }
+      // A tap on a plug's card switches it.
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () async {
+          HapticFeedback.selectionClick();
+          final messenger = ScaffoldMessenger.of(context);
+          try {
+            await connections.control(id, DeviceCommand(action.$1, action.$2));
+          } catch (e) {
+            messenger.showSnackBar(SnackBar(content: Text('$e')));
+          }
+        },
+        child: scoped,
+      );
     }
 
     // Hold a card and drag it onto another slot to swap the two, or onto

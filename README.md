@@ -35,7 +35,8 @@ dashboard and shares it between screens. The app currently
   Plus, Indoor/Outdoor Meter, Meter Pro (and CO2), Weather Station, Hub 2
   and 3, contact, motion, presence and leak sensors, Plug Mini, Relay
   Switch, Bot, Curtain, Roller Shade, Blind Tilt, remotes and the Lock's
-  state. Details in [docs/switchbot-govee.md](docs/switchbot-govee.md);
+  state. Plug Minis (US/JP) switch on and off from their page or a tap
+  on their card. Details in [docs/switchbot-govee.md](docs/switchbot-govee.md);
 - decodes **Govee** broadcasts with no account: the thermo-hygrometers
   (H5072/H5074/H5075, H5100-H5110, H5174/H5177/H5179, H5178 indoor +
   outdoor, H5051/H5052/H5071), the H5140 CO2 and H5106 air quality

@@ -324,6 +324,7 @@ CardModel _device(String id, CardSources s, String? savedName) {
     stale: true,
     quiet: _quiet(heard, now),
     pillLabel: m.pillLabel,
+    action: m.action,
   );
 }
 
@@ -529,6 +530,7 @@ CardModel _switch(TrackedDevice d, Decoded v, String name, CardSources s) {
         Metric('Battery', _fmt(b, 0), '%', null, true),
     ],
     pillLabel: onText?.toLowerCase() ?? 'switch',
+    action: on is bool ? ('on', !on) : null,
     series: w == null ? null : s.history?.of(History.key(d.id, 'power')),
   );
 }

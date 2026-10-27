@@ -292,10 +292,16 @@ void main() {
     expect(opened.single.closed, isTrue);
     expect(m.busyId, isNull);
     await m.setDeviceEnabled(testAdv.id, false);
+    // A command from another screen does not turn connecting back on...
     expect(
-      () => m.control(testAdv.id, const DeviceCommand('power', true)),
+      () =>
+          m.control(testAdv.id, const DeviceCommand('power', true), here: true),
       throwsStateError,
     );
+    // ...but the person asking for a change on this screen does.
+    await m.control(testAdv.id, const DeviceCommand('power', true));
+    expect(m.allows(testAdv.id), isTrue);
+    expect(driver.commands.last.value, true);
     m.dispose();
   });
 

@@ -156,6 +156,17 @@ void main() {
       });
     });
 
+    test("Chloe's H5075, captured on the Mac", () {
+      final out = DecoderRegistry.standard().decode(
+        adv(name: 'GVH5075_3804', manufacturerData: {0xEC88: '00040ff66400'}),
+      )!;
+      expect(values(out), {
+        'temperature': 26.6,
+        'humidity': 23.0,
+        'battery': 100,
+      });
+    });
+
     test('H5074', () {
       final out = DecoderRegistry.standard().decode(
         adv(

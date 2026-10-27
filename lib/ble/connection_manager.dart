@@ -423,7 +423,12 @@ class ConnectionManager extends ChangeNotifier {
       throw StateError('This device cannot be controlled');
     }
     if (!_enabled) throw StateError('Connections are paused');
-    if (!l.enabled) throw StateError('Turn on "Connect to this device" first');
+    // Asking for a change is saying yes to connecting. A command from
+    // another screen does not decide for this one.
+    if (!l.enabled) {
+      if (here) throw StateError('Turn on "Connect to this device" first');
+      await setDeviceEnabled(id, true);
+    }
     final until = DateTime.now().add(const Duration(seconds: 60));
     while (!_free()) {
       if (DateTime.now().isAfter(until)) {

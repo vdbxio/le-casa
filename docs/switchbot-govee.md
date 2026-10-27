@@ -16,7 +16,9 @@ and are tested against those projects' sample packets.
 
 | Device | Where | Result |
 | --- | --- | --- |
-| SwitchBot Indoor/Outdoor Thermo-Hygrometer (W3400010) | MacBook (bleak), 2026-10-27 | temperature, humidity, battery |
+| SwitchBot Indoor/Outdoor Thermo-Hygrometer (W3400010) | iPad, MacBook, 2026-10-27 | temperature, humidity, battery |
+| SwitchBot Plug Mini (US) | iPad, PRITOM M10, MacBook, 2026-10-27 | on/off and watts read; on/off commands checked from the Mac |
+| Govee H5075 | MacBook, 2026-10-27 | temperature, humidity, battery |
 
 Everything else below is decoded from upstream sample packets only. If
 you own one, open a GitHub issue titled "SwitchBot report:" or "Govee
@@ -48,10 +50,14 @@ Notes:
 - Some SwitchBots only name their model in the *scan response*. The
   tablet scans actively, so it gets it; a device is recognised from its
   first full packet and remembered after that.
-- Reading is all this release does. Switching a Plug Mini or pressing a
-  Bot needs a connection and is planned next. Locks and the Relay Switch
-  family encrypt their *commands* with a key from the SwitchBot account;
-  reading their state needs nothing.
+- **Plug Mini (US and JP) can be switched**: the switch on its device
+  page, or a tap on its dashboard card. Le'Casa connects only for the
+  command (the state comes from the plug's broadcasts), so the SwitchBot
+  app and Le'Casa can share it. No account or key is involved.
+- The Plug Mini (EU), the Relay Switches and the Locks encrypt their
+  *commands* with a key from the SwitchBot account, so they are read-only
+  here for now; reading their state needs nothing. Pressing a Bot is
+  planned.
 - Readings are always in °C. A meter set to show °F on its screen still
   broadcasts °C.
 

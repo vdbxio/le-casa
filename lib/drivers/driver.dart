@@ -8,6 +8,7 @@ import '../decoders/raw_advertisement.dart';
 import 'alpicool_driver.dart';
 import 'bms_driver.dart';
 import 'daly_driver.dart';
+import 'switchbot_driver.dart';
 import 'xiaomi_driver.dart';
 
 /// A driver for a device that only gives up its readings over a GATT
@@ -74,6 +75,7 @@ class GattDriverRegistry {
         const DalyDriver(),
         const XiaomiStockGattDriver(),
         const AlpicoolDriver(),
+        const SwitchBotPlugDriver(),
         BmsDriver(secretFor: secretFor),
       ]);
 

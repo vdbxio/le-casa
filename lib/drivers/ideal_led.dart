@@ -69,56 +69,40 @@ Uint8List idealLedColour(int rgb, int brightness) {
   return _tagged('SGLS', [0, 0, 0x64, 0x50, r, g, b, r, g, b, 0x32]);
 }
 
-/// What Le'Casa last set on a controller, by device id. The controller
-/// cannot be asked.
-class IdealLedState {
-  final bool on;
-  final int colour;
-  final int brightness;
-  const IdealLedState({
-    this.on = true,
-    this.colour = 0xFFFFFF,
-    this.brightness = 100,
-  });
-
-  IdealLedState copyWith({bool? on, int? colour, int? brightness}) =>
-      IdealLedState(
-        on: on ?? this.on,
-        colour: colour ?? this.colour,
-        brightness: brightness ?? this.brightness,
-      );
-}
-
-final Map<String, IdealLedState> idealLedSet = {};
-
 /// Setting names [IdealLedDriver.control] understands.
 abstract final class LightSetting {
   static const on = 'on'; // bool
-  static const colour = 'colour'; // int 0xRRGGBB
-  static const brightness = 'brightness'; // int 0..100
+  /// `{'rgb': 0xRRGGBB, 'brightness': 1..100}`: the whole look at once, so
+  /// any screen can send it without knowing what another one set.
+  static const colour = 'colour';
+  static const brightness = 'brightness'; // reading only, percent
 }
 
-List<Reading> _readings(IdealLedState? s) => s == null
-    ? const []
-    : [
-        Reading(LightSetting.on, s.on),
-        Reading(
-          LightSetting.colour,
-          '#${s.colour.toRadixString(16).padLeft(6, '0').toUpperCase()}',
-        ),
-        Reading(LightSetting.brightness, s.brightness, '%'),
-      ];
+String idealLedHex(int rgb) =>
+    '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
 
-Decoded _decoded(String id, String? name) => Decoded(
+/// The colour a light was last set to, as its reading holds it.
+int? idealLedRgb(Object? reading) => reading is String && reading.length == 7
+    ? int.tryParse(reading.substring(1), radix: 16)
+    : null;
+
+/// The controller says nothing, so the broadcast only names it; what it was
+/// last set to comes back from the command (and travels to other screens
+/// like any connected reading).
+Decoded _decoded(String? name, [List<Reading> readings = const []]) => Decoded(
   protocol: 'iDeal LED',
   kind: DeviceKind.lights,
   model: 'iDeal LED controller',
-  readings: _readings(idealLedSet[id]),
+  readings: readings,
   info: {
     'module': ?name,
-    'state': 'as last set from this screen; the controller does not report it',
+    'state': 'as last set from Le\'Casa; the controller does not report it',
   },
 );
+
+/// The colour and brightness this screen last sent, by device id, so that
+/// switching back on still shows them.
+final Map<String, (int, int)> _lastLook = {};
 
 class IdealLedDecoder implements Decoder {
   const IdealLedDecoder();
@@ -135,7 +119,7 @@ class IdealLedDecoder implements Decoder {
   }
 
   @override
-  Decoded? decode(RawAdvertisement adv) => _decoded(adv.id, adv.name);
+  Decoded? decode(RawAdvertisement adv) => _decoded(adv.name);
 }
 
 class IdealLedDriver implements ControllableDriver {
@@ -156,7 +140,7 @@ class IdealLedDriver implements ControllableDriver {
 
   @override
   Future<Decoded> read(GattSession s, RawAdvertisement adv) async =>
-      _decoded(adv.id, adv.name);
+      _decoded(adv.name);
 
   @override
   Future<Decoded> control(
@@ -164,41 +148,37 @@ class IdealLedDriver implements ControllableDriver {
     RawAdvertisement adv,
     DeviceCommand command,
   ) async {
-    final before = idealLedSet[adv.id] ?? const IdealLedState();
     final v = command.value;
-    final after = switch (command.setting) {
-      LightSetting.on when v is bool => before.copyWith(on: v),
-      LightSetting.colour when v is int => before.copyWith(
-        on: true,
-        colour: v & 0xFFFFFF,
-      ),
-      LightSetting.brightness when v is int => before.copyWith(
-        on: true,
-        brightness: v.clamp(1, 100),
-      ),
-      _ => throw ArgumentError('Unknown setting $command'),
-    };
     final tx = s.require(idealLedWrite, 'iDeal LED command');
     final rx = s.require(idealLedNotify, 'iDeal LED ack');
     final acks = (await s.subscribe(rx)).map(idealLedDecrypt);
-    if (command.setting == LightSetting.on) {
-      await _send(s, tx, acks, 'TURN', idealLedPower(after.on));
-    } else {
-      // A colour or brightness on a strip that is off turns it on, as the
-      // app does.
-      if (!before.on) {
+    switch (command.setting) {
+      case LightSetting.on when v is bool:
+        await _send(s, tx, acks, 'TURN', idealLedPower(v));
+        final look = _lastLook[adv.id];
+        return _decoded(adv.name, [
+          Reading(LightSetting.on, v),
+          if (look != null) ...[
+            Reading(LightSetting.colour, idealLedHex(look.$1)),
+            Reading(LightSetting.brightness, look.$2, '%'),
+          ],
+        ]);
+      case LightSetting.colour when v is Map:
+        final rgb = (v['rgb'] as num? ?? 0xFFFFFF).toInt() & 0xFFFFFF;
+        final pct = (v['brightness'] as num? ?? 100).toInt().clamp(1, 100);
+        // A colour on a dark strip turns it on, as the app does; sending
+        // TURN first does no harm when it is already on.
         await _send(s, tx, acks, 'TURN', idealLedPower(true));
-      }
-      await _send(
-        s,
-        tx,
-        acks,
-        'SGLS',
-        idealLedColour(after.colour, after.brightness),
-      );
+        await _send(s, tx, acks, 'SGLS', idealLedColour(rgb, pct));
+        _lastLook[adv.id] = (rgb, pct);
+        return _decoded(adv.name, [
+          const Reading(LightSetting.on, true),
+          Reading(LightSetting.colour, idealLedHex(rgb)),
+          Reading(LightSetting.brightness, pct, '%'),
+        ]);
+      default:
+        throw ArgumentError('Unknown setting $command');
     }
-    idealLedSet[adv.id] = after;
-    return _decoded(adv.id, adv.name);
   }
 
   /// Writes one command and waits for its ack ("TURNOK"); a second try if

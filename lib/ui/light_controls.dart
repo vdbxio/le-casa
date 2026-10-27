@@ -11,7 +11,7 @@ import '../drivers/ideal_led.dart';
 
 /// Power, brightness and a few colours for an LED strip controller. The
 /// controller cannot be asked what it is showing, so this starts from what
-/// Le'Casa last set.
+/// Le'Casa last set it to, from any screen.
 class LightControls extends StatefulWidget {
   final String id;
   final Decoded state;
@@ -72,7 +72,7 @@ class _LightControlsState extends State<LightControls> {
     final on = _value(LightSetting.on) == true;
     final brightness = (_value(LightSetting.brightness) as num? ?? 100)
         .toDouble();
-    final colour = _value(LightSetting.colour);
+    final rgb = idealLedRgb(_value(LightSetting.colour));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -80,7 +80,7 @@ class _LightControlsState extends State<LightControls> {
           contentPadding: EdgeInsets.zero,
           title: const Text('Power'),
           subtitle: Text(
-            _sending ? 'Sending…' : 'Shows what this screen last set',
+            _sending ? 'Sending…' : 'Shows what Le\'Casa last set',
           ),
           value: on,
           onChanged: _sending ? null : (v) => _send(LightSetting.on, v),
@@ -100,7 +100,10 @@ class _LightControlsState extends State<LightControls> {
                     : (v) => setState(() => _dragging = v),
                 onChangeEnd: _sending
                     ? null
-                    : (v) => _send(LightSetting.brightness, v.round()),
+                    : (v) => _send(LightSetting.colour, {
+                        'rgb': rgb ?? 0xFFFFFF,
+                        'brightness': v.round(),
+                      }),
               ),
             ),
             const Icon(Icons.brightness_high),
@@ -110,14 +113,19 @@ class _LightControlsState extends State<LightControls> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            for (final (name, rgb) in _colours)
+            for (final (name, colour) in _colours)
               ChoiceChip(
-                avatar: CircleAvatar(backgroundColor: Color(0xFF000000 | rgb)),
+                avatar: CircleAvatar(
+                  backgroundColor: Color(0xFF000000 | colour),
+                ),
                 label: Text(name),
-                selected: on && colour == _hex(rgb),
+                selected: on && rgb == colour,
                 onSelected: _sending
                     ? null
-                    : (_) => _send(LightSetting.colour, rgb),
+                    : (_) => _send(LightSetting.colour, {
+                        'rgb': colour,
+                        'brightness': brightness.round(),
+                      }),
               ),
           ],
         ),
@@ -125,6 +133,3 @@ class _LightControlsState extends State<LightControls> {
     );
   }
 }
-
-String _hex(int rgb) =>
-    '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';

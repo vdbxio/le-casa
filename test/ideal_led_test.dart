@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lecasa/ble/device_tracker.dart';
 import 'package:lecasa/ble/gatt_session.dart';
 import 'package:lecasa/decoders/decoded.dart';
 import 'package:lecasa/decoders/raw_advertisement.dart';
@@ -19,8 +20,6 @@ void main() {
     name: 'ISP-820ED3',
     manufacturerData: {0x5254: '0000'},
   );
-
-  setUp(idealLedSet.clear);
 
   String enc(Uint8List p) => hex(idealLedEncrypt(p), sep: '');
 
@@ -75,40 +74,44 @@ void main() {
     },
   );
 
-  test('a colour on a dark strip turns it on first', () async {
+  test('a colour turns the strip on first and reports the look', () async {
     final writes = <Uint8List>[];
     final s = session(writes);
     const d = IdealLedDriver();
-    await d.control(s, strip, const DeviceCommand('on', false));
     final out = await d.control(
       s,
       strip,
-      const DeviceCommand('colour', 0x00FF00),
+      const DeviceCommand('colour', {'rgb': 0x0000FF, 'brightness': 50}),
     );
-    expect(writes.map((w) => ascii.decode(w.sublist(1, 5))), [
-      'TURN',
-      'TURN',
-      'SGLS',
-    ]);
-    expect(writes[1][5], 1);
+    expect(writes.map((w) => ascii.decode(w.sublist(1, 5))), ['TURN', 'SGLS']);
+    expect(writes[0][5], 1);
+    expect(writes[1].sublist(9, 12), [0, 0, 127]);
     final r = {for (final x in out.readings) x.label: x.value};
-    expect(r['on'], isTrue);
-    expect(r['colour'], '#00FF00');
-    expect(r['brightness'], 100);
-    // The next broadcast shows the same.
-    expect(const IdealLedDecoder().decode(strip)!.readings.first.value, isTrue);
+    expect(r, {'on': true, 'colour': '#0000FF', 'brightness': 50});
+    expect(idealLedRgb(r['colour']), 0x0000FF);
+    // The broadcast only names it.
+    expect(const IdealLedDecoder().decode(strip)!.readings, isEmpty);
   });
 
-  test('brightness keeps the colour', () async {
+  test('switching off and on keeps the look it was given', () async {
     final writes = <Uint8List>[];
     final s = session(writes);
     const d = IdealLedDriver();
-    await d.control(s, strip, const DeviceCommand('colour', 0x0000FF));
-    await d.control(s, strip, const DeviceCommand('brightness', 50));
-    expect(writes.last.sublist(9, 12), [0, 0, 127]);
+    final x = adv(id: 'other', name: 'ISP-000001');
+    var out = await d.control(s, x, const DeviceCommand('on', false));
+    expect(out.readings.map((r) => r.label), ['on']);
+    await d.control(
+      s,
+      x,
+      const DeviceCommand('colour', {'rgb': 0xFF0000, 'brightness': 80}),
+    );
+    out = await d.control(s, x, const DeviceCommand('on', true));
+    expect(writes.last[5], 1);
+    final r = {for (final y in out.readings) y.label: y.value};
+    expect(r, {'on': true, 'colour': '#FF0000', 'brightness': 80});
   });
 
-  test('no ack after two tries is an error and changes nothing', () async {
+  test('no ack after two tries is an error', () async {
     final writes = <Uint8List>[];
     await expectLater(
       const IdealLedDriver().control(
@@ -119,6 +122,21 @@ void main() {
       throwsA(anything),
     );
     expect(writes, hasLength(2));
-    expect(idealLedSet, isEmpty);
   }, timeout: const Timeout(Duration(seconds: 15)));
+
+  test('the last command, from any screen, is what the light shows', () {
+    final t = DeviceTracker(DecoderRegistry.standard());
+    t.onAdvertisement(strip);
+    expect(t['led']!.view!.readings, isEmpty);
+    t.setPolled(
+      'led',
+      Decoded(
+        protocol: 'iDeal LED',
+        kind: DeviceKind.lights,
+        model: 'iDeal LED controller',
+        readings: const [Reading('on', true)],
+      ),
+    );
+    expect(t['led']!.view!.readings.single.value, isTrue);
+  });
 }

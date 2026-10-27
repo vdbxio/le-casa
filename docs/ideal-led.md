@@ -18,8 +18,9 @@ Tested on Chloe's ISP-820ED3 (firmware family TR2309R012) on 2026-10-27.
 ## What to know
 
 - The controller never says whether it is on or what colour it shows.
-  The card and the device page show what *this screen* last set. A change
-  from the vendor app or a remote won't show up. Before the first command
+  The card and the device page show what Le'Casa last set it to, from
+  whichever screen sent the command. A change from the vendor app or a
+  remote won't show up. Before the first command
   the card says "Tap to turn on".
 - Only one phone or tablet can be connected to the controller at a time.
   Close the iDeal LED app before you use Le'Casa.

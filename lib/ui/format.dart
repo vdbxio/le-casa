@@ -7,7 +7,8 @@ String ago(DateTime t, [DateTime? now]) {
   if (d.inSeconds < 2) return 'now';
   if (d.inSeconds < 60) return '${d.inSeconds}s ago';
   if (d.inMinutes < 60) return '${d.inMinutes}m ago';
-  return '${d.inHours}h ago';
+  if (d.inHours < 48) return '${d.inHours}h ago';
+  return '${d.inDays}d ago';
 }
 
 String clock(DateTime t) =>

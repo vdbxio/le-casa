@@ -39,6 +39,9 @@ class TrackedDevice {
 
   /// True for a device this screen only knows from another screen.
   bool remoteOnly = false;
+
+  /// The name the person gave it, shared by every screen in the home.
+  String? label;
   final DateTime firstSeen;
   int packets = 1;
   String? lastPacketId;
@@ -62,7 +65,14 @@ class TrackedDevice {
   /// broadcast when it carries one (iOS hides MACs; stock Xiaomi and pvvx
   /// send theirs).
   String? get mac =>
-      latest.macString ?? decoded?.info['mac'] ?? polled?.info['mac'];
+      latest.macString ??
+      decoded?.info['mac'] ??
+      polled?.info['mac'] ??
+      learnedMac;
+
+  /// The MAC another screen (Android) knows this device by, once a reading
+  /// from it matched this device. Lets iOS name and match it the same way.
+  String? learnedMac;
 
   String get title => view?.model ?? latest.name ?? 'Unknown device';
 
@@ -85,7 +95,36 @@ class DeviceTracker extends ChangeNotifier {
   final Map<String, TrackedDevice> _devices = {};
   int totalPackets = 0;
 
+  /// The name the person gave a device, from whoever keeps the names.
+  String? Function(String id) labelFor = (_) => null;
+
+  /// The name a device advertised before, as this screen or another one
+  /// saved it (with its key, PIN or Read by choice). For a device whose
+  /// adverts carry no name until a scan response comes, or never while it
+  /// is held open, so its automatic name does not change.
+  String? Function(String id) nameFor = (_) => null;
+
   DeviceTracker(this.registry);
+
+  /// Picks up renamed devices after [labelFor] changed, and names learnt
+  /// through [nameFor].
+  void relabel() {
+    var changed = false;
+    for (final d in _devices.values) {
+      if (d.latest.name == null) {
+        final n = nameFor(d.id);
+        if (n != null) {
+          d.latest = d.latest.withName(n);
+          changed = true;
+        }
+      }
+      final l = labelFor(d.id);
+      if (l == d.label) continue;
+      d.label = l;
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
 
   /// All devices in the order they were first heard. Insertion order of the
   /// map, so a device never moves once it is on screen.
@@ -135,9 +174,18 @@ class DeviceTracker extends ChangeNotifier {
   }) {
     var d = _devices[id];
     if (d == null) {
-      d = TrackedDevice(
-        RawAdvertisement(id: id, rssi: 0, seenAt: at, name: name, mac: mac),
-      )..remoteOnly = true;
+      d =
+          TrackedDevice(
+              RawAdvertisement(
+                id: id,
+                rssi: 0,
+                seenAt: at,
+                name: name,
+                mac: mac,
+              ),
+            )
+            ..remoteOnly = true
+            ..label = labelFor(id);
       _devices[id] = d;
     } else if (d.polledAt != null && !at.isAfter(d.polledAt!)) {
       return;
@@ -149,28 +197,55 @@ class DeviceTracker extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Remembers the MAC another screen knows [id] by, when this screen does
+  /// not know one itself.
+  void learnMac(String id, String mac) {
+    final d = _devices[id];
+    if (d == null || d.mac != null) return;
+    d.learnedMac = mac;
+    notifyListeners();
+  }
+
   /// Forgets a device that only another screen told us about, once it
   /// turns out to be one this screen hears under its own id.
-  void removeRemote(String id) {
+  /// [movedTo] is this screen's own id for it, which [find] then answers
+  /// for the old one.
+  void removeRemote(String id, {String? movedTo}) {
     if (_devices[id]?.remoteOnly ?? false) {
       _devices.remove(id);
+      if (movedTo != null) _movedTo[id] = movedTo;
       notifyListeners();
     }
   }
 
+  final Map<String, String> _movedTo = {};
+
   TrackedDevice? operator [](String id) => _devices[id];
+
+  /// The device a saved id means, for a dashboard card placed under
+  /// another id for it: one known through another screen that has since
+  /// been heard here, or one placed by its MAC that this screen knows
+  /// only through another screen (iOS ids hide the MAC).
+  TrackedDevice? find(String id) {
+    final d = _devices[id] ?? _devices[_movedTo[id]];
+    if (d != null) return d;
+    if (parseMac(id) == null) return null;
+    return _devices.values.where((d) => d.mac == id).firstOrNull;
+  }
 
   void onAdvertisement(RawAdvertisement raw) {
     totalPackets++;
     var d = _devices[raw.id];
     // Keep the last known name: many devices only send it in every other
     // packet, and a name that flickers makes the list unreadable.
-    final adv = (raw.name == null && d?.latest.name != null)
-        ? raw.withName(d!.latest.name)
-        : raw;
+    // A device heard for the first time since the app started may send
+    // its name later, or not at all while it is held open.
+    final name = raw.name ?? (d == null ? nameFor(raw.id) : d.latest.name);
+    final adv = name == raw.name ? raw : raw.withName(name);
     final decoded = registry.decode(adv);
     if (d == null) {
       _devices[adv.id] = TrackedDevice(adv)
+        ..label = labelFor(adv.id)
         ..decoded = decoded
         ..lastRecognised = decoded == null ? null : adv
         ..recent.add(adv)

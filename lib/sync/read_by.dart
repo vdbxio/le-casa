@@ -7,9 +7,11 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Which screen reads one device over a connection: a screen that the
-/// person locked it to, or none (automatic). Shared by every screen in a
-/// home, merged like keys: the newest choice wins.
+/// What the person chose for one device, shared by every screen in a home:
+/// which screen reads it over a connection (one they locked it to, or none
+/// for automatic), whether screens may connect at all, and the name they
+/// gave it. The choice and the name are merged separately, newest wins, so
+/// a rename on one screen and a lock on another both stick.
 class ReadByRecord {
   final String id;
   final String? name;
@@ -26,7 +28,18 @@ class ReadByRecord {
   /// the home (true) or turned it off (false). Null when nobody has said.
   final bool? connect;
 
-  /// Milliseconds since the epoch.
+  /// The name the person gave the device, or null for the one Le'Casa
+  /// makes up. Never used to find the device on another screen.
+  final String? label;
+
+  /// When [screen] and [connect] were last chosen, in milliseconds since
+  /// the epoch.
+  final int choiceAt;
+
+  /// When [label] was last set (or cleared).
+  final int labelAt;
+
+  /// The newest of the two: what screens compare to see what is news.
   final int at;
 
   const ReadByRecord(
@@ -37,8 +50,11 @@ class ReadByRecord {
     this.screen,
     this.screenName,
     this.connect,
+    this.label,
+    int? choiceAt,
+    this.labelAt = 0,
     this.at = 0,
-  });
+  }) : choiceAt = choiceAt ?? at;
 
   Map<String, Object?> toJson() => {
     'id': id,
@@ -48,6 +64,9 @@ class ReadByRecord {
     's': ?screen,
     'sn': ?screenName,
     'c': ?connect,
+    'l': ?label,
+    'ca': choiceAt,
+    'la': labelAt,
     'at': at,
   };
 
@@ -59,6 +78,9 @@ class ReadByRecord {
     screen: j['s'] as String?,
     screenName: j['sn'] as String?,
     connect: j['c'] as bool?,
+    label: j['l'] as String?,
+    choiceAt: (j['ca'] as num?)?.toInt(),
+    labelAt: (j['la'] as num?)?.toInt() ?? 0,
     at: (j['at'] as num?)?.toInt() ?? 0,
   );
 }
@@ -67,6 +89,11 @@ class ReadByStore extends ChangeNotifier {
   static const _key = 'sync:readby';
   SharedPreferences? _prefs;
   final Map<String, ReadByRecord> _records = {};
+
+  /// The newest time stamped or taken, so two changes in one millisecond
+  /// still get different times: screens send only what is newer than what
+  /// they last sent, and a tie would never leave.
+  int _last = 0;
 
   ReadByStore();
 
@@ -79,6 +106,7 @@ class ReadByStore extends ChangeNotifier {
       for (final j in jsonDecode(p.getString(_key) ?? '[]') as List) {
         final r = ReadByRecord.fromJson((j as Map).cast());
         _records[r.id] = r;
+        _last = _max(_last, r.at);
       }
     } catch (_) {}
     notifyListeners();
@@ -95,8 +123,43 @@ class ReadByStore extends ChangeNotifier {
   /// Whether the person said screens may connect to [id], or null.
   bool? connectOf(String id) => _records[id]?.connect;
 
+  /// The name the person gave [id], or null.
+  String? labelOf(String id) => _records[id]?.label;
+
+  /// The name [id] advertised when its record was last saved, or null.
+  String? nameOf(String id) => _records[id]?.name;
+
+  /// Names [id], or clears its name with null or an empty one. Keeps its
+  /// lock and connect choice.
+  Future<void> setLabel(
+    String id,
+    String? label, {
+    String? name,
+    String? mac,
+    String? fp,
+  }) {
+    final r = _records[id];
+    final now = _stamp();
+    final clean = label?.trim();
+    return _put(
+      ReadByRecord(
+        id,
+        name: name ?? r?.name,
+        mac: mac ?? r?.mac,
+        fp: fp ?? r?.fp,
+        screen: r?.screen,
+        screenName: r?.screenName,
+        connect: r?.connect,
+        choiceAt: r?.choiceAt ?? 0,
+        label: clean == null || clean.isEmpty ? null : clean,
+        labelAt: now,
+        at: now,
+      ),
+    );
+  }
+
   /// Locks [id] to a screen, or back to automatic with null. [connect]
-  /// left out keeps what was chosen before.
+  /// left out keeps what was chosen before, and so is its name.
   Future<void> set(
     String id, {
     String? screen,
@@ -105,18 +168,25 @@ class ReadByStore extends ChangeNotifier {
     String? mac,
     String? fp,
     bool? connect,
-  }) => _put(
-    ReadByRecord(
-      id,
-      name: name,
-      mac: mac,
-      fp: fp,
-      screen: screen,
-      screenName: screenName,
-      connect: connect ?? _records[id]?.connect,
-      at: DateTime.now().millisecondsSinceEpoch,
-    ),
-  );
+  }) {
+    final r = _records[id];
+    final now = _stamp();
+    return _put(
+      ReadByRecord(
+        id,
+        name: name ?? r?.name,
+        mac: mac ?? r?.mac,
+        fp: fp ?? r?.fp,
+        screen: screen,
+        screenName: screenName,
+        connect: connect ?? r?.connect,
+        choiceAt: now,
+        label: r?.label,
+        labelAt: r?.labelAt ?? 0,
+        at: now,
+      ),
+    );
+  }
 
   /// Lets screens connect to [id], or not, keeping its lock.
   Future<void> setConnect(
@@ -138,22 +208,29 @@ class ReadByStore extends ChangeNotifier {
     );
   }
 
-  /// Takes a choice made on another screen, stored under [asId] (this
-  /// screen's id for the device). Returns whether it changed anything.
+  /// Takes a record from another screen, stored under [asId] (this
+  /// screen's id for the device). The choice and the name each come from
+  /// whichever side set them last. Returns whether it changed anything.
   Future<bool> apply(ReadByRecord r, {String? asId}) async {
     final id = asId ?? r.id;
     final mine = _records[id];
-    if (mine != null && r.at <= mine.at) return false;
+    final choice = mine == null || r.choiceAt > mine.choiceAt ? r : mine;
+    final named = mine == null || r.labelAt > mine.labelAt ? r : mine;
+    if (identical(choice, mine) && identical(named, mine)) return false;
+    final newer = mine == null || r.at > mine.at ? r : mine;
     await _put(
       ReadByRecord(
         id,
-        name: r.name,
-        mac: r.mac,
-        fp: r.fp,
-        screen: r.screen,
-        screenName: r.screenName,
-        connect: r.connect ?? mine?.connect,
-        at: r.at,
+        name: newer.name ?? mine?.name ?? r.name,
+        mac: newer.mac ?? mine?.mac ?? r.mac,
+        fp: newer.fp ?? mine?.fp ?? r.fp,
+        screen: choice.screen,
+        screenName: choice.screenName,
+        connect: choice.connect ?? mine?.connect,
+        choiceAt: choice.choiceAt,
+        label: named.label,
+        labelAt: named.labelAt,
+        at: newer.at,
       ),
     );
     return true;
@@ -170,8 +247,12 @@ class ReadByStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  int _stamp() =>
+      _last = _max(DateTime.now().millisecondsSinceEpoch, _last + 1);
+
   Future<void> _put(ReadByRecord r) async {
     _records[r.id] = r;
+    _last = _max(_last, r.at);
     await _prefs?.setString(
       _key,
       jsonEncode([for (final r in _records.values) r.toJson()]),
@@ -179,3 +260,5 @@ class ReadByStore extends ChangeNotifier {
     notifyListeners();
   }
 }
+
+int _max(int a, int b) => a > b ? a : b;

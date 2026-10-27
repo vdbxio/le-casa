@@ -10,6 +10,7 @@ import '../app.dart';
 import '../ble/connection_manager.dart';
 import '../ble/device_tracker.dart';
 import '../bms/registry.dart';
+import '../dashboard/catalog.dart' show autoDeviceName, deviceName;
 import '../decoders/decoded.dart';
 import '../decoders/raw_advertisement.dart';
 import 'format.dart';
@@ -19,7 +20,10 @@ import 'fridge_controls.dart';
 /// and the encryption key field for Victron / encrypted BTHome devices.
 class DevicePage extends StatefulWidget {
   final String id;
-  const DevicePage({super.key, required this.id});
+
+  /// Shown beside the devices list instead of as its own page.
+  final bool embedded;
+  const DevicePage({super.key, required this.id, this.embedded = false});
 
   @override
   State<DevicePage> createState() => _DevicePageState();
@@ -89,7 +93,7 @@ class _DevicePageState extends State<DevicePage> {
         final dev = services.tracker[widget.id];
         if (dev == null) {
           return Scaffold(
-            appBar: AppBar(),
+            appBar: AppBar(automaticallyImplyLeading: !widget.embedded),
             body: const Center(child: Text('Device gone')),
           );
         }
@@ -107,22 +111,49 @@ class _DevicePageState extends State<DevicePage> {
             dev.polled?.protocol == 'Xiaomi (connected)' ||
             hasKey;
         final hasPin = services.keys.secretFor(widget.id) != null;
+        // iOS knows devices by its own id, not a MAC: show it beside the
+        // name where there is room, else with the other details.
+        final platformId = parseMac(a.id) == null;
+        final idInHeader =
+            platformId && MediaQuery.sizeOf(context).width >= 600;
         return Scaffold(
-          appBar: AppBar(title: Text(dev.title)),
+          appBar: AppBar(
+            automaticallyImplyLeading: !widget.embedded,
+            title: _NameTitle(key: ValueKey(widget.id), device: dev),
+            actions: [
+              if (idInHeader)
+                Padding(
+                  padding: const EdgeInsets.only(left: 12, right: 16),
+                  child: SelectableText(
+                    a.id,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      fontFamily: 'monospace',
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+            ],
+          ),
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _kv('Id', a.id),
-              // iOS ids hide the MAC; some devices send it in their
-              // broadcasts, which is what matches them to their keys.
-              if (dev.mac case final mac? when mac != a.id) _kv('MAC', mac),
-              if (a.name != null) _kv('Advertised name', a.name!),
-              _kv('Signal', '${a.rssi} dBm'),
-              _kv('Last seen', ago(a.seenAt)),
-              _kv(
-                'Packets',
-                '${dev.packets} (${dev.rate.toStringAsFixed(1)}/min)',
-              ),
+              _InfoChips([
+                if (!idInHeader) (platformId ? 'Id' : 'MAC', a.id),
+                // iOS ids hide the MAC; some devices send it in their
+                // broadcasts, or another screen knows it.
+                if (dev.mac case final mac? when mac != a.id) ('MAC', mac),
+                if (a.name case final name? when name != deviceName(dev))
+                  ('Advertised', name),
+                ('Signal', '${a.rssi} dBm'),
+                // A device held open stops advertising: its last read is
+                // what says it is alive.
+                if (dev.polledAt case final at?) ('Read', ago(at)),
+                ('Seen', ago(a.seenAt)),
+                (
+                  'Packets',
+                  '${dev.packets} · ${dev.rate.toStringAsFixed(1)}/min',
+                ),
+              ]),
               if (link != null) ...[
                 const Divider(height: 32),
                 _ConnectionSection(link: link, device: dev),
@@ -134,9 +165,15 @@ class _DevicePageState extends State<DevicePage> {
                 Text('Connection', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 4),
                 Text(
-                  '${dev.polledBy} is connected to it and shares what it '
-                  'reads. This screen cannot hear the device itself right '
-                  'now.',
+                  DateTime.now().difference(dev.polledAt!) <
+                          const Duration(minutes: 5)
+                      ? '${dev.polledBy} is connected to it and shares what '
+                            'it reads. This screen cannot hear the device '
+                            'itself right now.'
+                      : '${dev.polledBy} last read it '
+                            '${ago(dev.polledAt!)}. Nothing has heard it '
+                            'since: it may be off, out of range, or held by '
+                            'another app.',
                   style: theme.textTheme.bodySmall,
                 ),
                 _ReadBy(id: widget.id),
@@ -446,10 +483,14 @@ class _ConnectionSection extends StatelessWidget {
         Text('Connection', style: theme.textTheme.titleMedium),
         const SizedBox(height: 4),
         Text(
-          '${link.driver.name} driver. Le\'Casa connects every '
-          '${_duration(link.driver.interval)}, reads, and disconnects so the '
-          'device stays free for its own app in between. Only one app can be '
-          'connected at a time.',
+          connections.isLive(link.id)
+              ? '${link.driver.name} driver. Le\'Casa stays connected and '
+                    'reads every few seconds. Only one app can be connected '
+                    'at a time.'
+              : '${link.driver.name} driver. Le\'Casa connects every '
+                    '${_duration(link.driver.interval)}, reads, and '
+                    'disconnects so the device stays free for its own app in '
+                    'between. Only one app can be connected at a time.',
           style: theme.textTheme.bodySmall,
         ),
         SwitchListTile(
@@ -478,7 +519,7 @@ class _ConnectionSection extends StatelessWidget {
           ),
         if (!connections.enabled)
           Text(
-            'Connections are paused globally (see the scan screen menu).',
+            'Connections are paused for every device (the link button above the devices list).',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.tertiary,
             ),
@@ -559,6 +600,145 @@ class _ReadBy extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// The device's name, tap to change it. Every screen in the home takes the
+/// new name; an empty one goes back to the name Le'Casa makes up.
+class _NameTitle extends StatefulWidget {
+  final TrackedDevice device;
+  const _NameTitle({super.key, required this.device});
+
+  @override
+  State<_NameTitle> createState() => _NameTitleState();
+}
+
+class _NameTitleState extends State<_NameTitle> {
+  final _ctl = TextEditingController();
+  final _focus = FocusNode();
+  bool _editing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() {
+      if (!_focus.hasFocus && _editing) _save();
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctl.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _edit() {
+    _ctl.text = widget.device.label ?? '';
+    setState(() => _editing = true);
+    _focus.requestFocus();
+  }
+
+  void _save() {
+    final text = _ctl.text.trim();
+    setState(() => _editing = false);
+    if (text == (widget.device.label ?? '')) return;
+    AppServices.of(context).sync.rename(
+      widget.device.id,
+      text.isEmpty || text == autoDeviceName(widget.device) ? null : text,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.device;
+    if (_editing) {
+      return TextField(
+        controller: _ctl,
+        focusNode: _focus,
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _save(),
+        style: Theme.of(context).textTheme.titleLarge,
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: autoDeviceName(d),
+          helperText: 'Empty uses the automatic name',
+          suffixIcon: IconButton(
+            tooltip: 'Save name',
+            icon: const Icon(Icons.check),
+            onPressed: _save,
+          ),
+        ),
+      );
+    }
+    return Tooltip(
+      message: 'Rename',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: _edit,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  deviceName(d),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.edit_outlined,
+                size: 18,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The basic facts about a device on one line that scrolls sideways.
+class _InfoChips extends StatelessWidget {
+  final List<(String, String)> items;
+  const _InfoChips(this.items);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final (k, v) in items)
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: '$k  ',
+                      style: TextStyle(color: scheme.onSurfaceVariant),
+                    ),
+                    TextSpan(text: v),
+                  ],
+                ),
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

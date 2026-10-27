@@ -75,8 +75,17 @@ double minExtent(CardBox b, SplitAxis axis) {
   }
 }
 
+/// Boxes that keep their own height in a stack: a title, a chip, a note,
+/// or a row made only of those (the title with the state beside it).
 bool _fixed(CardBox b, SplitAxis axis) =>
-    axis == SplitAxis.vertical && b is BoxPart && (b.kind?.fixed ?? false);
+    axis == SplitAxis.vertical &&
+    switch (b) {
+      BoxPart(:final kind) => kind?.fixed ?? false,
+      BoxSplit(axis: SplitAxis.horizontal, :final children) => children.every(
+        (c) => _fixed(c, axis),
+      ),
+      _ => false,
+    };
 
 /// Where every box of [t] goes in [area]. Boxes that do not fit drop out
 /// from the end of their stack, so the top of the card stays; with
@@ -276,6 +285,22 @@ class TemplateCard extends StatelessWidget {
                   ),
                 if (edit != null)
                   for (final s in plan.seams) _handle(c, s, edit),
+                // Cards built without a message box still say why they
+                // are faded.
+                if (edit == null &&
+                    model.quiet != null &&
+                    !shown.contains(PartKind.note))
+                  Positioned(
+                    right: 10,
+                    bottom: 8,
+                    left: 10,
+                    child: IgnorePointer(
+                      child: Align(
+                        alignment: Alignment.bottomRight,
+                        child: _QuietBadge(model.quiet!, c),
+                      ),
+                    ),
+                  ),
               ],
             );
           },
@@ -395,25 +420,12 @@ class TemplateCard extends StatelessWidget {
             final size = math.min(110.0, math.max(20.0, box.maxHeight * 0.86));
             return Align(
               alignment: _align(align, y: 0.4),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: _align(align),
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(text: m.value, style: numberStyle(size, c.ink)),
-                      if (m.unit.isNotEmpty)
-                        TextSpan(
-                          text: ' ${m.unit}',
-                          style: numberStyle(
-                            size * 0.42,
-                            c.muted,
-                          ).copyWith(fontWeight: FontWeight.w500),
-                        ),
-                    ],
-                  ),
-                  maxLines: 1,
-                ),
+              child: BigNumber(
+                m.value,
+                m.unit,
+                size: size,
+                color: c.ink,
+                unit: c.muted,
               ),
             );
           },
@@ -659,3 +671,28 @@ class _EditableBox extends StatelessWidget {
 bool _samePath(NodePath a, NodePath b) =>
     a.length == b.length &&
     [for (var i = 0; i < a.length; i++) a[i] == b[i]].every((x) => x);
+
+/// "Not heard for 5h", over a faded card that has no message box.
+class _QuietBadge extends StatelessWidget {
+  final String text;
+  final LeColors c;
+  const _QuietBadge(this.text, this.c);
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: c.card,
+      borderRadius: BorderRadius.circular(999),
+      border: Border.all(color: c.muted.withValues(alpha: 0.4)),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: 12, color: c.ink),
+      ),
+    ),
+  );
+}

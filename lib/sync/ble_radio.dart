@@ -22,6 +22,44 @@ import 'framing.dart';
 import 'home.dart';
 import 'radio.dart';
 
+/// Largest sync chunk, in bytes. It fits one link-layer packet (251 bytes
+/// with data length extension, less the L2CAP and ATT headers). The M10's
+/// link to an iPhone stalled on a 512-byte write, which the stack splits
+/// over several packets, and the disconnect that followed took its
+/// Bluetooth down (2026-10-26).
+const syncChunkMax = 180;
+
+/// How long a link this screen gave up on may wait for its last write to
+/// finish before it is disconnected.
+const _settleBeforeDisconnect = Duration(minutes: 2);
+
+/// Disconnects once [inFlight] has settled. A write that never answers
+/// means the radio is stuck, and a disconnect sent then timed out on the
+/// M10 and crashed its Bluetooth stack. If the write is still stuck after
+/// [settle], the link is left for the other screen or the
+/// link supervision timeout to drop. Returns whether it disconnected.
+@visibleForTesting
+Future<bool> disconnectWhenIdle(
+  Future<void>? inFlight,
+  Future<void> Function() disconnect,
+  String what, {
+  Duration settle = _settleBeforeDisconnect,
+}) async {
+  if (inFlight != null) {
+    try {
+      await inFlight.timeout(settle);
+    } on TimeoutException {
+      debugPrint('sync: $what still stuck, not disconnecting it');
+      return false;
+    } catch (_) {
+      // Failed rather than stuck: the radio answered, so disconnecting is
+      // safe.
+    }
+  }
+  await disconnect();
+  return true;
+}
+
 class BleSyncRadio implements SyncRadio {
   final BleScanner scanner;
   PeripheralManager? _pmInstance;
@@ -265,8 +303,15 @@ class BleSyncRadio implements SyncRadio {
     }
     final again = _links[key];
     if (again != null && !again.isClosed) return again;
-    final link = _links[key] = _CentralLink(_pm, c, _tx!, max.clamp(20, 512));
-    debugPrint('sync server: ${c.uuid} linked, chunks of $max');
+    final link = _links[key] = _CentralLink(
+      _pm,
+      c,
+      _tx!,
+      max.clamp(20, syncChunkMax),
+    );
+    debugPrint(
+      'sync server: ${c.uuid} linked, chunks of ${link.maxChunk} (MTU allows $max)',
+    );
     _incoming.add(MessageLink(link));
     return link;
   }
@@ -305,6 +350,11 @@ class BleSyncRadio implements SyncRadio {
   Future<MessageLink> _connect(PeerSighting peer) async {
     final p = scanner.peripheralFor(peer.id);
     if (p == null) throw StateError('Screen not heard yet');
+    if (_GattChunkLink.lingering.contains(p.uuid.toString())) {
+      // Its old link is stuck on a write; dialling again would only add
+      // to what the radio is waiting on.
+      throw StateError('The last link to that screen has not closed yet');
+    }
     // Scanning while connecting is the classic cause of status 133 on
     // cheap tablets; pause it for the connect, as device polls do.
     final wasScanning =
@@ -325,7 +375,7 @@ class BleSyncRadio implements SyncRadio {
         }
       }
     } finally {
-      if (wasScanning) unawaited(scanner.start());
+      if (wasScanning) unawaited(scanner.resume());
     }
     final l = link;
     try {
@@ -333,8 +383,11 @@ class BleSyncRadio implements SyncRadio {
       final tx = l.require(syncTxUuid, 'sync notify');
       final stream = await l.subscribe(tx);
       final max = await l.maxWriteLength();
-      debugPrint('sync: connected to ${peer.id}, chunks of $max');
-      return MessageLink(_GattChunkLink(l, rx, stream, max.clamp(20, 512)));
+      final chunk = max.clamp(20, syncChunkMax);
+      debugPrint(
+        'sync: connected to ${peer.id}, chunks of $chunk (MTU allows $max)',
+      );
+      return MessageLink(_GattChunkLink(l, rx, stream, chunk));
     } catch (_) {
       await l.close();
       rethrow;
@@ -351,6 +404,7 @@ class _CentralLink implements ChunkLink {
   final int maxChunk;
   final _in = StreamController<Uint8List>();
   final _closed = Completer<void>();
+  Future<void>? _inFlight;
 
   _CentralLink(this._pm, this.central, this._tx, this.maxChunk);
 
@@ -365,7 +419,9 @@ class _CentralLink implements ChunkLink {
   @override
   Future<void> sendChunk(Uint8List chunk) {
     if (_closed.isCompleted) throw StateError('Screen gone');
-    return _pm.notifyCharacteristic(central, _tx, value: chunk);
+    return _inFlight = RadioWrites.track(
+      _pm.notifyCharacteristic(central, _tx, value: chunk),
+    );
   }
 
   void _gone() {
@@ -378,11 +434,15 @@ class _CentralLink implements ChunkLink {
   Future<void> close() async {
     if (_closed.isCompleted) return;
     _gone();
-    try {
-      await _pm.disconnect(central);
-    } catch (_) {
-      // iOS cannot drop a central; it goes when it disconnects.
-    }
+    unawaited(
+      disconnectWhenIdle(_inFlight, () async {
+        try {
+          await _pm.disconnect(central);
+        } catch (_) {
+          // iOS cannot drop a central; it goes when it disconnects.
+        }
+      }, 'link from ${central.uuid}'),
+    );
   }
 }
 
@@ -394,12 +454,20 @@ class _GattChunkLink implements ChunkLink {
   @override
   final int maxChunk;
   final _closed = Completer<void>();
+  Future<void>? _inFlight;
+  bool _closing = false;
+
+  /// Screens whose old link is still waiting to be disconnected.
+  static final Set<String> lingering = {};
 
   _GattChunkLink(this._link, this._rx, this._stream, this.maxChunk) {
     _link.onDisconnected.then((_) {
       if (!_closed.isCompleted) _closed.complete();
+      lingering.remove(_id);
     });
   }
+
+  String get _id => _link.peripheral.uuid.toString();
 
   @override
   Stream<Uint8List> get chunks => _stream;
@@ -409,11 +477,23 @@ class _GattChunkLink implements ChunkLink {
 
   @override
   Future<void> sendChunk(Uint8List chunk) =>
-      _link.write(_rx, chunk, withResponse: true);
+      _inFlight = _link.write(_rx, chunk, withResponse: true);
 
   @override
   Future<void> close() async {
+    if (_closing) return;
+    _closing = true;
     if (!_closed.isCompleted) _closed.complete();
-    await _link.close();
+    if (_link.droppedByDevice) {
+      await _link.close();
+      return;
+    }
+    lingering.add(_id);
+    unawaited(
+      disconnectWhenIdle(_inFlight, _link.close, 'link to $_id').then((done) {
+        // Still stuck: it stays lingering until the link drops.
+        if (done) lingering.remove(_id);
+      }),
+    );
   }
 }

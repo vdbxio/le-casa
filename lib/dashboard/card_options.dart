@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart' hide Split;
 
+import '../platform/form_factor.dart';
 import '../ui/palette.dart';
 import '../weather/place_search.dart';
 import '../weather/weather.dart';
@@ -157,6 +158,18 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
             templatePadding.deflateRect(Offset.zero & slot),
           ).hidden.length
         : 0;
+    // A phone stacks the card above its options instead of beside them.
+    final phone = isPhoneSize(MediaQuery.sizeOf(context));
+    final panel = Material(
+      color: c.card,
+      child: _sel != null
+          ? _boxPanel(c, model)
+          : switch (_panel) {
+              _Panel.settings => _settings(c),
+              _Panel.cards => _cards(),
+              _Panel.icons => _icons(c),
+            },
+    );
 
     return Scaffold(
       backgroundColor: c.screen,
@@ -169,14 +182,19 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
               onCancel: () => Navigator.pop(context),
               onReset: spec.type == 'chips' ? null : _reset,
               onDone: _done,
+              compact: phone,
             ),
             Expanded(
-              child: Row(
+              child: Flex(
+                direction: phone ? Axis.vertical : Axis.horizontal,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Expanded(
+                    flex: 2,
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(32, 24, 24, 24),
+                      padding: phone
+                          ? const EdgeInsets.fromLTRB(16, 8, 16, 12)
+                          : const EdgeInsets.fromLTRB(32, 24, 24, 24),
                       child: Column(
                         children: [
                           // The card at its real slot size, zoomed to fill
@@ -202,19 +220,10 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
                       ),
                     ),
                   ),
-                  Material(
-                    color: c.card,
-                    child: SizedBox(
-                      width: 420,
-                      child: _sel != null
-                          ? _boxPanel(c, model)
-                          : switch (_panel) {
-                              _Panel.settings => _settings(c),
-                              _Panel.cards => _cards(),
-                              _Panel.icons => _icons(c),
-                            },
-                    ),
-                  ),
+                  if (phone)
+                    Expanded(flex: 3, child: panel)
+                  else
+                    SizedBox(width: 420, child: panel),
                 ],
               ),
             ),
@@ -790,19 +799,23 @@ class _TopBar extends StatelessWidget {
   final VoidCallback onCancel, onDone;
   final VoidCallback? onReset;
 
+  /// Short labels for a phone.
+  final bool compact;
+
   const _TopBar({
     required this.title,
     required this.slot,
     required this.onCancel,
     required this.onDone,
     this.onReset,
+    this.compact = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final c = LeColors.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+      padding: EdgeInsets.fromLTRB(compact ? 8 : 20, 12, compact ? 8 : 20, 12),
       child: Row(
         children: [
           OutlinedButton(onPressed: onCancel, child: const Text('Cancel')),
@@ -810,22 +823,25 @@ class _TopBar extends StatelessWidget {
             child: Column(
               children: [
                 Text(
-                  'Card options',
+                  compact ? title : 'Card options',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
-                Text(
-                  '$title · slot ${slot.width.round()} × ${slot.height.round()}',
-                  style: TextStyle(fontSize: 12, color: c.muted),
-                ),
+                if (!compact)
+                  Text(
+                    '$title · slot ${slot.width.round()} × ${slot.height.round()}',
+                    style: TextStyle(fontSize: 12, color: c.muted),
+                  ),
               ],
             ),
           ),
           if (onReset != null) ...[
             TextButton(
               onPressed: onReset,
-              child: const Text('Reset to default'),
+              child: Text(compact ? 'Reset' : 'Reset to default'),
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: compact ? 0 : 8),
           ],
           FilledButton(onPressed: onDone, child: const Text('Done')),
         ],

@@ -27,6 +27,10 @@ class KeyRecord {
   final String id;
   final String? name;
   final String? mac;
+
+  /// Manufacturer-data fingerprint, for a device another screen knows by
+  /// neither id, MAC nor name (the Daly: a name on iOS, a MAC on Android).
+  final String? fp;
   final String? value;
 
   /// Milliseconds since the epoch. 0 for entries saved before sync existed.
@@ -37,6 +41,7 @@ class KeyRecord {
     this.id, {
     this.name,
     this.mac,
+    this.fp,
     this.value,
     this.at = 0,
   });
@@ -46,6 +51,7 @@ class KeyRecord {
     'id': id,
     'name': ?name,
     'mac': ?mac,
+    'fp': ?fp,
     'v': value,
     'at': at,
   };
@@ -55,13 +61,17 @@ class KeyRecord {
     '${j['id']}',
     name: j['name'] as String?,
     mac: j['mac'] as String?,
+    fp: j['fp'] as String?,
     value: j['v'] as String?,
     at: (j['at'] as num?)?.toInt() ?? 0,
   );
 }
 
-/// Name and MAC of a device id, as far as this screen knows them.
-typedef DeviceLabel = ({String? name, String? mac}) Function(String id);
+/// Name, MAC and advert fingerprint of a device id, as far as this screen
+/// knows them.
+typedef DeviceLabel = ({String? name, String? mac, String? fp}) Function(
+  String id,
+);
 
 /// Per-device encryption keys (Victron Instant Readout, BTHome bindkeys)
 /// and battery PINs. Keyed by the device id the scanner reports. Screens in
@@ -76,6 +86,10 @@ class KeyStore extends ChangeNotifier {
   /// Sync bookkeeping by "kind:id", tombstones included.
   final Map<String, KeyRecord> _meta = {};
   SharedPreferences? _prefs;
+
+  /// The newest time stamped or taken, so two changes in one millisecond
+  /// still get different times and both reach the other screens.
+  int _last = 0;
 
   /// Fills in a device's name and MAC when a key is saved. Set by the app.
   DeviceLabel? label;
@@ -94,6 +108,7 @@ class KeyStore extends ChangeNotifier {
           final j = jsonDecode(_prefs!.getString(k) ?? '');
           final r = KeyRecord.fromJson((j as Map).cast());
           _meta[_slot(r.kind, r.id)] = r;
+          if (r.at > _last) _last = r.at;
         } catch (_) {}
       }
     }
@@ -167,6 +182,7 @@ class KeyStore extends ChangeNotifier {
           r.id,
           name: r.name,
           mac: r.mac,
+          fp: r.fp,
           at: r.at,
           value: r.value == null
               ? null
@@ -201,19 +217,26 @@ class KeyStore extends ChangeNotifier {
       }
     }
     await _put(
-      KeyRecord(r.kind, id, name: r.name, mac: r.mac, value: v, at: r.at),
+      KeyRecord(
+        r.kind,
+        id,
+        name: r.name,
+        mac: r.mac,
+        fp: r.fp,
+        value: v,
+        at: r.at,
+      ),
     );
     return true;
   }
 
-  KeyRecord _local(SecretKind kind, String id, String? value) => _withLabel(
-    KeyRecord(
-      kind,
-      id,
-      value: value,
-      at: DateTime.now().millisecondsSinceEpoch,
-    ),
-  );
+  KeyRecord _local(SecretKind kind, String id, String? value) =>
+      _withLabel(KeyRecord(kind, id, value: value, at: _stamp()));
+
+  int _stamp() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return _last = now > _last ? now : _last + 1;
+  }
 
   KeyRecord _withLabel(KeyRecord r) {
     final l = label?.call(r.id);
@@ -223,6 +246,7 @@ class KeyStore extends ChangeNotifier {
       r.id,
       name: r.name ?? l.name,
       mac: r.mac ?? l.mac,
+      fp: r.fp ?? l.fp,
       value: r.value,
       at: r.at,
     );
@@ -253,10 +277,12 @@ class KeyStore extends ChangeNotifier {
       r.id,
       name: r.name,
       mac: r.mac,
+      fp: r.fp,
       at: r.at,
       value: v == null ? null : '',
     );
     _meta[_slot(r.kind, r.id)] = meta;
+    if (r.at > _last) _last = r.at;
     await _prefs?.setString(
       '$_metaPrefix${_slot(r.kind, r.id)}',
       jsonEncode(meta.toJson()),

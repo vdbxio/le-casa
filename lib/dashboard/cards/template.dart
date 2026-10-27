@@ -417,7 +417,20 @@ DataPoint? pointById(List<DataPoint> points, String? id) {
 /// the title, the big number with its state, the graph (or ring or split),
 /// and a row of up to three readings.
 CardTemplate defaultTemplate(CardModel m) {
-  final rows = <CardBox>[BoxPart(PartKind.title, 'title')];
+  // The state chip sits at the right end of the title line, so the big
+  // number keeps the full width.
+  final rows = <CardBox>[
+    m.state == null
+        ? BoxPart(PartKind.title, 'title')
+        : BoxSplit(
+            SplitAxis.horizontal,
+            [
+              BoxPart(PartKind.title, 'title'),
+              BoxPart(PartKind.chip, 'state', PartAlign.end),
+            ],
+            [1.6, 1],
+          ),
+  ];
   final weights = <double>[1];
   if (m.headline == null) {
     if (m.note != null) {
@@ -429,31 +442,25 @@ CardTemplate defaultTemplate(CardModel m) {
   final big = BoxPart(PartKind.big, metricId(m.headline!));
   final ring = m.ring != null;
   if (ring) {
+    final beside = [
+      for (final d in m.details.where((d) => !d.minor).take(2))
+        BoxPart(PartKind.reading, metricId(d)),
+    ];
     rows.add(
-      BoxSplit(
-        SplitAxis.horizontal,
-        [
-          BoxPart(PartKind.ring, 'ring'),
-          BoxSplit(SplitAxis.vertical, [
-            if (m.state != null) BoxPart(PartKind.chip, 'state'),
-            for (final d in m.details.where((d) => !d.minor).take(2))
-              BoxPart(PartKind.reading, metricId(d)),
-          ]),
-        ],
-        [1, 1.4],
-      ),
+      beside.isEmpty
+          ? BoxPart(PartKind.ring, 'ring')
+          : BoxSplit(
+              SplitAxis.horizontal,
+              [
+                BoxPart(PartKind.ring, 'ring'),
+                BoxSplit(SplitAxis.vertical, beside),
+              ],
+              [1, 1.4],
+            ),
     );
     weights.add(3);
   } else {
-    rows.add(
-      m.state == null
-          ? big
-          : BoxSplit(
-              SplitAxis.horizontal,
-              [big, BoxPart(PartKind.chip, 'state', PartAlign.end)],
-              [2.2, 1],
-            ),
-    );
+    rows.add(big);
     weights.add(1.6);
   }
   if (m.series != null && !ring) {

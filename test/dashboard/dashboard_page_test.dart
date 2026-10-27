@@ -43,7 +43,13 @@ void main() {
   setUpAll(loadTestFonts);
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  const sizes = [Size(1280, 800), Size(1024, 600), Size(960, 540)];
+  const sizes = [
+    Size(1280, 800),
+    Size(1024, 600),
+    Size(960, 540),
+    // A phone, held upright.
+    Size(390, 844),
+  ];
   final previewDir = Platform.environment['PREVIEW_DIR'];
 
   for (final size in sizes) {
@@ -73,6 +79,7 @@ void main() {
               catalog(
                 CardSources(tracker: tracker, tablet: tablet, weather: weather),
               ),
+              upright: size.height > size.width,
             ),
           );
 
@@ -129,7 +136,11 @@ void main() {
 
           dash.setEditing(true);
           await t.pump();
-          dash.select(const [2, 1]);
+          // The first climate card: third column, or fourth row upright.
+          final climate = size.height > size.width
+              ? const [3, 0]
+              : const [2, 1];
+          dash.select(climate);
           await t.pump();
           await shot('edit');
 
@@ -138,7 +149,7 @@ void main() {
           // cleanly.
           await t.tap(
             find.descendant(
-              of: find.byKey(const ValueKey('2.1')),
+              of: find.byKey(ValueKey(climate.join('.'))),
               matching: find.byTooltip('Card options'),
             ),
           );

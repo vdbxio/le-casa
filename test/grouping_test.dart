@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lecasa/ble/device_tracker.dart';
 import 'package:lecasa/decoders/decoded.dart';
+import 'package:lecasa/decoders/raw_advertisement.dart';
 import 'package:lecasa/decoders/registry.dart';
-import 'package:lecasa/ui/group_tiles.dart';
+import 'package:lecasa/ui/device_rows.dart';
 
 import 'helpers.dart';
 
@@ -84,61 +85,116 @@ void main() {
     expect(primaryReading(solar.decoded!)!.display, '19 W');
   });
 
-  testWidgets('group tile shows count, label and a line per device', (
+  testWidgets('a device row shows the name and the reading that sums it up', (
     tester,
   ) async {
     final t = feed();
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: SizedBox(
-            width: 200,
-            height: 200,
-            child: GroupTile(
-              kind: DeviceKind.climate,
-              devices: t.groups[DeviceKind.climate]!,
-            ),
+          body: DeviceRow(
+            device: t.groups[DeviceKind.climate]!.single,
+            onTap: () {},
           ),
         ),
       ),
     );
-    expect(find.text('Climate'), findsOneWidget);
-    expect(find.text('1'), findsOneWidget);
-    expect(find.text('ATC_8D18B2'), findsOneWidget);
+    expect(find.textContaining('Climate · '), findsOneWidget);
+    expect(find.textContaining('ATC_8D18B2'), findsOneWidget);
     expect(find.text('25.06 °C'), findsOneWidget);
   });
 
-  testWidgets('a small tile with many devices does not overflow', (
+  testWidgets('a Daly waiting for its first read says Connecting', (
     tester,
   ) async {
     final t = DeviceTracker(DecoderRegistry.standard());
-    for (var i = 0; i < 8; i++) {
-      t.onAdvertisement(
-        adv(
-          id: 'x$i',
-          name: 'ATC_$i',
-          serviceData: {0xFCD2: '40 02 ca 09 03 bf 13'},
+    t.onAdvertisement(
+      adv(
+        id: 'daly',
+        name: 'DL-694201312BA',
+        manufacturerData: {0x0402: '16 40 17 10 01 5c'},
+      ),
+    );
+    final d = t['daly']!;
+    expect(d.view?.needs, isNotNull);
+    Future<void> show(bool connecting) => tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DeviceRow(device: d, onTap: () {}, connecting: connecting),
         ),
-      );
-    }
+      ),
+    );
+    await show(false);
+    expect(find.text('Needs setup'), findsOneWidget);
+    await show(true);
+    expect(find.text('Connecting…'), findsOneWidget);
+  });
+
+  testWidgets('a narrow device row does not overflow', (tester) async {
+    final t = DeviceTracker(DecoderRegistry.standard());
+    t.onAdvertisement(
+      adv(
+        id: 'x',
+        name: 'A rather long advertised name for a thermometer',
+        serviceData: {0xFCD2: '40 02 ca 09 03 bf 13'},
+      ),
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: Center(
             child: SizedBox(
-              width: 150,
-              height: 150,
-              child: GroupTile(
-                kind: DeviceKind.climate,
-                devices: t.groups[DeviceKind.climate]!,
-              ),
+              width: 220,
+              child: DeviceRow(device: t['x']!, onTap: () {}),
             ),
           ),
         ),
       ),
     );
     expect(tester.takeException(), isNull);
-    expect(find.text('8'), findsOneWidget);
+  });
+
+  test('a card placed under another id for a device still finds it', () {
+    final t = DeviceTracker(DecoderRegistry.standard());
+    const uuid = '7E48D8DF-E13A-24F8-78D4-C05C53494BA3';
+    const mac = 'D2:19:08:01:C5:61';
+    final reading = Decoded(
+      protocol: 'Daly BMS',
+      model: 'Daly smart BMS',
+      kind: DeviceKind.battery,
+      readings: const [],
+    );
+    // Known only through the iPad, which shares the MAC it learnt.
+    t.setRemote(
+      uuid,
+      decoded: reading,
+      at: DateTime.now(),
+      by: 'iPad',
+      mac: parseMac(mac),
+    );
+    expect(t.find(mac)?.id, uuid);
+    // Then heard here: the stand-in moves to this screen's id.
+    t.onAdvertisement(adv(id: mac, mac: mac, name: 'DL-694201312BA'));
+    t.removeRemote(uuid, movedTo: mac);
+    expect(t.find(uuid)?.id, mac);
+    expect(t.find('nothing'), isNull);
+  });
+
+  test('a device first heard without a name takes the one saved', () {
+    final t = DeviceTracker(DecoderRegistry.standard());
+    t.nameFor = (id) => id == 'daly' ? 'DL-694201312BA' : null;
+    // After a restart, a held-open Daly sends no name at all.
+    t.onAdvertisement(adv(id: 'daly', name: null));
+    expect(t['daly']!.latest.name, 'DL-694201312BA');
+    // A name that arrives from another screen later fills in too.
+    t.onAdvertisement(adv(id: 'xiaomi', name: null));
+    expect(t['xiaomi']!.latest.name, isNull);
+    t.nameFor = (id) => id == 'xiaomi' ? 'LYWSD03MMC' : null;
+    t.relabel();
+    expect(t['xiaomi']!.latest.name, 'LYWSD03MMC');
+    // What the device sends itself wins.
+    t.onAdvertisement(adv(id: 'daly', name: 'DL-NEW'));
+    expect(t['daly']!.latest.name, 'DL-NEW');
   });
 
   test('a packet without a name keeps the name heard earlier', () {

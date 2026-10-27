@@ -90,6 +90,10 @@ class CardModel {
   /// Not heard from for a while: drawn faded with [note] saying so.
   final bool stale;
 
+  /// How long it has been quiet, for a [stale] card: "Not heard for 5h".
+  /// Shown on cards that have no room for [note].
+  final String? quiet;
+
   /// The label of a button under [note] that opens the card's options,
   /// for a card that needs setting up before it can show anything.
   final String? setup;
@@ -112,6 +116,7 @@ class CardModel {
     this.hoursLabel,
     this.note,
     this.stale = false,
+    this.quiet,
     this.setup,
     String? pillLabel,
   }) : pillLabel = pillLabel ?? title;
@@ -132,6 +137,7 @@ class CardModel {
     hoursLabel: hoursLabel,
     note: note,
     stale: stale,
+    quiet: quiet,
     setup: setup,
     pillLabel: pillLabel == this.title ? null : pillLabel,
   );

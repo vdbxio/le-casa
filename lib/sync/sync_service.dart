@@ -1128,7 +1128,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       if (local == e.key) continue;
       _ownerSlotOf.remove(e.key);
       _ownerSlotOf[local] = e.value;
-      tracker.removeRemote(e.key);
+      tracker.removeRemote(e.key, movedTo: local);
       tracker.setRemote(
         local,
         decoded: r.decoded,

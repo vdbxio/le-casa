@@ -236,7 +236,7 @@ String _quiet(DateTime heard, DateTime now, {String what = 'heard'}) =>
 // ---------------------------------------------------------------- devices
 
 CardModel _device(String id, CardSources s, String? savedName) {
-  final d = s.tracker[id];
+  final d = s.tracker.find(id);
   // Right after a restart a placed device may not have been heard, or its
   // first packet may not carry readings yet (Victron sends its name in a
   // separate scan response). Show the name it had when placed.

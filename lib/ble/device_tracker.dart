@@ -208,14 +208,30 @@ class DeviceTracker extends ChangeNotifier {
 
   /// Forgets a device that only another screen told us about, once it
   /// turns out to be one this screen hears under its own id.
-  void removeRemote(String id) {
+  /// [movedTo] is this screen's own id for it, which [find] then answers
+  /// for the old one.
+  void removeRemote(String id, {String? movedTo}) {
     if (_devices[id]?.remoteOnly ?? false) {
       _devices.remove(id);
+      if (movedTo != null) _movedTo[id] = movedTo;
       notifyListeners();
     }
   }
 
+  final Map<String, String> _movedTo = {};
+
   TrackedDevice? operator [](String id) => _devices[id];
+
+  /// The device a saved id means, for a dashboard card placed under
+  /// another id for it: one known through another screen that has since
+  /// been heard here, or one placed by its MAC that this screen knows
+  /// only through another screen (iOS ids hide the MAC).
+  TrackedDevice? find(String id) {
+    final d = _devices[id] ?? _devices[_movedTo[id]];
+    if (d != null) return d;
+    if (parseMac(id) == null) return null;
+    return _devices.values.where((d) => d.mac == id).firstOrNull;
+  }
 
   void onAdvertisement(RawAdvertisement raw) {
     totalPackets++;

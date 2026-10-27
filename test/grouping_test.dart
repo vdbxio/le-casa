@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lecasa/ble/device_tracker.dart';
 import 'package:lecasa/decoders/decoded.dart';
+import 'package:lecasa/decoders/raw_advertisement.dart';
 import 'package:lecasa/decoders/registry.dart';
 import 'package:lecasa/ui/device_rows.dart';
 
@@ -151,6 +152,32 @@ void main() {
       ),
     );
     expect(tester.takeException(), isNull);
+  });
+
+  test('a card placed under another id for a device still finds it', () {
+    final t = DeviceTracker(DecoderRegistry.standard());
+    const uuid = '7E48D8DF-E13A-24F8-78D4-C05C53494BA3';
+    const mac = 'D2:19:08:01:C5:61';
+    final reading = Decoded(
+      protocol: 'Daly BMS',
+      model: 'Daly smart BMS',
+      kind: DeviceKind.battery,
+      readings: const [],
+    );
+    // Known only through the iPad, which shares the MAC it learnt.
+    t.setRemote(
+      uuid,
+      decoded: reading,
+      at: DateTime.now(),
+      by: 'iPad',
+      mac: parseMac(mac),
+    );
+    expect(t.find(mac)?.id, uuid);
+    // Then heard here: the stand-in moves to this screen's id.
+    t.onAdvertisement(adv(id: mac, mac: mac, name: 'DL-694201312BA'));
+    t.removeRemote(uuid, movedTo: mac);
+    expect(t.find(uuid)?.id, mac);
+    expect(t.find('nothing'), isNull);
   });
 
   test('a device first heard without a name takes the one saved', () {

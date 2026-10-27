@@ -49,10 +49,15 @@ class LiveScriptedDriver extends ScriptedDriver implements LiveDriver {
 /// Another screen that wants a device, or not.
 class _Aside implements RemoteLinks {
   String? why;
+  bool locked = false;
+  final sent = <DeviceCommand>[];
+  @override
+  bool lockedElsewhere(String id) => locked;
   @override
   RemoteOwner? ownerOf(String id) => null;
   @override
-  Future<void> control(String id, DeviceCommand command) async {}
+  Future<void> control(String id, DeviceCommand command) async =>
+      sent.add(command);
   @override
   String? standAside(String id) => why;
 }
@@ -302,6 +307,36 @@ void main() {
     await m.control(testAdv.id, const DeviceCommand('power', true));
     expect(m.allows(testAdv.id), isTrue);
     expect(driver.commands.last.value, true);
+    m.dispose();
+  });
+
+  test('control tries a second connect when the first fails', () async {
+    final driver = ControlDriver();
+    var tries = 0;
+    final m = manager(
+      driver,
+      open: (id) async {
+        if (++tries == 1) throw StateError('status 133');
+        return FakeSession(characteristics: const []);
+      },
+    );
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.control(testAdv.id, const DeviceCommand('power', true));
+    expect(tries, 2);
+    expect(driver.commands, hasLength(1));
+    m.dispose();
+  });
+
+  test('a device locked to another screen is controlled there', () async {
+    final driver = ControlDriver();
+    final aside = _Aside()..locked = true;
+    final m = manager(driver)..remote = aside;
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.control(testAdv.id, const DeviceCommand('power', true));
+    expect(aside.sent.single.setting, 'power');
+    expect(driver.commands, isEmpty);
     m.dispose();
   });
 

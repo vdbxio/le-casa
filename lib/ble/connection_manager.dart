@@ -14,6 +14,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../decoders/decoded.dart';
 import '../decoders/raw_advertisement.dart';
 import '../drivers/driver.dart';
 import 'ble_scanner.dart';
@@ -115,6 +116,9 @@ abstract interface class RemoteLinks {
   /// locked to another one, or another one hears it better), or null when
   /// this screen may read it.
   String? standAside(String id);
+
+  /// Whether the person locked [id] to another screen ("Read by").
+  bool lockedElsewhere(String id);
 }
 
 /// Opens a connected, service-discovered session to a device id, or throws.
@@ -414,11 +418,13 @@ class ConnectionManager extends ChangeNotifier {
     final r = remote;
     // A device whose broadcasts carry its state (a plug) has no reader
     // to defer to: whoever is asked connects just for the command.
+    // A device locked to another screen still goes there.
     final broadcasts = tracker[id]?.decoded?.isReadable ?? false;
     if (!here &&
-        !broadcasts &&
         r != null &&
-        (heldElsewhere(id) != null || r.standAside(id) != null)) {
+        (r.lockedElsewhere(id) ||
+            !broadcasts &&
+                (heldElsewhere(id) != null || r.standAside(id) != null))) {
       return r.control(id, command);
     }
     final l = _links[id];
@@ -453,13 +459,30 @@ class ConnectionManager extends ChangeNotifier {
     notifyListeners();
     ClosableSession? link;
     try {
-      link = await _open(id);
-      l.phase = LinkPhase.reading;
-      notifyListeners();
-      final decoded = await driver
-          .control(link, dev.lastRecognised ?? dev.latest, command)
-          .timeout(driver.timeout);
-      tracker.setPolled(id, decoded);
+      // Commands set a state rather than step it, so a second go is safe;
+      // the M10 often fails the first connect (133) or drops during
+      // discovery, and the second attempt then works.
+      late Decoded decoded;
+      for (var attempt = 1; ; attempt++) {
+        try {
+          link = await _open(id);
+          l.phase = LinkPhase.reading;
+          notifyListeners();
+          decoded = await driver
+              .control(link, dev.lastRecognised ?? dev.latest, command)
+              .timeout(driver.timeout);
+          break;
+        } on ArgumentError {
+          rethrow;
+        } catch (e) {
+          if (attempt == 2) rethrow;
+          debugPrint('control: $id attempt $attempt failed: $e; retrying');
+          await link?.close();
+          link = null;
+          await Future<void>.delayed(const Duration(seconds: 1));
+        }
+      }
+      tracker.setPolled(id, _keepLook(dev.view, decoded));
       l
         ..phase = LinkPhase.ok
         ..failures = 0
@@ -732,4 +755,22 @@ class ConnectionManager extends ChangeNotifier {
     _held.clear();
     super.dispose();
   }
+}
+
+/// A light that cannot be read only reports what a command changed: switching
+/// it on or off keeps the colour and brightness it was last set to.
+Decoded _keepLook(Decoded? before, Decoded after) {
+  if (after.kind != DeviceKind.lights || before == null) return after;
+  final have = {for (final r in after.readings) r.label};
+  return Decoded(
+    protocol: after.protocol,
+    kind: after.kind,
+    model: after.model,
+    readings: [
+      ...after.readings,
+      for (final r in before.readings)
+        if (!have.contains(r.label)) r,
+    ],
+    info: after.info,
+  );
 }

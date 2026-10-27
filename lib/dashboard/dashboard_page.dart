@@ -580,7 +580,9 @@ class _SlotView extends StatelessWidget {
           try {
             await connections.control(id, DeviceCommand(action.$1, action.$2));
           } catch (e) {
-            messenger.showSnackBar(SnackBar(content: Text('$e')));
+            messenger.showSnackBar(
+              SnackBar(content: Text('Could not switch $title $what: $e')),
+            );
           }
         },
         child: scoped,

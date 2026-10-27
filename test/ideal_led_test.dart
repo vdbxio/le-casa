@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lecasa/ble/connection_manager.dart';
 import 'package:lecasa/ble/device_tracker.dart';
 import 'package:lecasa/ble/gatt_session.dart';
 import 'package:lecasa/decoders/decoded.dart';
@@ -138,5 +139,36 @@ void main() {
       ),
     );
     expect(t['led']!.view!.readings.single.value, isTrue);
+  });
+
+  test('switching off from any screen keeps the look on the card', () async {
+    final t = DeviceTracker(DecoderRegistry.standard());
+    final m = ConnectionManager(
+      t,
+      drivers: GattDriverRegistry.standard(),
+      tick: const Duration(hours: 1),
+      open: (id) async => session([]),
+    );
+    final x = adv(id: 'third', name: 'ISP-000003', seenAt: DateTime.now());
+    t.onAdvertisement(x);
+    m.onAdvertisement(x);
+    // Blue at 33 %, set from another screen.
+    t.setPolled(
+      'third',
+      const Decoded(
+        protocol: 'iDeal LED',
+        kind: DeviceKind.lights,
+        model: 'iDeal LED controller',
+        readings: [
+          Reading('on', true),
+          Reading('colour', '#0000FF'),
+          Reading('brightness', 33, '%'),
+        ],
+      ),
+    );
+    await m.control('third', const DeviceCommand('on', false));
+    final r = {for (final y in t['third']!.view!.readings) y.label: y.value};
+    expect(r, {'on': false, 'colour': '#0000FF', 'brightness': 33});
+    m.dispose();
   });
 }

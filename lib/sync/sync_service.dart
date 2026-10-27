@@ -431,6 +431,12 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
   }
 
   @override
+  bool lockedElsewhere(String id) {
+    final lock = readBy.lockOf(id);
+    return home.inHome && lock != null && lock.screen != home.me.id;
+  }
+
+  @override
   String? standAside(String id) {
     if (!home.inHome) return null;
     final lock = readBy.lockOf(id);

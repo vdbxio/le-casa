@@ -42,6 +42,10 @@ class _LightControlsState extends State<LightControls> {
   bool _sending = false;
   double? _dragging;
 
+  /// The colour picked here, kept while the page is open so a command that
+  /// fails does not lose it.
+  int? _picked;
+
   Object? _value(String label) =>
       widget.state.readings.where((r) => r.label == label).firstOrNull?.value;
 
@@ -72,7 +76,7 @@ class _LightControlsState extends State<LightControls> {
     final on = _value(LightSetting.on) == true;
     final brightness = (_value(LightSetting.brightness) as num? ?? 100)
         .toDouble();
-    final rgb = idealLedRgb(_value(LightSetting.colour));
+    final rgb = _picked ?? idealLedRgb(_value(LightSetting.colour));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -122,10 +126,13 @@ class _LightControlsState extends State<LightControls> {
                 selected: on && rgb == colour,
                 onSelected: _sending
                     ? null
-                    : (_) => _send(LightSetting.colour, {
-                        'rgb': colour,
-                        'brightness': brightness.round(),
-                      }),
+                    : (_) {
+                        _picked = colour;
+                        _send(LightSetting.colour, {
+                          'rgb': colour,
+                          'brightness': brightness.round(),
+                        });
+                      },
               ),
           ],
         ),

@@ -145,7 +145,7 @@ class Screen {
     bool phone = false,
     Duration? visitEvery,
   }) : home = HomeStore.memory(id, name, phone: phone),
-      radio = FakeRadio(air, id) {
+       radio = FakeRadio(air, id) {
     connections = ConnectionManager(
       tracker,
       open: (_) async => FakeSession(characteristics: const []),

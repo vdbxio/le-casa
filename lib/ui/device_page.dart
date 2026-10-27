@@ -165,9 +165,15 @@ class _DevicePageState extends State<DevicePage> {
                 Text('Connection', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 4),
                 Text(
-                  '${dev.polledBy} is connected to it and shares what it '
-                  'reads. This screen cannot hear the device itself right '
-                  'now.',
+                  DateTime.now().difference(dev.polledAt!) <
+                          const Duration(minutes: 5)
+                      ? '${dev.polledBy} is connected to it and shares what '
+                            'it reads. This screen cannot hear the device '
+                            'itself right now.'
+                      : '${dev.polledBy} last read it '
+                            '${ago(dev.polledAt!)}. Nothing has heard it '
+                            'since: it may be off, out of range, or held by '
+                            'another app.',
                   style: theme.textTheme.bodySmall,
                 ),
                 _ReadBy(id: widget.id),

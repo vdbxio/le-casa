@@ -101,6 +101,12 @@ class _DashboardPageState extends State<DashboardPage> {
       return d?.view == null ? null : deviceName(d!);
     });
     if (named) dash.changed();
+    unawaited(
+      dash.rememberHeard({
+        for (final id in dash.page.devices)
+          if (s.tracker[id] case final d? when d.view != null) id: heardAt(d),
+      }),
+    );
   }
 
   /// Card data for this frame. Kept until live data changes, so edits and
@@ -110,6 +116,7 @@ class _DashboardPageState extends State<DashboardPage> {
     history: s.history,
     tablet: s.tablet,
     weather: s.weather,
+    heardBefore: (id) => s.dashboard.heard[id],
   );
 
   void _buildFirstLayout() {

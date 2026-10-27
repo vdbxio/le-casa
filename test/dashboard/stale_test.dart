@@ -52,6 +52,25 @@ void main() {
     expect(old.quiet, 'Not heard for 5h');
   });
 
+  test('a device not heard since a restart says when it last was', () {
+    final now = DateTime(2026, 10, 27, 6);
+    final s = CardSources(
+      tracker: chloesGear(),
+      now: () => now,
+      heardBefore: (id) =>
+          id == 'fridge' ? now.subtract(const Duration(hours: 8)) : null,
+    );
+    final m = modelFor(const CardSpec.device('fridge', name: 'Fridge'), s);
+    expect(m.stale, isTrue);
+    expect(m.note, 'Not heard for 8h');
+    expect(m.quiet, 'Not heard for 8h');
+    // Never heard at all: still listening.
+    expect(
+      modelFor(const CardSpec.device('new', name: 'New'), s).note,
+      'Listening for this device…',
+    );
+  });
+
   testWidgets('a pill and a card without a message box show the time', (
     tester,
   ) async {

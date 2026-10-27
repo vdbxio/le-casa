@@ -23,13 +23,20 @@ class CardSources {
   final WeatherService? weather;
   final DateTime Function() now;
 
+  /// When a device was last heard before the app started, if known.
+  final DateTime? Function(String id) heardBefore;
+
   CardSources({
     required this.tracker,
     this.history,
     this.tablet,
     this.weather,
     DateTime Function()? now,
-  }) : now = now ?? DateTime.now;
+    DateTime? Function(String id)? heardBefore,
+  }) : now = now ?? DateTime.now,
+       heardBefore = heardBefore ?? _never;
+
+  static DateTime? _never(String _) => null;
 
   final Map<String, CardModel> _models = {};
 
@@ -40,6 +47,7 @@ class CardSources {
     tablet: tablet,
     weather: weather,
     now: now,
+    heardBefore: heardBefore,
   );
 
   /// [modelFor], remembered for as long as these sources live. The
@@ -217,7 +225,7 @@ String _duration(num? minutes) {
 /// When this screen last had news of [d]: an advert, or a reading over a
 /// connection (a device held open stops advertising), here or on another
 /// screen.
-DateTime _heard(TrackedDevice d) {
+DateTime heardAt(TrackedDevice d) {
   final polled = d.polled == null ? null : d.polledAt;
   return polled != null && polled.isAfter(d.lastSeen) ? polled : d.lastSeen;
 }
@@ -232,18 +240,24 @@ CardModel _device(String id, CardSources s, String? savedName) {
   // Right after a restart a placed device may not have been heard, or its
   // first packet may not carry readings yet (Victron sends its name in a
   // separate scan response). Show the name it had when placed.
-  CardModel waiting(String? name) => CardModel(
-    title: savedName ?? name ?? 'Not found yet',
-    icon: Icons.bluetooth_searching,
-    note: 'Listening for this device…',
-    pillLabel: 'listening',
-    stale: true,
-  );
+  CardModel waiting(String? name) {
+    final before = s.heardBefore(id);
+    final quiet = before == null ? null : _quiet(before, s.now());
+    return CardModel(
+      title: savedName ?? name ?? 'Not found yet',
+      icon: Icons.bluetooth_searching,
+      note: quiet ?? 'Listening for this device…',
+      pillLabel: 'listening',
+      stale: true,
+      quiet: quiet,
+    );
+  }
+
   if (d == null) return waiting(null);
   final v = d.view;
   final name = deviceName(d);
   final now = s.now();
-  final heard = _heard(d);
+  final heard = heardAt(d);
   final stale = now.difference(heard) > staleAfter;
   if (v == null) return waiting(name);
   if (!v.isReadable) {
@@ -364,7 +378,7 @@ CardModel _solarTotal(CardSources s) {
   // Faded only when every charger has gone quiet: one still talking keeps
   // the total meaningful.
   final now = s.now();
-  final last = chargers.map(_heard).reduce((a, b) => a.isAfter(b) ? a : b);
+  final last = chargers.map(heardAt).reduce((a, b) => a.isAfter(b) ? a : b);
   final stale = now.difference(last) > staleAfter;
   return CardModel(
     title: 'Solar',

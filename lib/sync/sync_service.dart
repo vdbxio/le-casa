@@ -158,6 +158,12 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
   @visibleForTesting
   Duration linkSilence = const Duration(seconds: 40);
 
+  /// A screen shares a new reading of a device it reads at most this
+  /// often. The iPad reads a BMS every 4 s, and each reading sent costs a
+  /// screen like the M10 scan time; a dashboard does not need it faster.
+  @visibleForTesting
+  Duration shareEvery = const Duration(seconds: 10);
+
   /// Wait before trying to start the server again; doubles each time.
   @visibleForTesting
   Duration serverRetry = const Duration(seconds: 15);
@@ -196,6 +202,9 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
   final Map<String, SharedReading> _shared = {};
   final Map<String, String> _ownerSlotOf = {};
   final Map<String, DateTime> _sentAt = {};
+  final Map<String, DateTime> _sharedWhen = {};
+  final Map<String, int> _fails = {};
+  int _packetsAt = 0;
   final Map<String, Completer<String?>> _pending = {};
   final Map<String, (SyncSession, DateTime)> _routes = {};
   final Map<String, DateTime> _seenReq = {};
@@ -632,6 +641,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
         return;
       }
       error = null;
+      _fails.remove(h.id);
       await _addLink(s, mine: true);
     } on SyncRefused catch (e) {
       debugPrint('sync: ${h.id} refused: $e');
@@ -641,7 +651,13 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     } catch (e) {
       debugPrint('sync: link to ${h.id} failed: $e');
       await link?.close();
-      _backoff[h.id] = DateTime.now().add(const Duration(seconds: 20));
+      // Every try pauses this screen's scan, so back off further each
+      // time: 20 s, 40 s, 80 s, up to 5 minutes.
+      final n = _fails[h.id] = (_fails[h.id] ?? 0) + 1;
+      final wait = Duration(seconds: 20 << (n - 1).clamp(0, 4));
+      _backoff[h.id] = DateTime.now().add(
+        wait > const Duration(minutes: 5) ? const Duration(minutes: 5) : wait,
+      );
       if (!connected) error = 'Could not reach a screen: ${_plainError(e)}';
     } finally {
       connecting = false;
@@ -735,6 +751,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     }
     await _publishOwn();
     if (_ticks % 10 == 1) await _beacon();
+    if (_ticks % 60 == 0) _logRadio();
     if (_ticks % 5 == 0) {
       // Merge first: a device known only through another screen keeps its
       // records under that screen's id until it is merged, and then they
@@ -766,14 +783,32 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     return best;
   }
 
-  /// Sends readings this screen took itself since the last tick.
+  /// What the radio heard and sync sent in the last minute, to compare
+  /// screens and see what a change to sync costs the scan.
+  void _logRadio() {
+    final total = tracker.totalPackets;
+    final heard = total >= _packetsAt ? total - _packetsAt : total;
+    _packetsAt = total;
+    final t = SyncTraffic.take();
+    debugPrint(
+      'radio: last minute heard $heard adverts (${(heard / 60).toStringAsFixed(1)}/s); '
+      'sync sent ${t.messages} messages, ${t.bytes} B, on ${_links.length} links',
+    );
+  }
+
+  /// Sends readings this screen took itself since the last tick, each
+  /// device at most every [shareEvery].
   Future<void> _publishOwn() async {
     final out = <SharedReading>[];
+    final now = DateTime.now();
     for (final d in tracker.devices) {
       final at = d.polledAt;
       if (d.polled == null || d.polledBy != null || at == null) continue;
       if (_sentAt[d.id] == at) continue;
+      final last = _sharedWhen[d.id];
+      if (last != null && now.difference(last) < shareEvery) continue;
       _sentAt[d.id] = at;
+      _sharedWhen[d.id] = now;
       out.add(_own(d));
     }
     if (out.isEmpty || !connected) return;
@@ -807,6 +842,8 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       'o': home.me.id,
       'n': home.me.name,
       'q': now.millisecondsSinceEpoch,
+      // Reads deflated messages.
+      'z': true,
       'ph': home.phone,
       'd': [
         for (final l in connections.links)
@@ -1038,6 +1075,8 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
           DeviceCommand('${m['s']}', m['v'] as Object),
           here: true,
         );
+        // The screen that asked wants to see the change now.
+        _sharedWhen.remove(id);
       } catch (e) {
         err = _plainError(e);
       }

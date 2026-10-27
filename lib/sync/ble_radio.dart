@@ -17,6 +17,7 @@ import '../ble/ble_scanner.dart';
 import '../ble/connection_manager.dart';
 import '../ble/gatt_link.dart';
 import '../ble/gatt_session.dart';
+import '../ble/link_tuning.dart';
 import '../decoders/raw_advertisement.dart';
 import 'framing.dart';
 import 'home.dart';
@@ -32,6 +33,17 @@ const syncChunkMax = 180;
 /// How long a link this screen gave up on may wait for its last write to
 /// finish before it is disconnected.
 const _settleBeforeDisconnect = Duration(minutes: 2);
+
+/// How long one connect to another screen may take. Screens advertise
+/// all the time, so a connect that works is up in a second or two, and the
+/// scan stays paused while one is pending. Device polls wait 32 s.
+const _syncConnectLimit = Duration(seconds: 10);
+
+/// The MAC in an Android Bluetooth handle's id, or null on iOS.
+String? _macOf(UUID id) {
+  final mac = BleScanner.macFromUuid(id);
+  return mac == null ? null : hex(mac, sep: ':').toUpperCase();
+}
 
 /// Disconnects once [inFlight] has settled. A write that never answers
 /// means the radio is stuck, and a disconnect sent then timed out on the
@@ -312,6 +324,8 @@ class BleSyncRadio implements SyncRadio {
     debugPrint(
       'sync server: ${c.uuid} linked, chunks of ${link.maxChunk} (MTU allows $max)',
     );
+    final mac = link.mac;
+    if (mac != null) unawaited(LinkTuning.relax(mac));
     _incoming.add(MessageLink(link));
     return link;
   }
@@ -366,10 +380,14 @@ class BleSyncRadio implements SyncRadio {
     try {
       for (var attempt = 1; ; attempt++) {
         try {
-          link = await GattLink.open(scanner.central, p);
+          link = await GattLink.open(
+            scanner.central,
+            p,
+            timeout: _syncConnectLimit,
+          );
           break;
         } catch (e) {
-          if (attempt >= 3 || !'$e'.contains('133')) rethrow;
+          if (attempt >= 2 || !'$e'.contains('133')) rethrow;
           debugPrint('sync: connect got 133, retry $attempt');
           await Future<void>.delayed(Duration(milliseconds: 700 * attempt));
         }
@@ -387,7 +405,9 @@ class BleSyncRadio implements SyncRadio {
       debugPrint(
         'sync: connected to ${peer.id}, chunks of $chunk (MTU allows $max)',
       );
-      return MessageLink(_GattChunkLink(l, rx, stream, chunk));
+      final mac = _macOf(p.uuid);
+      if (mac != null) unawaited(LinkTuning.relax(mac));
+      return MessageLink(_GattChunkLink(l, rx, stream, chunk, mac));
     } catch (_) {
       await l.close();
       rethrow;
@@ -406,7 +426,11 @@ class _CentralLink implements ChunkLink {
   final _closed = Completer<void>();
   Future<void>? _inFlight;
 
-  _CentralLink(this._pm, this.central, this._tx, this.maxChunk);
+  /// Android only, for [LinkTuning].
+  final String? mac;
+
+  _CentralLink(this._pm, this.central, this._tx, this.maxChunk)
+    : mac = _macOf(central.uuid);
 
   @override
   Stream<Uint8List> get chunks => _in.stream;
@@ -428,6 +452,8 @@ class _CentralLink implements ChunkLink {
     if (_closed.isCompleted) return;
     _closed.complete();
     _in.close();
+    final m = mac;
+    if (m != null) unawaited(LinkTuning.release(m));
   }
 
   @override
@@ -436,6 +462,10 @@ class _CentralLink implements ChunkLink {
     _gone();
     unawaited(
       disconnectWhenIdle(_inFlight, () async {
+        // The handle that asked for the slow interval also holds the link
+        // up; let go of it first.
+        final m = mac;
+        if (m != null) await LinkTuning.release(m);
         try {
           await _pm.disconnect(central);
         } catch (_) {
@@ -460,8 +490,18 @@ class _GattChunkLink implements ChunkLink {
   /// Screens whose old link is still waiting to be disconnected.
   static final Set<String> lingering = {};
 
-  _GattChunkLink(this._link, this._rx, this._stream, this.maxChunk) {
+  /// Android only, for [LinkTuning].
+  final String? _mac;
+
+  _GattChunkLink(
+    this._link,
+    this._rx,
+    this._stream,
+    this.maxChunk,
+    this._mac,
+  ) {
     _link.onDisconnected.then((_) {
+      _release();
       if (!_closed.isCompleted) _closed.complete();
       lingering.remove(_id);
     });
@@ -479,18 +519,29 @@ class _GattChunkLink implements ChunkLink {
   Future<void> sendChunk(Uint8List chunk) =>
       _inFlight = _link.write(_rx, chunk, withResponse: true);
 
+  Future<void> _release() async {
+    final mac = _mac;
+    if (mac != null) await LinkTuning.release(mac);
+  }
+
   @override
   Future<void> close() async {
     if (_closing) return;
     _closing = true;
     if (!_closed.isCompleted) _closed.complete();
     if (_link.droppedByDevice) {
+      await _release();
       await _link.close();
       return;
     }
     lingering.add(_id);
     unawaited(
-      disconnectWhenIdle(_inFlight, _link.close, 'link to $_id').then((done) {
+      disconnectWhenIdle(_inFlight, () async {
+        // The handle that asked for the slow interval also holds the link
+        // up; let go of it first.
+        await _release();
+        await _link.close();
+      }, 'link to $_id').then((done) {
         // Still stuck: it stays lingering until the link drops.
         if (done) lingering.remove(_id);
       }),

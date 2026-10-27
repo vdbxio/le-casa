@@ -157,6 +157,7 @@ class Screen {
             readBy: ReadByStore.memory(),
           )
           ..settleTime = Duration.zero
+          ..shareEvery = Duration.zero
           ..start();
     keys.label = (id) => (
       name: tracker[id]?.latest.name,

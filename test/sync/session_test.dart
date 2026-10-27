@@ -210,6 +210,50 @@ void main() {
       expect(((await toMember)['big'] as String).length, 3000);
     });
 
+    test('deflates once the other screen says it can read that', () async {
+      final homeKey = randomBytes(32);
+      final (a, b) = PipeEnd.pair(maxChunk: 180);
+      final m = MessageLink(a);
+      final h = MessageLink(b);
+      final hubF = SyncSession.accept(
+        h,
+        hubId,
+        homeKey: homeKey,
+        homeName: 'Van',
+      );
+      final member = await SyncSession.connect(m, memberId, homeKey);
+      final hub = (await hubF)!;
+      final got = <Map<String, Object?>>[];
+      hub.messages.listen(got.add);
+      member.messages.listen((_) {});
+      final reading = {
+        't': 'state',
+        'r': [
+          for (var i = 0; i < 8; i++)
+            {'id': 'AA:BB:CC:DD:EE:0$i', 'name': 'Daly BMS', 'v': 13.2},
+        ],
+      };
+      // An older screen: plain sealed JSON.
+      expect(member.peerInflates, isFalse);
+      await member.send(reading);
+      await pumpEventQueue();
+      expect(hub.peerInflates, isFalse);
+      // The hub's beacon says it reads deflated messages.
+      await hub.send({'t': 'hi', 'o': hubId.id, 'z': true});
+      await pumpEventQueue();
+      expect(member.peerInflates, isTrue);
+      final before = a.sent.fold<int>(0, (n, c) => n + c.length);
+      await member.send(reading);
+      await pumpEventQueue();
+      final deflated = a.sent.fold<int>(0, (n, c) => n + c.length) - before;
+      expect(got, hasLength(2));
+      expect(got[1], got[0]);
+      expect(jsonEncode(got[1]), jsonEncode(reading));
+      // A deflated message also tells the hub the member can read them.
+      expect(hub.peerInflates, isTrue);
+      expect(deflated, lessThan(jsonEncode(reading).length ~/ 2));
+    });
+
     test('another home is turned away', () async {
       final (m, h) = messagePipe();
       final hubF = SyncSession.accept(

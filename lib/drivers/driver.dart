@@ -8,6 +8,7 @@ import '../decoders/raw_advertisement.dart';
 import 'alpicool_driver.dart';
 import 'bms_driver.dart';
 import 'daly_driver.dart';
+import 'ideal_led.dart';
 import 'switchbot_driver.dart';
 import 'xiaomi_driver.dart';
 
@@ -76,6 +77,7 @@ class GattDriverRegistry {
         const XiaomiStockGattDriver(),
         const AlpicoolDriver(),
         const SwitchBotPlugDriver(),
+        const IdealLedDriver(),
         BmsDriver(secretFor: secretFor),
       ]);
 

@@ -18,6 +18,7 @@ IconData iconFor(DeviceKind k) => switch (k) {
   DeviceKind.appliance => Icons.kitchen,
   DeviceKind.switches => Icons.power_outlined,
   DeviceKind.covers => Icons.blinds_outlined,
+  DeviceKind.lights => Icons.lightbulb_outline,
   DeviceKind.security => Icons.sensor_door_outlined,
   DeviceKind.buttons => Icons.radio_button_checked,
   DeviceKind.leDevice => Icons.home,

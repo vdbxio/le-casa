@@ -305,6 +305,7 @@ CardModel _device(String id, CardSources s, String? savedName) {
     DeviceKind.buttons || DeviceKind.leDevice => _buttons(d, v, name, s),
     DeviceKind.switches => _switch(d, v, name, s),
     DeviceKind.covers => _cover(d, v, name, s),
+    DeviceKind.lights => _light(v, name),
     DeviceKind.security => _security(d, v, name, s),
     _ => _generic(d, v, name, s),
   };
@@ -337,6 +338,7 @@ IconData _iconFor(DeviceKind k) => switch (k) {
   DeviceKind.buttons || DeviceKind.leDevice => Icons.settings_remote_outlined,
   DeviceKind.switches => Icons.power_outlined,
   DeviceKind.covers => Icons.blinds_outlined,
+  DeviceKind.lights => Icons.lightbulb_outline,
   DeviceKind.security => Icons.sensor_door_outlined,
   _ => Icons.sensors,
 };
@@ -532,6 +534,28 @@ CardModel _switch(TrackedDevice d, Decoded v, String name, CardSources s) {
     pillLabel: onText?.toLowerCase() ?? 'switch',
     action: on is bool ? ('on', !on) : null,
     series: w == null ? null : s.history?.of(History.key(d.id, 'power')),
+  );
+}
+
+/// A light whose state is what this screen last set; tapping toggles it,
+/// and turns it on when nothing has been set yet.
+CardModel _light(Decoded v, String name) {
+  final on = _r(v, 'on')?.value;
+  final onText = on == null ? null : (on == true ? 'On' : 'Off');
+  return CardModel(
+    title: name,
+    subtitle: v.model,
+    icon: Icons.lightbulb_outline,
+    tone: Tone.solar,
+    headline: Metric('Light', onText ?? 'Tap to turn on'),
+    details: [
+      if (_n(v, 'brightness') case final b? when on == true)
+        Metric('Brightness', _fmt(b, 0), '%'),
+      if (_r(v, 'colour')?.value case final String c when on == true)
+        Metric('Colour', c),
+    ],
+    pillLabel: onText?.toLowerCase() ?? 'light',
+    action: ('on', on != true),
   );
 }
 

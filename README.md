@@ -42,6 +42,10 @@ dashboard and shares it between screens. The app currently
   outdoor, H5051/H5052/H5071), the H5140 CO2 and H5106 air quality
   monitors, the BBQ probe thermometers (H5055, H5181-H5198) and the
   H5121-H5130 motion, door, vibration, pressure and button sensors;
+- switches, dims and colours LED strip controllers made for the **iDeal
+  LED** app (ISP-xxxxxx / IDL-xxxxxx) with no account. They cannot report
+  their state, so the card shows what Le'Casa last set. See
+  [docs/ideal-led.md](docs/ideal-led.md);
 - recognises **Improv BLE** Wi-Fi setup broadcasts and parks them in
   their own group;
 - stores per-device encryption keys on the tablet;
@@ -187,6 +191,8 @@ lib/
     daly_driver.dart    auto-detects the Daly dialect and reads a snapshot
     xiaomi_driver.dart  stock LYWSD03MMC live characteristic
     bms_driver.dart     runs the aiobmsble port and builds the card
+    switchbot_driver.dart  SwitchBot Plug Mini on/off
+    ideal_led.dart      iDeal LED strips: commands, decoder and driver
   bms/           aiobmsble port: BaseBms, 50 drivers, registry (generated
                  by tool/aiobmsble/gen_registry.py)
   ble/           radio wrapper (bluetooth_low_energy), device tracker,
@@ -200,6 +206,7 @@ lib/
   ui/            scan list, group and device pages, Alpicool controls
 docs/
   bms.md         every supported BMS, PINs, upstream update steps
+  ideal-led.md   iDeal LED strip controllers
   switchbot-govee.md  supported SwitchBot and Govee models, setup notes
   sync.md        setting up several screens and phones
   tablets.md     what each tested tablet's Bluetooth can do

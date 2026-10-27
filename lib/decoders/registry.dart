@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Chloe Madison and contributors.
 // SPDX-License-Identifier: GPL-3.0-or-later WITH App-Store-Exception
 
+import '../drivers/ideal_led.dart' show IdealLedDecoder;
 import 'appliances.dart';
 import 'apple.dart';
 import 'bms.dart';
@@ -37,6 +38,7 @@ class DecoderRegistry {
         const DalyDecoder(),
         const HcaloryDecoder(),
         const AlpicoolDecoder(),
+        const IdealLedDecoder(),
         // after the appliances: some BMS name patterns are broad
         const BmsDecoder(),
         const AppleDecoder(),

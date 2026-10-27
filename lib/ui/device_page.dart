@@ -15,6 +15,7 @@ import '../decoders/decoded.dart';
 import '../decoders/raw_advertisement.dart';
 import 'format.dart';
 import 'fridge_controls.dart';
+import 'light_controls.dart';
 import 'switch_controls.dart';
 
 /// Everything about one broadcaster: decoded values, raw bytes, packet rate,
@@ -196,6 +197,16 @@ class _DevicePageState extends State<DevicePage> {
                   services.connections.canControl(widget.id)) ...[
                 const Divider(height: 32),
                 SwitchControls(
+                  id: widget.id,
+                  state: d,
+                  connections: services.connections,
+                ),
+              ],
+              if (d != null &&
+                  d.kind == DeviceKind.lights &&
+                  services.connections.canControl(widget.id)) ...[
+                const Divider(height: 32),
+                LightControls(
                   id: widget.id,
                   state: d,
                   connections: services.connections,

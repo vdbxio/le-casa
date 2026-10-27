@@ -51,6 +51,7 @@ enum DeviceKind {
   appliance('Appliances', 'Heaters, fridges and other connected appliances'),
   switches('Plugs & switches', 'Smart plugs, relays and button pushers'),
   covers('Blinds & curtains', 'Curtain, blind and shade motors'),
+  lights('Lights', 'LED strips and lamps'),
   security('Doors & alarms', 'Contact, motion, leak sensors and locks'),
   buttons('Buttons', 'Remotes and switches'),
   leDevice("Le' devices", "Le'Fob, Le'Dongle"),

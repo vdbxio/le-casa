@@ -15,6 +15,7 @@ Le'Casa is GPL-3.0-or-later with an App Store exception (see `LICENSE` and
 | Xiaomi LYWSD03MMC stock GATT characteristics (`lib/drivers/xiaomi_driver.dart`) | [uduncanu/lywsd03mmc](https://github.com/uduncanu/lywsd03mmc) | UUIDs and value layout only, no code copied (MIT) |
 | SwitchBot advertisement layouts and model table (`lib/decoders/switchbot.dart`), Plug Mini command frames (`lib/drivers/switchbot_driver.dart`) and test vectors | [sblibs/pySwitchbot](https://github.com/sblibs/pySwitchbot) | MIT |
 | Govee advertisement layouts, H512x decryption and test vectors (`lib/decoders/govee.dart`, `test/switchbot_govee_test.dart`) | [Bluetooth-Devices/govee-ble](https://github.com/Bluetooth-Devices/govee-ble), itself from [Ernst79/bleparser](https://github.com/Ernst79/bleparser) | Apache-2.0 (govee-ble), MIT (bleparser) |
+| iDeal LED command layouts, AES key and ciphertext test vectors (`lib/drivers/ideal_led.dart`, `test/ideal_led_test.dart`) | [KyleJamesWalker/glowmote](https://github.com/KyleJamesWalker/glowmote) and [8none1/idealLED](https://github.com/8none1/idealLED) | MIT |
 | `bluetooth_low_energy` Flutter plugin | [yanshouwang/bluetooth_low_energy](https://pub.dev/packages/bluetooth_low_energy) | MIT |
 | `pointycastle` (AES-CTR, AES-CCM) | [bcgit/pc-dart](https://pub.dev/packages/pointycastle) | MIT |
 | League Spartan typeface (`assets/fonts/`) | [The League of Moveable Type](https://github.com/theleagueof/league-spartan), via Google Fonts | SIL Open Font License 1.1 (`assets/fonts/OFL.txt`) |

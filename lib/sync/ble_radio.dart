@@ -493,13 +493,7 @@ class _GattChunkLink implements ChunkLink {
   /// Android only, for [LinkTuning].
   final String? _mac;
 
-  _GattChunkLink(
-    this._link,
-    this._rx,
-    this._stream,
-    this.maxChunk,
-    this._mac,
-  ) {
+  _GattChunkLink(this._link, this._rx, this._stream, this.maxChunk, this._mac) {
     _link.onDisconnected.then((_) {
       _release();
       if (!_closed.isCompleted) _closed.complete();

@@ -25,7 +25,9 @@ class LinkTuning {
       final ok = await _channel
           .invokeMethod<bool>('relaxLink', mac)
           .timeout(const Duration(seconds: 10));
-      debugPrint('ble: slow interval on $mac ${ok == true ? 'asked' : 'not asked'}');
+      debugPrint(
+        'ble: slow interval on $mac ${ok == true ? 'asked' : 'not asked'}',
+      );
       return ok == true;
     } catch (e) {
       debugPrint('ble: slow interval on $mac failed: $e');

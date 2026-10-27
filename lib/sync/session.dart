@@ -140,9 +140,7 @@ class SyncSession {
   }
 
   Future<void> send(Map<String, Object?> message) {
-    final m = peerInflates
-        ? _sealDeflated(_tx, message)
-        : _seal(_tx, message);
+    final m = peerInflates ? _sealDeflated(_tx, message) : _seal(_tx, message);
     SyncTraffic.sent(m.length);
     return _link.send(m);
   }

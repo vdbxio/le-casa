@@ -412,7 +412,11 @@ class ConnectionManager extends ChangeNotifier {
     bool here = false,
   }) async {
     final r = remote;
+    // A device whose broadcasts carry its state (a plug) has no reader
+    // to defer to: whoever is asked connects just for the command.
+    final broadcasts = tracker[id]?.decoded?.isReadable ?? false;
     if (!here &&
+        !broadcasts &&
         r != null &&
         (heldElsewhere(id) != null || r.standAside(id) != null)) {
       return r.control(id, command);

@@ -74,24 +74,34 @@ class SwitchBotPlugDriver implements ControllableDriver {
     final tx = s.require(switchBotWrite, 'SwitchBot command');
     final rx = s.require(switchBotNotify, 'SwitchBot reply');
     final replies = await s.subscribe(rx);
-    final reply = replies.first.timeout(const Duration(seconds: 5));
-    try {
-      await s.write(
-        tx,
-        switchBotPlugCommand(want),
-        withResponse: tx.canWrite || !tx.canWriteWithoutResponse,
-      );
-    } catch (_) {
-      reply.ignore();
-      rethrow;
+    Future<Uint8List> send() async {
+      final reply = replies.first.timeout(const Duration(seconds: 5));
+      try {
+        await s.write(
+          tx,
+          switchBotPlugCommand(want),
+          withResponse: tx.canWrite || !tx.canWriteWithoutResponse,
+        );
+      } catch (_) {
+        reply.ignore();
+        rethrow;
+      }
+      return reply;
     }
+
     // The plug answers 01 (done) and its new state: 80 on, 00 off.
     // Checked on Chloe's Plug Mini (US) from a Mac, 2026-10-27.
-    final r = await reply;
-    if (r.length < 2 || r[0] != 0x01) {
-      throw StateError('The plug did not take the command');
+    var on = !want;
+    for (var attempt = 1; attempt <= 2 && on != want; attempt++) {
+      final r = await send();
+      if (r.length < 2 || r[0] != 0x01) {
+        throw StateError('The plug did not take the command');
+      }
+      on = r[1] & 0x80 != 0;
     }
-    final on = r[1] & 0x80 != 0;
+    if (on != want) {
+      throw StateError('The plug stayed ${on ? 'on' : 'off'}');
+    }
     // The advert handed in may be one without the service data that names
     // the model; the next broadcast fills in the rest either way.
     final before = SwitchBotDecoder().decode(adv);

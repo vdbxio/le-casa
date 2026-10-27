@@ -563,6 +563,20 @@ class _SlotView extends StatelessWidget {
         onTap: () async {
           HapticFeedback.selectionClick();
           final messenger = ScaffoldMessenger.of(context);
+          // The radio may be busy with another device for a few seconds:
+          // say the tap landed.
+          final title = sources.model(card).title;
+          final what = action.$2 == true
+              ? 'on'
+              : action.$2 == false
+              ? 'off'
+              : '';
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text('Switching $title $what…'),
+              duration: const Duration(seconds: 3),
+            ),
+          );
           try {
             await connections.control(id, DeviceCommand(action.$1, action.$2));
           } catch (e) {

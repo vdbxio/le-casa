@@ -270,9 +270,11 @@ int _u16be(Uint8List b, int i) => (b[i] << 8) | b[i + 1];
 
 List<Reading> _plugMini(Uint8List? data, Uint8List? mfr) {
   if (mfr == null || mfr.length < 12) return const [];
+  final on = mfr[7] == 0x80;
+  // An off plug keeps broadcasting the last load it saw.
   return [
-    Reading('on', mfr[7] == 0x80),
-    Reading('power', (_u16be(mfr, 10) & 0x7FFF) / 10, 'W'),
+    Reading('on', on),
+    Reading('power', on ? (_u16be(mfr, 10) & 0x7FFF) / 10 : 0.0, 'W'),
     Reading('wifi signal', -mfr[9], 'dBm'),
   ];
 }

@@ -78,4 +78,27 @@ void main() {
       throwsStateError,
     );
   });
+
+  test(
+    'a plug that answers with the old state gets the command again',
+    () async {
+      var tries = 0;
+      final s = FakeSession(
+        characteristics: const [
+          GattChar(switchBotWrite, canWrite: true),
+          GattChar(switchBotNotify, canNotify: true),
+        ],
+        onWrite: (c, data) => [
+          Uint8List.fromList([0x01, ++tries == 1 ? 0x80 : 0x00]),
+        ],
+      );
+      final out = await const SwitchBotPlugDriver().control(
+        s,
+        plug,
+        const DeviceCommand('on', false),
+      );
+      expect(tries, 2);
+      expect(out.readings.firstWhere((r) => r.label == 'on').value, isFalse);
+    },
+  );
 }

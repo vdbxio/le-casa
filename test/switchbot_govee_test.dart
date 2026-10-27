@@ -124,6 +124,18 @@ void main() {
       expect(values(out), {'on': true, 'power': 1.0, 'wifi signal': -60});
     });
 
+    test('an off Plug Mini draws nothing, whatever it last measured', () {
+      // Chloe's BC0A just after switching off still sends ~532 W.
+      final out = DecoderRegistry.standard().decode(
+        adv(
+          serviceData: {0xFD3D: '6700'},
+          manufacturerData: {0x0969: 'AABBCCDDEEFF0000003C14C8'},
+        ),
+      )!;
+      expect(values(out)['on'], false);
+      expect(values(out)['power'], 0.0);
+    });
+
     test('Curtain reports how open it is', () {
       final out = DecoderRegistry.standard().decode(
         adv(

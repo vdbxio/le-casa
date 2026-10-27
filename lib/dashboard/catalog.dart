@@ -171,11 +171,15 @@ String autoDeviceName(TrackedDevice d) {
   final isModuleId =
       name == null ||
       name == v?.info['module'] ||
-      RegExp(r'^(LYWSD03MMC|ATC_|ATC|LYWSD|MJ_HT|BTHome|DL-|BYD-|AK1-|A1-)')
-          .hasMatch(name);
+      RegExp(
+        r'^(LYWSD03MMC|ATC_|ATC|LYWSD|MJ_HT|BTHome|DL-|BYD-|AK1-|A1-|GV|Govee_|ihoment_)',
+      ).hasMatch(name);
   if (!isModuleId) return name;
-  // Names like DL-694201312BA carry a serial that every screen sees.
-  final serial = name != null && RegExp(r'^(DL-|BYD-|AK1-|A1-)').hasMatch(name);
+  // Names like DL-694201312BA carry a serial that every screen sees; Govee
+  // names (GVH5075_2762) end with the end of the MAC.
+  final serial =
+      name != null &&
+      RegExp(r'^(DL-|BYD-|AK1-|A1-|GV|Govee_|ihoment_)').hasMatch(name);
   final tail = (serial ? name : d.mac ?? d.id).replaceAll(':', '');
   final suffix = tail.length >= 4 ? tail.substring(tail.length - 4) : tail;
   final base = switch (v?.kind) {
@@ -299,6 +303,9 @@ CardModel _device(String id, CardSources s, String? savedName) {
       s,
     ),
     DeviceKind.buttons || DeviceKind.leDevice => _buttons(d, v, name, s),
+    DeviceKind.switches => _switch(d, v, name, s),
+    DeviceKind.covers => _cover(d, v, name, s),
+    DeviceKind.security => _security(d, v, name, s),
     _ => _generic(d, v, name, s),
   };
   if (!stale) return m;
@@ -327,6 +334,9 @@ IconData _iconFor(DeviceKind k) => switch (k) {
   DeviceKind.climate => Icons.thermostat,
   DeviceKind.appliance => Icons.kitchen_outlined,
   DeviceKind.buttons || DeviceKind.leDevice => Icons.settings_remote_outlined,
+  DeviceKind.switches => Icons.power_outlined,
+  DeviceKind.covers => Icons.blinds_outlined,
+  DeviceKind.security => Icons.sensor_door_outlined,
   _ => Icons.sensors,
 };
 
@@ -336,6 +346,7 @@ Tone _toneFor(DeviceKind k) => switch (k) {
   DeviceKind.climate => Tone.climate,
   DeviceKind.appliance => Tone.heat,
   DeviceKind.buttons || DeviceKind.leDevice => Tone.accent,
+  DeviceKind.switches => Tone.battery,
   _ => Tone.neutral,
 };
 
@@ -483,10 +494,134 @@ CardModel _climate(TrackedDevice d, Decoded v, String name, CardSources s) {
     headline: Metric('Temperature', _fmt(t, 1), '°C'),
     details: [
       Metric('Humidity', _fmt(h, 0), '%', '${_fmt(h, 0)}% humidity'),
+      if (_n(v, 'co2') case final c?) Metric('CO₂', _fmt(c, 0), 'ppm'),
+      if (_n(v, 'pm2.5') case final pm?) Metric('PM2.5', _fmt(pm, 0), 'µg/m³'),
+      if (_n(v, 'outdoor temperature') case final o?)
+        Metric('Outdoor', _fmt(o, 1), '°C'),
+      if (_n(v, 'illuminance') case final lx?)
+        Metric('Light', _fmt(lx, 0), 'lx'),
       if (_n(v, 'battery') case final b?)
         Metric('Sensor battery', _fmt(b, 0), '%', null, true),
     ],
     series: s.history?.of(History.key(d.id, 'temperature')),
+  );
+}
+
+CardModel _switch(TrackedDevice d, Decoded v, String name, CardSources s) {
+  final on = _r(v, 'on')?.value;
+  final w = _n(v, 'power');
+  final onText = on == null ? null : (on == true ? 'On' : 'Off');
+  return CardModel(
+    title: name,
+    subtitle: v.model,
+    icon: Icons.power_outlined,
+    tone: Tone.battery,
+    headline: w != null
+        ? Metric('Power', _fmt(w, w < 10 ? 1 : 0), 'W')
+        : Metric('Switch', onText ?? '–'),
+    state: w != null ? onText : null,
+    details: [
+      if (_r(v, 'on 2')?.value case final bool on2)
+        Metric('Channel 2', on2 ? 'On' : 'Off'),
+      if (_n(v, 'power 2') case final w2?) Metric('Power 2', _fmt(w2, 0), 'W'),
+      if (_r(v, 'mode')?.value case final String m) Metric('Mode', m),
+      if (_n(v, 'battery') case final b?)
+        Metric('Battery', _fmt(b, 0), '%', null, true),
+    ],
+    pillLabel: onText?.toLowerCase() ?? 'switch',
+    series: w == null ? null : s.history?.of(History.key(d.id, 'power')),
+  );
+}
+
+CardModel _cover(TrackedDevice d, Decoded v, String name, CardSources s) {
+  final pos = _n(v, 'position') ?? _n(v, 'tilt');
+  final moving = _r(v, 'moving')?.value == true;
+  return CardModel(
+    title: name,
+    subtitle: v.model,
+    icon: Icons.blinds_outlined,
+    headline: Metric(
+      _r(v, 'position') != null ? 'Open' : 'Tilt',
+      _fmt(pos, 0),
+      '%',
+    ),
+    state: moving
+        ? 'Moving'
+        : pos == 0
+        ? 'Closed'
+        : pos == 100
+        ? 'Open'
+        : null,
+    ring: pos?.toDouble(),
+    details: [
+      if (_n(v, 'battery') case final b?)
+        Metric('Battery', _fmt(b, 0), '%', null, true),
+    ],
+    pillLabel: 'open',
+  );
+}
+
+/// Doors, motion, water and locks: the headline is a word, not a number.
+CardModel _security(TrackedDevice d, Decoded v, String name, CardSources s) {
+  bool? flag(String label) => switch (_r(v, label)?.value) {
+    final bool b => b,
+    _ => null,
+  };
+  final now = s.now();
+  final last = d.events.firstOrNull;
+  final (String label, String value, bool alert) = switch (v) {
+    _ when flag('leak') != null => (
+      'Water',
+      flag('leak')! ? 'Leak!' : 'Dry',
+      flag('leak')!,
+    ),
+    _ when _r(v, 'lock')?.value is String => (
+      'Lock',
+      _r(v, 'lock')!.value as String,
+      _r(v, 'lock')!.value != 'Locked',
+    ),
+    _ when flag('open') != null => (
+      'Door',
+      flag('open')! ? 'Open' : 'Closed',
+      flag('open')!,
+    ),
+    _ when flag('occupied') != null => (
+      'Room',
+      flag('occupied')! ? 'Occupied' : 'Empty',
+      flag('occupied')!,
+    ),
+    _ when flag('motion') != null => (
+      'Motion',
+      flag('motion')! ? 'Motion' : 'Clear',
+      flag('motion')!,
+    ),
+    _ when flag('pressed') != null => (
+      'Pad',
+      flag('pressed')! ? 'Pressed' : 'Clear',
+      flag('pressed')!,
+    ),
+    _ => (
+      'Last event',
+      last == null ? 'None yet' : _cap(last.event.kind),
+      false,
+    ),
+  };
+  return CardModel(
+    title: name,
+    subtitle: v.model,
+    icon: Icons.sensor_door_outlined,
+    tone: alert ? Tone.heat : Tone.neutral,
+    headline: Metric(label, value),
+    details: [
+      if (label != 'Motion')
+        if (flag('motion') case final m?) Metric('Motion', m ? 'Yes' : 'No'),
+      if (flag('door open') case final o?)
+        Metric('Door', o ? 'Open' : 'Closed'),
+      if (last != null) Metric(_cap(last.event.label), ago(last.at, now)),
+      if (_n(v, 'battery') case final b?)
+        Metric('Battery', _fmt(b, 0), '%', null, true),
+    ],
+    pillLabel: value.toLowerCase(),
   );
 }
 

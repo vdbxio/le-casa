@@ -9,9 +9,11 @@ import 'bthome.dart';
 import 'daly.dart';
 import 'decoded.dart';
 import 'decoder.dart';
+import 'govee.dart';
 import 'improv.dart';
 import 'lecasa.dart';
 import 'raw_advertisement.dart';
+import 'switchbot.dart';
 import 'victron.dart';
 import 'xiaomi.dart';
 
@@ -29,6 +31,8 @@ class DecoderRegistry {
         VictronDecoder(keyFor: keyFor),
         XiaomiStockDecoder(keyFor: keyFor),
         const PvvxCustomDecoder(),
+        SwitchBotDecoder(),
+        GoveeDecoder(),
         const ImprovDecoder(),
         const DalyDecoder(),
         const HcaloryDecoder(),

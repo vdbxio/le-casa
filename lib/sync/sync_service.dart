@@ -761,13 +761,15 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     _listen(s);
     unawaited(
       s.closed.then((_) {
+        // Before telling the pages, so they count it as linked between
+        // visits.
+        if (visitEvery != null || _visitors.contains(s.peer.id)) {
+          _visited[s.peer.id] = (s.peer, DateTime.now());
+        }
         if (_links[s.peer.id] == l) {
           _links.remove(s.peer.id);
           _noLinks();
           notifyListeners();
-        }
-        if (visitEvery != null || _visitors.contains(s.peer.id)) {
-          _visited[s.peer.id] = (s.peer, DateTime.now());
         }
         // Wait again before dialling it, so the screen meant to dial
         // (or to visit) gets to first.

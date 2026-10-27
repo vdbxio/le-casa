@@ -81,8 +81,8 @@ every screen directly.
   advertise). If both dial at once, they keep the link the smaller id
   opened. An Android screen dials an iOS one straight away, and the iOS
   screen waits a minute before dialling an Android one itself.
-- Visits: Android screens do not hold their links. Every 20 seconds they
-  dial each screen, swap news (beacons, readings, keys, Read by choices,
+- Visits: Android screens do not hold their links. 20 seconds after a
+  visit ends (so about every half minute) they dial each screen again, swap news (beacons, readings, keys, Read by choices,
   queued controls), and hang up once the other end has gone quiet, after
   3 to 12 seconds. On the M10 any link that stays up cuts what the scan
   hears from about 30 broadcasts a second to about 2, whatever the link's

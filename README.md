@@ -1,5 +1,13 @@
 # Le'Casa
 
+[![CI](https://img.shields.io/github/actions/workflow/status/vdbxio/le-casa/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/vdbxio/le-casa/actions/workflows/ci.yml)
+[![Licence: GPL-3.0-or-later](https://img.shields.io/badge/licence-GPL--3.0--or--later-blue)](LICENSE)
+[![Flutter 3.47](https://img.shields.io/badge/Flutter-3.47-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
+[![Platforms: Android | iPadOS](https://img.shields.io/badge/platforms-Android%20%7C%20iPadOS-3DDC84?logo=android&logoColor=white)](#try-it-on-the-android-tablet)
+[![Bluetooth LE](https://img.shields.io/badge/Bluetooth-LE-0082FC?logo=bluetooth&logoColor=white)](#status)
+[![No cloud, no login](https://img.shields.io/badge/cloud-none-success)](#le-casa)
+[![Vibecoded with Claude](https://img.shields.io/badge/%E2%9C%A8%20vibecoded-with%20Claude-D97757?logo=claude&logoColor=white)](https://claude.ai/code)
+
 Le'Casa is a Bluetooth-first home automation app for vans, boats and
 off-grid homes. A cheap Android tablet (or an iPad) on the wall is the
 whole system: it listens to your sensors, solar chargers and battery
@@ -8,11 +16,10 @@ heater and lights. No router, no Raspberry Pi, no cloud, no login.
 
 Built in Flutter. GPL-3.0-or-later with an [App Store exception](LICENSE-EXCEPTION).
 
-## Status: Phase 0 done, "connect and read" in progress
+## Status
 
-The first milestone proved that a tablet can hear and decode the gear in
-Chloe's van. The next one adds devices that only talk over a connection.
-The app currently
+Le'Casa hears, decodes and reads the gear in Chloe's van, shows it on a
+dashboard and shares it between screens. The app currently
 
 - lists every BLE broadcast the radio hears, with raw bytes and packet rate;
 - decodes **BTHome v2** (plain and AES-CCM encrypted): Xiaomi LYWSD03MMC on
@@ -48,7 +55,10 @@ The app currently
     Pylontech, ECO-WORTHY, Dometic and more), through a Dart port of
     [aiobmsble](https://github.com/patman15/aiobmsble). Batteries that
     need a PIN get a *Battery PIN* field on their page. Full list, PIN
-    notes and iPad limits in [docs/bms.md](docs/bms.md).
+    notes and iPad limits in [docs/bms.md](docs/bms.md). The port was
+    machine-translated from Python and so far only a **Daly** BMS has
+    been tested on real hardware, so please
+    [tell us how yours does](https://github.com/vdbxio/le-casa/issues/new?title=BMS%20report%3A%20&labels=bms).
   - Le'Casa only connects to devices you turn on: each device has a
     "Connect to this device" switch (off until you turn it on, so a
     campground full of other people's batteries and fridges is left
@@ -63,8 +73,19 @@ The app currently
     and on the iPad. When a device drops the link three polls in a row,
     its page now says so instead of retrying in silence.
 
-Not yet: dashboard layout, controlling two-way devices (Alpicool, Hcalory),
-tablet-to-tablet sync, phone relay, voice. See the roadmap below.
+On top of that the app has
+
+- a **dashboard** you lay out yourself: slots you add, split and resize,
+  cards that shrink from a full panel down to a one-number chip, a card
+  builder behind each card's gear icon, a clock, and a weather card
+  (Open-Meteo, only once you allow internet access on that card);
+- **several screens and phones in one home**, sharing readings, keys,
+  PINs and controls over Bluetooth only, no Wi-Fi or account
+  ([docs/sync.md](docs/sync.md)); each device can be read by the screen
+  with the best radio for it ([docs/tablets.md](docs/tablets.md)).
+
+Not yet: Hcalory heater control, the phone companion relaying weather and
+the internet, automations and voice. See the roadmap below.
 
 ## Try it on the Android tablet
 
@@ -159,8 +180,16 @@ lib/
   ble/           radio wrapper (bluetooth_low_energy), device tracker,
                  GattSession abstraction and the connection manager that
                  polls one device at a time
-  keys/          per-device encryption keys (shared_preferences)
-  ui/            scan list and device detail pages
+  dashboard/     slot layout, card catalogue, card options and history
+  sync/          screen-to-screen mesh over BLE (pairing, crypto, framing)
+  weather/       Open-Meteo client and place search
+  settings/      settings page, store and ambient-light dimmer
+  keys/          per-device encryption keys and BMS PINs
+  ui/            scan list, group and device pages, Alpicool controls
+docs/
+  bms.md         every supported BMS, PINs, upstream update steps
+  sync.md        setting up several screens and phones
+  tablets.md     what each tested tablet's Bluetooth can do
 ```
 
 Decoders are pure functions over `RawAdvertisement` and every one has a
@@ -172,11 +201,11 @@ packet. That is the seed of the zero-setup "device found, tap to add" flow.
 | Phase | What | Status |
 | --- | --- | --- |
 | 0 | Bluetooth spike: hear and decode Xiaomi, Victron, Le'Fob | done |
-| 0.5 | Connect and read: Daly BMS, stock Xiaomi over GATT | **in progress** |
-| 1 | Read-only dashboard with the entity model | |
-| 2 | Two-way devices: Alpicool fridge, Hcalory heater, Daly BMS control | |
+| 0.5 | Connect and read: Daly BMS, every aiobmsble BMS, stock Xiaomi over GATT | done |
+| 1 | Dashboard with the entity model | **first pass done** |
+| 2 | Two-way devices: Alpicool fridge, Hcalory heater, Daly BMS control | **Alpicool done** |
 | 3 | Phone companion relaying weather and the internet over BLE | |
-| 4 | Multiple tablets syncing over BLE; ESPHome over BLE | |
+| 4 | Multiple tablets syncing over BLE; ESPHome over BLE | **sync done** |
 | 5 | Automations, Le'Configurator, offline voice ("Hey, Gary") | |
 
 ## Licence

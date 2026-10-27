@@ -654,7 +654,6 @@ class DashCard extends StatelessWidget {
     final left = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _header(context, c),
         const Spacer(),
         _headline(c, CardMetrics.headlineSize(size)),
         if (model.shares.isNotEmpty) ...[
@@ -672,12 +671,23 @@ class DashCard extends StatelessWidget {
             c,
             model.details.where((d) => d.summary != second).toList(),
           );
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    // The title line runs the full width, so the state chip ends at the
+    // card's right edge as on every other card.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(width: leftW, child: left),
-        const SizedBox(width: 16),
-        Expanded(child: rest),
+        _header(context, c),
+        const SizedBox(height: CardMetrics.gap),
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(width: leftW, child: left),
+              const SizedBox(width: 16),
+              Expanded(child: rest),
+            ],
+          ),
+        ),
       ],
     );
   }

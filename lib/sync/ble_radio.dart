@@ -109,6 +109,7 @@ class BleSyncRadio implements SyncRadio {
         a.seenAt,
         screen: hex(m.sublist(7, 11), sep: ''),
         adding: m[2] & 1 != 0,
+        android: true,
       );
     }
     final name = a.name;

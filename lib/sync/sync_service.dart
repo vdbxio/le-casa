@@ -131,6 +131,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     required this.connections,
     required this.radio,
     ReadByStore? readBy,
+    this.dialsFirst = false,
   }) : readBy = readBy ?? ReadByStore();
 
   /// Links to other screens, at most [maxLinks]; beyond that, messages
@@ -153,6 +154,17 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
   /// How long the screen with the larger id waits for the other to dial.
   @visibleForTesting
   Duration dialWait = const Duration(seconds: 15);
+
+  /// This screen dials iOS screens itself rather than waiting for them
+  /// (Android). The M10 hears a tenth of the adverts around it while an
+  /// iPad holds a link into it, even at a 125 ms interval with almost
+  /// nothing sent; as the end that connects it sets the link up itself.
+  final bool dialsFirst;
+
+  /// How long an iOS screen waits for an Android one to dial it before
+  /// dialling after all.
+  @visibleForTesting
+  Duration androidDialWait = const Duration(seconds: 60);
 
   /// A link with no message for this long is dropped and dialled again.
   @visibleForTesting
@@ -775,9 +787,14 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       // the smaller id goes first. The other waits, then goes anyway: the
       // smaller one may not be able to hear it (no advertising allowed).
       final first = _firstHeard.putIfAbsent(s, () => now);
-      if (me.compareTo(s) > 0 && now.difference(first) < dialWait) {
-        continue;
-      }
+      final waited = now.difference(first);
+      // An Android screen dials an iOS one, whatever the ids say.
+      final wait = h.android == dialsFirst
+          ? (me.compareTo(s) > 0 ? dialWait : Duration.zero)
+          : h.android
+          ? androidDialWait
+          : Duration.zero;
+      if (waited < wait) continue;
       if (best == null || h.rssi > best.rssi) best = h;
     }
     return best;

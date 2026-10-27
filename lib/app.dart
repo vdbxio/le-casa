@@ -142,6 +142,7 @@ class _LeCasaAppState extends State<LeCasaApp> {
     keys: keys,
     connections: connections,
     radio: BleSyncRadio(scanner, connections: connections),
+    dialsFirst: defaultTargetPlatform == TargetPlatform.android,
   );
   late final Throttled liveData = Throttled(
     Listenable.merge([tracker, tablet, weather]),

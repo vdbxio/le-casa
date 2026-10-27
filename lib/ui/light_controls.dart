@@ -99,13 +99,17 @@ class _LightControlsState extends State<LightControls> {
                 divisions: 99,
                 label: '${(_dragging ?? brightness).round()} %',
                 value: _dragging ?? brightness,
-                onChanged: _sending
+                // The strip has no brightness command: dimming re-sends the
+                // colour scaled down. With no colour set from Le'Casa there
+                // is nothing to re-send, and guessing would replace a
+                // pattern from the remote with a solid colour.
+                onChanged: _sending || rgb == null
                     ? null
                     : (v) => setState(() => _dragging = v),
-                onChangeEnd: _sending
+                onChangeEnd: _sending || rgb == null
                     ? null
                     : (v) => _send(LightSetting.colour, {
-                        'rgb': rgb ?? 0xFFFFFF,
+                        'rgb': rgb,
                         'brightness': v.round(),
                       }),
               ),
@@ -113,6 +117,13 @@ class _LightControlsState extends State<LightControls> {
             const Icon(Icons.brightness_high),
           ],
         ),
+        if (rgb == null)
+          Text(
+            'Pick a colour to set brightness. The strip cannot say what it is '
+            'showing, so a pattern from its remote or app is left alone.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        const SizedBox(height: 8),
         Wrap(
           spacing: 8,
           runSpacing: 8,

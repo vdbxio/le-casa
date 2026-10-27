@@ -88,6 +88,10 @@ const _hiddenKinds = {DeviceKind.background, DeviceKind.improv};
 /// Devices that have gone quiet for this long are drawn faded.
 const staleAfter = Duration(minutes: 5);
 
+/// The forecast refreshes every half hour; one older than this is kept only
+/// because the internet is down.
+const weatherStaleAfter = Duration(minutes: 75);
+
 /// Every card on offer right now: devices the tablet hears, then widgets.
 List<CatalogEntry> catalog(CardSources s) {
   final out = <CatalogEntry>[];
@@ -210,8 +214,16 @@ String _duration(num? minutes) {
   return m >= 60 ? '${m ~/ 60}h ${m % 60}m' : '${m}m';
 }
 
-String _quiet(TrackedDevice d, DateTime now) =>
-    'Not heard for ${ago(d.lastSeen, now).replaceAll(' ago', '')}';
+/// When this screen last had news of [d]: an advert, or a reading over a
+/// connection (a device held open stops advertising), here or on another
+/// screen.
+DateTime _heard(TrackedDevice d) {
+  final polled = d.polled == null ? null : d.polledAt;
+  return polled != null && polled.isAfter(d.lastSeen) ? polled : d.lastSeen;
+}
+
+String _quiet(DateTime heard, DateTime now, {String what = 'heard'}) =>
+    'Not $what for ${ago(heard, now).replaceAll(' ago', '')}';
 
 // ---------------------------------------------------------------- devices
 
@@ -231,9 +243,7 @@ CardModel _device(String id, CardSources s, String? savedName) {
   final v = d.view;
   final name = deviceName(d);
   final now = s.now();
-  final heard = d.polledAt != null && d.polled != null
-      ? (d.polledAt!.isAfter(d.lastSeen) ? d.polledAt! : d.lastSeen)
-      : d.lastSeen;
+  final heard = _heard(d);
   final stale = now.difference(heard) > staleAfter;
   if (v == null) return waiting(name);
   if (!v.isReadable) {
@@ -276,8 +286,9 @@ CardModel _device(String id, CardSources s, String? savedName) {
     shares: m.shares,
     ring: m.ring,
     series: m.series,
-    note: _quiet(d, now),
+    note: _quiet(heard, now),
     stale: true,
+    quiet: _quiet(heard, now),
     pillLabel: m.pillLabel,
   );
 }
@@ -350,8 +361,16 @@ CardModel _solarTotal(CardSources s) {
       ),
   ];
   final first = chargers.first.view!;
+  // Faded only when every charger has gone quiet: one still talking keeps
+  // the total meaningful.
+  final now = s.now();
+  final last = chargers.map(_heard).reduce((a, b) => a.isAfter(b) ? a : b);
+  final stale = now.difference(last) > staleAfter;
   return CardModel(
     title: 'Solar',
+    stale: stale,
+    quiet: stale ? _quiet(last, now) : null,
+    note: stale ? _quiet(last, now) : null,
     subtitle: '${chargers.length} chargers',
     icon: Icons.wb_sunny_outlined,
     tone: Tone.solar,
@@ -640,6 +659,9 @@ CardModel _weather(CardSources s) {
       );
     case WeatherStatus.ok:
       final n = w.now!;
+      // A forecast kept through an outage: say how old it is.
+      final old = s.now().difference(n.fetchedAt) > weatherStaleAfter;
+      final quiet = old ? _quiet(n.fetchedAt, s.now(), what: 'updated') : null;
       final hourNow = s.now().hour;
       final night = hourNow < 6 || hourNow >= 20;
       return CardModel(
@@ -670,6 +692,9 @@ CardModel _weather(CardSources s) {
         ],
         hoursLabel: 'Next ${n.hours.length} hours',
         pillLabel: n.condition,
+        note: quiet,
+        stale: old,
+        quiet: quiet,
       );
   }
 }

@@ -1121,7 +1121,11 @@ class Pill extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                model.pillLabel,
+                // A pill has room for a few words: "not heard 5h".
+                model.quiet
+                        ?.replaceFirst('Not ', 'not ')
+                        .replaceFirst(' for ', ' ') ??
+                    model.pillLabel,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 12, color: c.muted),

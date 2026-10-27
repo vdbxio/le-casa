@@ -155,11 +155,12 @@ class _SyncPageState extends State<SyncPage> {
 
   List<Widget> _inHome(SyncService sync, HomeStore home) => [
     ListTile(
-      leading: Icon(sync.connected ? Icons.hub : Icons.hub_outlined),
+      leading: Icon(sync.inTouch ? Icons.hub : Icons.hub_outlined),
       title: Text(home.homeName),
       subtitle: Text(
-        sync.connected
-            ? 'Linked to ${sync.linked.map((p) => p.name).join(', ')}'
+        sync.inTouch
+            ? 'Linked to ${sync.touching.map((p) => p.name).join(', ')}'
+                  '${sync.visitEvery != null ? ' (short visits every ${sync.visitEvery!.inSeconds} s, so this tablet keeps hearing broadcasts)' : ''}'
             : sync.connecting
             ? 'Linking…'
             : 'Looking for your other screens…',
@@ -214,7 +215,7 @@ class _SyncPageState extends State<SyncPage> {
     final lines = <String>[
       if (me)
         'This screen'
-      else if (sync.linked.contains(m))
+      else if (sync.touching.contains(m))
         'Linked directly'
       else
         'Reached through your other screens',

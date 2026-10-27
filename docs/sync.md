@@ -79,7 +79,18 @@ every screen directly.
   other, the one with the smaller id dials; the other dials after 15
   seconds, in case it cannot be heard (a tablet that is not allowed to
   advertise). If both dial at once, they keep the link the smaller id
-  opened.
+  opened. An Android screen dials an iOS one straight away, and the iOS
+  screen waits a minute before dialling an Android one itself.
+- Visits: Android screens do not hold their links. Every 20 seconds they
+  dial each screen, swap news (beacons, readings, keys, Read by choices,
+  queued controls), and hang up once the other end has gone quiet, after
+  3 to 12 seconds. On the M10 any link that stays up cuts what the scan
+  hears from about 30 broadcasts a second to about 2, whatever the link's
+  interval, role or traffic (measured 2026-10-27). A control for a screen
+  that visits waits for its next visit; a control from one dials at once.
+- Each screen shares a new reading of a device it reads at most every
+  10 seconds. Messages are deflated before they are sealed, once the
+  other screen's beacon says it can read them.
 - Every 10 seconds each screen sends a beacon through the mesh: its name,
   the connected devices it hears and how loudly, the screens it hears, and
   its links. Readings, keys, Read by choices and beacons are passed on

@@ -132,6 +132,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     required this.radio,
     ReadByStore? readBy,
     this.dialsFirst = false,
+    this.visitEvery,
   }) : readBy = readBy ?? ReadByStore();
 
   /// Links to other screens, at most [maxLinks]; beyond that, messages
@@ -160,6 +161,22 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
   /// iPad holds a link into it, even at a 125 ms interval with almost
   /// nothing sent; as the end that connects it sets the link up itself.
   final bool dialsFirst;
+
+  /// Link to other screens only for a short visit this often, instead of
+  /// holding the links up. The M10's scan hears about 2 adverts a second
+  /// while any link is up, whatever its interval, role or traffic, and
+  /// about 30 without one (2026-10-27). Null holds links up.
+  final Duration? visitEvery;
+
+  /// A visit lasts at least this long, then ends once the other screen
+  /// has gone quiet, or after [_visitMax].
+  @visibleForTesting
+  Duration visitLength = const Duration(seconds: 3);
+  static const _visitMax = Duration(seconds: 12);
+
+  /// How long the other screen must have been quiet to end a visit.
+  @visibleForTesting
+  Duration visitQuiet = const Duration(seconds: 2);
 
   /// How long an iOS screen waits for an Android one to dial it before
   /// dialling after all.
@@ -216,6 +233,19 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
   final Map<String, DateTime> _sentAt = {};
   final Map<String, DateTime> _sharedWhen = {};
   final Map<String, int> _fails = {};
+
+  /// Screens visited lately, by id, and when the visit ended.
+  final Map<String, (ScreenId, DateTime)> _visited = {};
+
+  /// When to visit a screen again, by [shortScreen] id.
+  final Map<String, DateTime> _nextVisit = {};
+
+  /// Screens that only visit, from their beacons.
+  final Set<String> _visitors = {};
+
+  /// Controls for a screen that only visits, sent when it next does.
+  final Map<String, List<Map<String, Object?>>> _outbox = {};
+  int _controlsRunning = 0;
   int _packetsAt = 0;
   final Map<String, Completer<String?>> _pending = {};
   final Map<String, (SyncSession, DateTime)> _routes = {};
@@ -232,6 +262,31 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
 
   /// Screens this one has a link to.
   List<ScreenId> get linked => [for (final l in _links.values) l.s.peer];
+
+  /// Linked to another screen, or visited one lately.
+  bool get inTouch => connected || touching.isNotEmpty;
+
+  /// Screens linked now or visited lately, for the settings pages.
+  List<ScreenId> get touching {
+    final out = linked;
+    final now = DateTime.now();
+    for (final (peer, at) in _visited.values) {
+      if (now.difference(at) < _visitGone && !out.contains(peer)) {
+        out.add(peer);
+      }
+    }
+    return out;
+  }
+
+  /// A screen that visits and has not come back for this long is out of
+  /// touch.
+  static const _visitGone = Duration(seconds: 70);
+
+  void _noLinks() {
+    // Between visits the screens are still in touch; keep settling time
+    // from the first link.
+    if (_links.isEmpty && visitEvery == null) _linkedSince = null;
+  }
 
   /// Every screen in the home heard from lately, this one first.
   List<ScreenId> get screens {
@@ -459,7 +514,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       if (lock.screen == home.me.id) return null;
       return 'Locked to ${_nameOf(lock.screen!, lock.screenName)}';
     }
-    if (!connected) return null;
+    if (!inTouch) return null;
     final now = DateTime.now();
     final since = _linkedSince;
     if (since != null && now.difference(since) < settleTime) {
@@ -506,7 +561,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     final done = _pending[req] = Completer<String?>();
     _seenReq[req] = DateTime.now();
     try {
-      final sent = await _route({
+      final msg = <String, Object?>{
         't': 'control',
         'req': req,
         'o': owner,
@@ -516,8 +571,18 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
         'name': ?tracker[id]?.latest.name,
         's': command.setting,
         'v': command.value,
-      });
-      if (!sent) throw StateError('$ownerName is not connected');
+      };
+      final sent = await _route(msg);
+      var reached = sent;
+      if (!reached && visitEvery != null && await _visitNow()) {
+        reached = await _route(msg);
+      }
+      if (!reached && _visitors.contains(owner)) {
+        // It visits every few seconds; hand the command over then.
+        (_outbox[owner] ??= []).add(msg);
+        reached = true;
+      }
+      if (!reached) throw StateError('$ownerName is not connected');
       final err = await done.future.timeout(
         const Duration(seconds: 70),
         onTimeout: () => '$ownerName did not answer',
@@ -698,12 +763,21 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       s.closed.then((_) {
         if (_links[s.peer.id] == l) {
           _links.remove(s.peer.id);
-          if (_links.isEmpty) _linkedSince = null;
+          _noLinks();
           notifyListeners();
         }
+        if (visitEvery != null || _visitors.contains(s.peer.id)) {
+          _visited[s.peer.id] = (s.peer, DateTime.now());
+        }
+        // Wait again before dialling it, so the screen meant to dial
+        // (or to visit) gets to first.
+        _firstHeard.remove(shortScreen(s.peer.id));
       }),
     );
     await _sendSnapshot(s);
+    for (final m in _outbox.remove(s.peer.id) ?? const []) {
+      await _sendTo(s, m);
+    }
     notifyListeners();
   }
 
@@ -747,11 +821,12 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
           'dropping the link',
         );
         _links.remove(l.s.peer.id);
-        if (_links.isEmpty) _linkedSince = null;
+        _noLinks();
         unawaited(l.s.close());
         notifyListeners();
       }
     }
+    _endVisits(now);
     if (addingUntil != null && !adding) stopAdding();
     if (!home.inHome) return;
     if (!_serverUp && !now.isBefore(_nextServerTry)) {
@@ -773,6 +848,40 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     }
   }
 
+  /// Ends visits that have done their work: both snapshots are across
+  /// and the other screen has gone quiet, and no command is waiting.
+  void _endVisits(DateTime now) {
+    final every = visitEvery;
+    if (every == null) return;
+    for (final l in _links.values.toList()) {
+      final age = now.difference(l.opened);
+      final quiet = now.difference(l.heard);
+      final busy =
+          _controlsRunning > 0 ||
+          _pending.isNotEmpty ||
+          _routes.values.any((r) => r.$1 == l.s);
+      final done = age >= visitLength && quiet >= visitQuiet;
+      if (busy ? age < _visitMax * 6 : !done && age < _visitMax) continue;
+      _links.remove(l.s.peer.id);
+      _noLinks();
+      _visited[l.s.peer.id] = (l.s.peer, now);
+      _nextVisit[shortScreen(l.s.peer.id)] = now.add(every);
+      unawaited(l.s.close());
+      notifyListeners();
+    }
+  }
+
+  /// Visits a screen now rather than at its turn, for a command the
+  /// person is waiting on. True once linked.
+  Future<bool> _visitNow() async {
+    _nextVisit.clear();
+    final until = DateTime.now().add(const Duration(seconds: 15));
+    while (!connected && DateTime.now().isBefore(until)) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+    return connected;
+  }
+
   /// The screen of this home to link to next, if any.
   PeerSighting? _nextPeer(DateTime now) {
     final me = shortScreen(home.me.id);
@@ -783,6 +892,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       if (h.tag != home.tag || s == null || s == me) continue;
       if (linkedShort.contains(s)) continue;
       if (_backoff[h.id]?.isAfter(now) ?? false) continue;
+      if (_nextVisit[s]?.isAfter(now) ?? false) continue;
       // To keep two screens from dialling each other at once, the one with
       // the smaller id goes first. The other waits, then goes anyway: the
       // smaller one may not be able to hear it (no advertising allowed).
@@ -861,6 +971,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
       'q': now.millisecondsSinceEpoch,
       // Reads deflated messages.
       'z': true,
+      'v': ?visitEvery?.inSeconds,
       'ph': home.phone,
       'd': [
         for (final l in connections.links)
@@ -979,6 +1090,11 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
         final old = _peers[id];
         if (old != null && (m['q'] as num).toInt() <= old.seq) return;
         final info = _peers[id] = PeerInfo.fromJson(m, DateTime.now());
+        if (m['v'] != null) {
+          _visitors.add(id);
+        } else {
+          _visitors.remove(id);
+        }
         for (final d in info.hears) {
           if (d.mac case final mac?) {
             tracker.learnMac(_resolve(d.id, mac, d.name, d.fp), mac);
@@ -1087,11 +1203,16 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
           m['name'] as String?,
           m['fp'] as String?,
         );
-        await connections.control(
-          id,
-          DeviceCommand('${m['s']}', m['v'] as Object),
-          here: true,
-        );
+        _controlsRunning++;
+        try {
+          await connections.control(
+            id,
+            DeviceCommand('${m['s']}', m['v'] as Object),
+            here: true,
+          );
+        } finally {
+          _controlsRunning--;
+        }
         // The screen that asked wants to see the change now.
         _sharedWhen.remove(id);
       } catch (e) {
@@ -1248,6 +1369,7 @@ class _Link {
   /// When the last message came in. Beacons arrive every 10 seconds, so a
   /// link that has gone quiet is stuck even if Bluetooth says it is up.
   DateTime heard = DateTime.now();
+  final DateTime opened = DateTime.now();
   _Link(this.s, this.mine);
 }
 

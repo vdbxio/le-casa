@@ -138,8 +138,13 @@ class Screen {
   late final SyncService sync;
   final FakeRadio radio;
 
-  Screen(Air air, String id, String name, {bool phone = false})
-    : home = HomeStore.memory(id, name, phone: phone),
+  Screen(
+    Air air,
+    String id,
+    String name, {
+    bool phone = false,
+    Duration? visitEvery,
+  }) : home = HomeStore.memory(id, name, phone: phone),
       radio = FakeRadio(air, id) {
     connections = ConnectionManager(
       tracker,
@@ -155,6 +160,7 @@ class Screen {
             connections: connections,
             radio: radio,
             readBy: ReadByStore.memory(),
+            visitEvery: visitEvery,
           )
           ..settleTime = Duration.zero
           ..shareEvery = Duration.zero
@@ -874,5 +880,68 @@ void main() {
     await settle();
     expect(pad.sync.serverError, isNull);
     expect(air.servers.keys, contains('pad2'));
+  });
+
+  group('visits', () {
+    late Air air;
+    late Screen ipad, m10;
+
+    Future<void> setUpWith(Duration visitEvery) async {
+      air = Air();
+      ipad = Screen(air, 'ipad', 'Kitchen iPad');
+      m10 = Screen(air, 'm10', 'M10', visitEvery: visitEvery);
+      m10.sync
+        ..visitLength = Duration.zero
+        ..visitQuiet = Duration.zero;
+      await ipad.sync.startHome('Van');
+      await pairThrough(air, ipad, m10);
+      await link(air, [m10]);
+      expect(m10.sync.connected, isTrue);
+    }
+
+    tearDown(() {
+      ipad.dispose();
+      m10.dispose();
+    });
+
+    test('a visit swaps news, then lets go until the next turn', () async {
+      await setUpWith(const Duration(seconds: 20));
+      await m10.sync.tick();
+      await settle();
+      expect(m10.sync.connected, isFalse);
+      expect(ipad.sync.connected, isFalse);
+      // Both still count the other as linked, between visits.
+      expect(m10.sync.touching.map((s) => s.name), ['Kitchen iPad']);
+      expect(ipad.sync.touching.map((s) => s.name), ['M10']);
+      expect(ipad.sync.screens.map((s) => s.name), ['Kitchen iPad', 'M10']);
+      // Not again until its turn.
+      await m10.sync.tick();
+      await settle();
+      expect(m10.sync.connected, isFalse);
+    });
+
+    test('a control waits for the screen that visits', () async {
+      await setUpWith(const Duration(milliseconds: 300));
+      ipad.hear(ipadFridge, 'AK1-AAFE13156431');
+      m10.hear(m10Fridge, 'AK1-AAFE13156431');
+      await ipad.sync.lock(ipadFridge, m10.home.me);
+      await settle();
+      expect(m10.sync.readBy.lockOf(m10Fridge)?.screen, 'm10');
+      await m10.sync.tick();
+      await settle();
+      expect(m10.sync.connected, isFalse);
+      final sent = ipad.connections.control(
+        ipadFridge,
+        const DeviceCommand('target', 39),
+      );
+      await settle();
+      expect(m10.driver.commands, isEmpty);
+      // The M10's next visit picks it up and answers before letting go.
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      await m10.sync.tick();
+      await settle();
+      await sent;
+      expect(m10.driver.commands.single.value, 39);
+    });
   });
 }

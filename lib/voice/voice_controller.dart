@@ -201,6 +201,12 @@ class VoiceController extends ChangeNotifier {
         encoder: AudioEncoder.pcm16bits,
         sampleRate: SpeechGate.rate,
         numChannels: 1,
+        // The phone-call cleanup: on iOS, echoCancel turns on Apple's voice
+        // processing, which also damps steady noise like a TV across the
+        // room; on Android, the system noise suppressor where there is
+        // one. No auto gain: the speech gate follows the room's level.
+        echoCancel: true,
+        noiseSuppress: true,
       ),
     );
     _micSub = stream.listen(_onAudio);

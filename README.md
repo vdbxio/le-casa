@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/icon.png" alt="Le'Casa icon" width="128"></p>
+
 # Le'Casa
 
 [![CI](https://img.shields.io/github/actions/workflow/status/vdbxio/le-casa/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/vdbxio/le-casa/actions/workflows/ci.yml)
@@ -15,6 +17,11 @@ monitor over Bluetooth, shows a dashboard, and later controls the fridge,
 heater and lights. No router, no Raspberry Pi, no cloud, no login.
 
 Built in Flutter. GPL-3.0-or-later with an [App Store exception](LICENSE-EXCEPTION).
+
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" alt="Dashboard" width="49%">
+  <img src="docs/screenshots/device.png" alt="A device page" width="49%">
+</p>
 
 ## Status
 

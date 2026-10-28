@@ -30,14 +30,10 @@ class VoiceButton extends StatelessWidget {
               _ => 'Speak a command',
             },
             onPressed: voice.tap,
+            // No spinners: on the M10 one kept the raster thread at 65 %
+            // CPU while the engine needed it.
             icon: p == VoicePhase.loading
-                ? SizedBox.square(
-                    dimension: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: c.muted,
-                    ),
-                  )
+                ? Icon(Icons.hourglass_top, color: c.muted)
                 : Icon(
                     p == VoicePhase.waiting || live
                         ? Icons.mic
@@ -100,17 +96,13 @@ class VoiceOverlay extends StatelessWidget {
             Text('Listening…', style: big),
           ],
         );
+      case VoicePhase.loading:
+        return Text('Getting voice ready…', style: small);
       case VoicePhase.thinking:
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox.square(
-              dimension: 22,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                color: c.accent,
-              ),
-            ),
+            Icon(Icons.hourglass_top, color: c.accent),
             const SizedBox(width: 14),
             Text('One moment…', style: big),
           ],

@@ -18,6 +18,8 @@ dependencies:
   native_toolchain_c: ^0.19.5
   record: ^7.1.2
   ffi: ^2.2.0
+  sherpa_onnx: 1.13.8
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:
@@ -31,9 +33,11 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  # Cactus's voice models (Apache-2.0), fetched by tool/fetch_voice.sh.
+  # Cactus's voice models and the sherpa-onnx keyword spotter (both
+  # Apache-2.0), fetched by tool/fetch_voice.sh.
   assets:
     - assets/voice/
+    - assets/voice/kws/
   fonts:
     # League Spartan, SIL Open Font License 1.1 (assets/fonts/OFL.txt).
     - family: LeagueSpartan

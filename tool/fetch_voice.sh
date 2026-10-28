@@ -5,7 +5,9 @@
 #
 # Fetches Cactus's voice engine and models (Apache-2.0) from Hugging Face at
 # pinned revisions and checks each against its sha256 (third_party/needle/
-# README.md). Run once before building; the files are not committed.
+# README.md), and the sherpa-onnx "Hey, Gary" keyword spotter model
+# (Apache-2.0) from its GitHub release. Run once before building; the files
+# are not committed.
 #   tool/fetch_voice.sh            everything
 #   tool/fetch_voice.sh android    models + Android engines only
 set -euo pipefail
@@ -51,3 +53,30 @@ echo "$FILES" | while read -r src path dest want; do
   fi
   mv "$dest.part" "$dest"
 done
+
+# The keyword spotter: a 3.3M-parameter zipformer trained on GigaSpeech,
+# int8. Only the four files the app loads are kept.
+KWS_URL=https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2
+KWS_SHA=f170013b4716e41b62b9bfd809687c207cef798ef9bc6534d524e17af9b6561a
+KWS=assets/voice/kws
+if [ -f "$KWS/encoder.onnx" ] && [ -f "$KWS/decoder.onnx" ] && [ -f "$KWS/joiner.onnx" ] && [ -f "$KWS/tokens.txt" ]; then
+  echo "ok      $KWS"
+else
+  tmp="$(mktemp -d)"
+  echo "fetch   $KWS"
+  curl -fL --retry 3 -o "$tmp/kws.tar.bz2" "$KWS_URL"
+  got="$(sha "$tmp/kws.tar.bz2")"
+  if [ "$got" != "$KWS_SHA" ]; then
+    rm -rf "$tmp"
+    echo "sha256 mismatch for the keyword spotter: $got" >&2
+    exit 1
+  fi
+  tar -xjf "$tmp/kws.tar.bz2" -C "$tmp"
+  src="$tmp/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"
+  mkdir -p "$KWS"
+  cp "$src/encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx" "$KWS/encoder.onnx"
+  cp "$src/decoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx" "$KWS/decoder.onnx"
+  cp "$src/joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx" "$KWS/joiner.onnx"
+  cp "$src/tokens.txt" "$KWS/tokens.txt"
+  rm -rf "$tmp"
+fi

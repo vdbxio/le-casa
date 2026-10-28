@@ -105,8 +105,15 @@ class VoiceCatalog {
   /// 0.19 on the Mac, so the bar sits low and the screen shows what it did.
   final double actAt;
 
-  VoiceCatalog(Iterable<VoiceDevice> devices, {this.actAt = 0.1})
-    : devices = _uniqueNames(devices);
+  /// Below this a call is not even asked about: on the M10 room noise
+  /// came back as "Did you mean … off?" at 0.013.
+  final double askAt;
+
+  VoiceCatalog(
+    Iterable<VoiceDevice> devices, {
+    this.actAt = 0.1,
+    this.askAt = 0.05,
+  }) : devices = _uniqueNames(devices);
 
   static List<VoiceDevice> _uniqueNames(Iterable<VoiceDevice> all) {
     final seen = <String, int>{};
@@ -273,7 +280,9 @@ class VoiceCatalog {
     final conf = (response['confidence'] as num?)?.toDouble();
     final sure = made.isNotEmpty && (conf == null || conf >= actAt);
     final picked = made.isNotEmpty ? made : held;
-    if (picked.isEmpty) return VoiceNotUnderstood(text);
+    if (picked.isEmpty || (!sure && (conf ?? 0) < askAt)) {
+      return VoiceNotUnderstood(text);
+    }
 
     final commands = <VoiceCommand>[];
     final answers = <String>[];

@@ -40,10 +40,11 @@ class VoiceEngine {
     });
   }
 
-  /// Starts the worker and loads both models. [needle] and [whistle] are
+  /// Starts the worker and loads the models. [needle] and [whistle] are
   /// the .cact files' bytes; the engine reads them in place, so the worker
-  /// keeps its native copy for as long as it lives.
-  static Future<VoiceEngine> start(Uint8List needle, Uint8List whistle) async {
+  /// keeps its native copy for as long as it lives. Without [needle] it
+  /// only transcribes.
+  static Future<VoiceEngine> start(Uint8List? needle, Uint8List whistle) async {
     final ready = ReceivePort();
     final isolate = await Isolate.spawn(
       _worker,
@@ -56,7 +57,7 @@ class VoiceEngine {
     final e = VoiceEngine._(to, from, isolate);
     try {
       await e._ask('load', [
-        TransferableTypedData.fromList([needle]),
+        if (needle != null) TransferableTypedData.fromList([needle]),
         TransferableTypedData.fromList([whistle]),
       ]);
     } catch (_) {
@@ -165,8 +166,8 @@ void _worker(SendPort ready) {
               throw VoiceEngineError(lastError());
             }
           }
-          final have = needle_models();
-          if (have & needleText == 0 || have & needleSpeech == 0) {
+          final want = (arg.length > 1 ? needleText : 0) | needleSpeech;
+          if (needle_models() & want != want) {
             throw const VoiceEngineError('A voice model did not load');
           }
         case 'init':
@@ -174,7 +175,8 @@ void _worker(SendPort ready) {
           final s = system.toNativeUtf8();
           final t = tools.toNativeUtf8();
           try {
-            if (needle_init(s, t, nullptr) < 0) {
+            if (needle_models() & needleText != 0 &&
+                needle_init(s, t, nullptr) < 0) {
               throw VoiceEngineError(lastError());
             }
           } finally {

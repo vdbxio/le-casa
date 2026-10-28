@@ -21,6 +21,8 @@ Le'Casa is GPL-3.0-or-later with an App Store exception (see `LICENSE` and
 | League Spartan typeface (`assets/fonts/`) | [The League of Moveable Type](https://github.com/theleagueof/league-spartan), via Google Fonts | SIL Open Font License 1.1 (`assets/fonts/OFL.txt`) |
 | Weather forecasts and place search (`lib/weather/weather.dart`) | [Open-Meteo](https://open-meteo.com/) API, called at runtime when the tablet is online | data under CC BY 4.0, no code copied |
 | Voice engine `libneedle`, Needle 3 and Whistle models (`third_party/needle/`, fetched into `assets/voice/` by `tool/fetch_voice.sh`) | [cactus-compute/needle](https://github.com/cactus-compute/needle), weights on Hugging Face `Cactus-Compute/needle3` and `Cactus-Compute/whistle` | Apache-2.0 (`third_party/needle/LICENSE`); prebuilt engine, no networking in it |
+| "Hey, Gary" keyword spotter: `sherpa_onnx` Flutter plugin and the zipformer GigaSpeech 3.3M KWS model (fetched into `assets/voice/kws/` by `tool/fetch_voice.sh`) | [k2-fsa/sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) | Apache-2.0 (plugin, model and its ONNX Runtime, MIT) |
+| `path_provider` | [flutter/packages](https://pub.dev/packages/path_provider) | BSD-3-Clause |
 | `record` Flutter plugin (microphone) | [llfbandit/record](https://pub.dev/packages/record) | BSD-3-Clause |
 | `ffi`, `hooks`, `code_assets`, `native_toolchain_c` | [dart-lang/native](https://github.com/dart-lang/native) | BSD-3-Clause |
 | Flutter | [flutter/flutter](https://flutter.dev) | BSD-3-Clause |

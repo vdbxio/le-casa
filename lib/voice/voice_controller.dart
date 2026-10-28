@@ -4,6 +4,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ffi' show Abi;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -13,9 +14,11 @@ import 'package:record/record.dart';
 import '../ble/connection_manager.dart';
 import '../ble/device_tracker.dart';
 import '../settings/settings_store.dart';
+import 'phrase_matcher.dart';
 import 'speech_gate.dart';
 import 'voice_engine.dart';
 import 'voice_tools.dart';
+import 'wake_word.dart';
 
 enum VoicePhase {
   /// Not started: the models load on first use.
@@ -33,7 +36,7 @@ enum VoicePhase {
   /// Taking a command.
   listening,
 
-  /// The engine is working on what was said.
+  /// Working on what was said.
   thinking,
 
   /// Showing what came of it.
@@ -49,9 +52,11 @@ class VoiceResult {
   VoiceResult(this.command);
 }
 
-/// Offline voice: Whistle hears, Needle picks the device command, the
-/// connection manager sends it. The mic opens when the person taps it or
-/// turns on "Hey, Gary" in Settings, and only while the app is in front.
+/// Offline voice. "Hey, Gary" is heard by a keyword spotter ([WakeWord])
+/// that listens for nothing else; the command after it, or after a tap on
+/// the mic, is written down by Whistle and read by [matchPhrase], or by
+/// Needle 3 on screens fast enough to run it. The connection manager sends
+/// the change. The mic is only open while the app is in front.
 class VoiceController extends ChangeNotifier {
   final DeviceTracker tracker;
   final ConnectionManager connections;
@@ -75,7 +80,7 @@ class VoiceController extends ChangeNotifier {
   VoiceOutcome? outcome;
   List<VoiceResult> results = [];
 
-  /// How long the engine took on the last thing said, for judging slow
+  /// How long the last command took to understand, for judging slow
   /// tablets.
   int? lastMs;
 
@@ -84,8 +89,18 @@ class VoiceController extends ChangeNotifier {
 
   VoiceEngine? _engine;
   Future<VoiceEngine?>? _starting;
+  WakeWord? _wakeWord;
+  Future<WakeWord?>? _wakeStarting;
   String? _configured;
-  final _gate = SpeechGate();
+
+  /// Needle 3 takes about 40 s a command on the M10's 32-bit chip, so
+  /// 32-bit Android leaves it out, and so does any screen where one call
+  /// took too long.
+  bool _needle = Abi.current() != Abi.androidArm;
+
+  // A command is a few seconds; a TV behind it should not hold the gate
+  // open for long.
+  final _gate = SpeechGate(maxFrames: 300);
   AudioRecorder? _mic;
   StreamSubscription<Uint8List>? _micSub;
   Timer? _timeout;
@@ -102,32 +117,39 @@ class VoiceController extends ChangeNotifier {
 
   void _followSettings() {
     if (wake && _micSub == null && phase != VoicePhase.unavailable) {
-      unawaited(
-        _ready().then((e) async {
-          if (e != null && await _openMic()) _rest();
-        }),
-      );
+      unawaited(() async {
+        final w = await _readyWake();
+        if (w != null && await _openMic()) {
+          _rest();
+          // Load Whistle now, so the first "Hey, Gary" is not kept
+          // waiting for it.
+          unawaited(_ready());
+        }
+      }());
     } else if (!wake && phase == VoicePhase.waiting) {
       unawaited(_closeMic());
       _set(VoicePhase.off);
     }
   }
 
-  /// Loads the engine once; null when voice cannot run here.
+  /// Loads Whistle (and Needle) once; null when voice cannot run here.
   Future<VoiceEngine?> _ready() => _starting ??= () async {
+    final was = phase;
     _set(VoicePhase.loading);
     try {
-      final needle = await rootBundle.load('assets/voice/needle3.cact');
+      final needle = _needle
+          ? await rootBundle.load('assets/voice/needle3.cact')
+          : null;
       final whistle = await rootBundle.load('assets/voice/whistle.cact');
       final e = await VoiceEngine.start(
-        needle.buffer.asUint8List(needle.offsetInBytes, needle.lengthInBytes),
+        needle?.buffer.asUint8List(needle.offsetInBytes, needle.lengthInBytes),
         whistle.buffer.asUint8List(
           whistle.offsetInBytes,
           whistle.lengthInBytes,
         ),
       );
       _engine = e;
-      _set(VoicePhase.off);
+      _set(was == VoicePhase.loading ? VoicePhase.off : was);
       return e;
     } on FlutterError {
       return _fail('The voice models are not in this build');
@@ -139,6 +161,19 @@ class VoiceController extends ChangeNotifier {
             ? 'Voice is not built for this device'
             : 'Voice could not start: ${e.message}',
       );
+    }
+  }();
+
+  /// Starts the wake word spotter once; null when it cannot run here.
+  Future<WakeWord?> _readyWake() => _wakeStarting ??= () async {
+    try {
+      return _wakeWord = await WakeWord.start(_onWake);
+    } catch (e) {
+      debugPrint('voice: $e');
+      problem = '"Hey, Gary" is not available on this device';
+      _set(VoicePhase.showing);
+      _hideLater();
+      return null;
     }
   }();
 
@@ -182,7 +217,8 @@ class VoiceController extends ChangeNotifier {
   /// After a command: wait for the wake word, or close the mic.
   void _rest() {
     _timeout?.cancel();
-    if (wake) {
+    if (wake && _wakeWord != null) {
+      _wakeWord!.reset();
       // A result on screen stays until it times out; the wake word is
       // still heard meanwhile.
       if (phase != VoicePhase.showing) _set(VoicePhase.waiting);
@@ -217,81 +253,91 @@ class VoiceController extends ChangeNotifier {
     _listen();
   }
 
+  void _onWake() {
+    if (_busy || phase == VoicePhase.listening) return;
+    debugPrint('voice: "Hey, Gary"');
+    unawaited(() async {
+      if (await _ready() == null) {
+        problem = _whyNot;
+        _set(VoicePhase.showing);
+        _hideLater();
+        return;
+      }
+      _hide?.cancel();
+      problem = null;
+      _listen();
+    }());
+  }
+
   void _listen() {
     outcome = null;
     results = [];
+    // What the gate held before the wake word (the TV, the phrase itself)
+    // is not the command.
+    _gate.flush();
     _set(VoicePhase.listening);
     _timeout?.cancel();
     // Nobody spoke: give up quietly.
     _timeout = Timer(const Duration(seconds: 8), () {
-      if (phase == VoicePhase.listening && !_gate.inSpeech) _rest();
+      if (phase == VoicePhase.listening) {
+        final u = _gate.flush();
+        u == null ? _rest() : unawaited(_command(u));
+      }
     });
   }
 
   void _onAudio(Uint8List bytes) {
-    final ended = _gate.add(SpeechGate.fromPcm16(bytes));
-    if (phase == VoicePhase.listening) notifyListeners();
-    for (final u in ended) {
-      switch (phase) {
-        case VoicePhase.listening:
-          unawaited(_command(u));
-        case VoicePhase.waiting || VoicePhase.showing when wake:
-          unawaited(_maybeWake(u));
-        default:
-      }
+    final samples = SpeechGate.fromPcm16(bytes);
+    switch (phase) {
+      case VoicePhase.listening:
+        notifyListeners();
+        final ended = _gate.add(samples);
+        if (ended.isNotEmpty) unawaited(_command(ended.first));
+      case VoicePhase.waiting || VoicePhase.showing when wake:
+        _wakeWord?.add(samples);
+      default:
     }
   }
 
-  Future<void> _maybeWake(Float32List u) async {
+  Future<void> _command(Float32List u) async {
     final e = _engine;
-    if (e == null || _busy) return;
-    // Only the first seconds matter for the wake word; a long chat is
-    // not transcribed whole on the off chance.
-    final head = u.length > 6 * SpeechGate.rate
-        ? Float32List.sublistView(u, 0, 6 * SpeechGate.rate)
-        : u;
-    final t = await e.transcribe(head);
-    final heard = '${t['text'] ?? ''}';
-    final rest = afterWakeWord(heard);
-    debugPrint('voice: heard "$heard" in ${t['ms']} ms');
-    if (rest == null) return;
-    _hide?.cancel();
-    if (rest.isEmpty) return _listen();
-    // The command came in the same breath: answer the words, unless the
-    // utterance ran past what was transcribed.
-    await _command(u, text: head.length == u.length ? rest : null);
-  }
-
-  Future<void> _command(Float32List u, {String? text}) async {
-    final e = _engine;
-    if (e == null) return;
+    if (e == null || phase == VoicePhase.thinking) return;
     _timeout?.cancel();
     _set(VoicePhase.thinking);
+    final watch = Stopwatch()..start();
     try {
       final catalog = _catalog();
-      final tools = catalog.tools;
-      final key = jsonEncode([tools, catalog.keywords]);
+      final key = jsonEncode([catalog.tools, catalog.keywords]);
       if (key != _configured) {
         await e.configure(
           system: _dateFact(),
-          tools: tools,
+          tools: catalog.tools,
           keywords: catalog.keywords,
         );
         _configured = key;
       }
-      final r = text != null
-          ? await e.complete(text: text)
-          : await e.complete(pcm: u);
-      lastMs = r['ms'] as int?;
-      debugPrint('voice: ${jsonEncode(r)}');
-      var o = catalog.interpret(r, heard: text);
-      // "Hey Gary, lights off" heard as one: drop the wake word.
-      if (text == null && o.heard.isNotEmpty) {
-        final rest = afterWakeWord(o.heard);
-        if (rest != null && rest.isNotEmpty && o is VoiceNotUnderstood) {
-          o = catalog.interpret(await e.complete(text: rest), heard: rest);
-        }
+      final t = await e.transcribe(u);
+      var heard = '${t['text'] ?? ''}'.trim();
+      // "Hey Gary" said again, or its tail caught by the gate.
+      heard = afterWakeWord(heard) ?? heard;
+      debugPrint('voice: heard "$heard" in ${t['ms']} ms');
+      VoiceOutcome o;
+      if (heard.isEmpty) {
+        o = const VoiceNotUnderstood('');
+      } else if (matchPhrase(catalog, heard) case final calls?) {
+        o = catalog.interpret({
+          'function_calls': calls,
+          'confidence': 1.0,
+        }, heard: heard);
+      } else if (_needle) {
+        final r = await e.complete(text: heard);
+        debugPrint('voice: ${jsonEncode(r)}');
+        if ((r['ms'] as int? ?? 0) > 5000) _needle = false;
+        o = catalog.interpret(r, heard: heard);
+      } else {
+        o = VoiceNotUnderstood(heard);
       }
+      lastMs = watch.elapsedMilliseconds;
       outcome = o;
       _set(VoicePhase.showing);
       if (o is VoiceAct) await _run(o.commands);
@@ -350,7 +396,7 @@ class VoiceController extends ChangeNotifier {
     problem = null;
     results = [];
     if (phase == VoicePhase.showing) {
-      wake ? _set(VoicePhase.waiting) : _set(VoicePhase.off);
+      _set(wake && _wakeWord != null ? VoicePhase.waiting : VoicePhase.off);
     } else {
       notifyListeners();
     }
@@ -372,6 +418,7 @@ class VoiceController extends ChangeNotifier {
     _hide?.cancel();
     unawaited(_closeMic().then((_) => _mic?.dispose()));
     _engine?.dispose();
+    _wakeWord?.dispose();
     super.dispose();
   }
 }

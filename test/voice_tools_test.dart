@@ -173,7 +173,7 @@ void main() {
 
   test('low confidence asks first', () {
     final o = _home().interpret(
-      _call('turn_on', {'device': 'Kettle'}, confidence: 0.05),
+      _call('turn_on', {'device': 'Kettle'}, confidence: 0.07),
     );
     expect(o, isA<VoiceConfirm>());
   });
@@ -190,6 +190,13 @@ void main() {
       'confidence': 0.08,
     });
     expect(o, isA<VoiceConfirm>());
+  });
+
+  test('noise-level confidence is not asked about', () {
+    final o = _home().interpret(
+      _call('turn_off', {'device': 'Kettle'}, confidence: 0.013),
+    );
+    expect(o, isA<VoiceNotUnderstood>());
   });
 
   test('a refusal or an unknown device is not understood', () {

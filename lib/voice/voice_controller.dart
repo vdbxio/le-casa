@@ -269,11 +269,15 @@ class VoiceController extends ChangeNotifier {
         await _mic?.dispose();
         _mic = null;
         if (phase == VoicePhase.listening) _rest();
-        await Future<void>.delayed(const Duration(seconds: 1));
-        if (wake) {
-          _followSettings();
-        } else if (phase == VoicePhase.listening) {
-          _set(VoicePhase.off);
+        // While an alarm or call still holds the mic, opening fails: keep
+        // trying until it is free.
+        for (var i = 0; wake && _micSub == null && i < 120; i++) {
+          await Future<void>.delayed(const Duration(seconds: 2));
+          try {
+            if (await _openMic()) _rest();
+          } catch (e) {
+            debugPrint('voice: mic not free yet: $e');
+          }
         }
       } finally {
         _reopening = false;

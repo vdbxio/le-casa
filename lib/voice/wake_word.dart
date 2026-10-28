@@ -17,9 +17,9 @@ import 'asset_files.dart';
 /// spotter must be (lower hears more and wakes more by mistake), `@` the
 /// name it reports.
 const wakeKeywords = '''
-▁HE Y ▁GA RY :2.0 #0.25 @hey gary
-▁HI ▁GA RY :2.0 #0.25 @hey gary
-▁O K ▁GA RY :2.0 #0.25 @hey gary
+▁HE Y ▁GA RY :2.0 #0.25 @hey_gary
+▁HI ▁GA RY :2.0 #0.25 @hey_gary
+▁O K ▁GA RY :2.0 #0.25 @hey_gary
 ''';
 
 /// Listens for "Hey, Gary" with sherpa-onnx's keyword spotter: a tiny

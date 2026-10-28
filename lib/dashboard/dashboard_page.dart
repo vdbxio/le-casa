@@ -298,7 +298,12 @@ class _Board extends StatelessWidget {
             Positioned(
               top: 0,
               right: 0,
-              child: Row(
+              // Side by side the two cover a phone's clock: there they
+              // stack in the corner, the width of one.
+              child: Flex(
+                direction: size.width < 480 ? Axis.vertical : Axis.horizontal,
+                // The gear stays in the very corner either way.
+                verticalDirection: VerticalDirection.up,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   VoiceButton(voice: AppServices.of(context).voice),

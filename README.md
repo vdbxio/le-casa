@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/icon.png" alt="Le'Casa icon" width="128"></p>
+
 # Le'Casa
 
 [![CI](https://img.shields.io/github/actions/workflow/status/vdbxio/le-casa/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/vdbxio/le-casa/actions/workflows/ci.yml)
@@ -16,9 +18,14 @@ heater and lights. No router, no Raspberry Pi, no cloud, no login.
 
 Built in Flutter. GPL-3.0-or-later with an [App Store exception](LICENSE-EXCEPTION).
 
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" alt="Dashboard" width="49%">
+  <img src="docs/screenshots/device.png" alt="A device page" width="49%">
+</p>
+
 ## Status
 
-Le'Casa hears, decodes and reads the gear in Chloe's van, shows it on a
+Le'Casa hears, decodes and reads the gear in Chloe's bus, shows it on a
 dashboard and shares it between screens. The app currently
 
 - lists every BLE broadcast the radio hears, with raw bytes and packet rate;
@@ -112,7 +119,7 @@ the internet, automations and voice. See the roadmap below.
    *Allow* button in the status bar). On Android 11 and older the prompt
    is for location instead, and location services must be on; Android
    requires that for any BLE scan on those versions.
-5. Walk around the van. Recognised devices are grouped by type (Climate,
+5. Walk around the bus. Recognised devices are grouped by type (Climate,
    Solar, Battery, Buttons, Le' devices, ...) in square tiles at the top;
    tap a tile for its devices and a device for raw bytes, packet rate and
    the key field. Everything unrecognised is listed below in the order it

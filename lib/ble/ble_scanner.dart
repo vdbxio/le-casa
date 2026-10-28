@@ -32,6 +32,14 @@ class BleScanner {
   Peripheral? peripheralFor(String id) => _peripherals[id];
   bool get scanning => _scanning;
 
+  /// Whether the scan has to pause while a link opens. Android tablets'
+  /// radios fail connects (status 133) with a scan running; Apple's
+  /// handle both, and a scan paused for every poll there missed the
+  /// other screens' "Hey, Gary" claims.
+  static bool get pausesForLinks =>
+      defaultTargetPlatform != TargetPlatform.iOS &&
+      defaultTargetPlatform != TargetPlatform.macOS;
+
   /// The person paused scanning, or it has not started yet. Otherwise a
   /// scan that is off is only waiting for a connection to open, and comes
   /// back by itself.

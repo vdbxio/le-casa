@@ -383,6 +383,7 @@ class BleSyncRadio implements SyncRadio {
     // cheap tablets; pause it for the connect, as device polls do.
     final wasScanning =
         !(connections?.holdLinks ?? false) &&
+        BleScanner.pausesForLinks &&
         scanner.scanning &&
         await RadioWrites.settle();
     if (wasScanning) await scanner.stop();

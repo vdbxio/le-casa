@@ -23,7 +23,9 @@ void main() {
 
   test('an older wake word is another command', () {
     final old = at.subtract(const Duration(seconds: 5));
-    expect(answeredBy('aaaa0000', 10, at, [PeerWake('bbbb0000', 40, old)]),
-        isNull);
+    expect(
+      answeredBy('aaaa0000', 10, at, [PeerWake('bbbb0000', 40, old)]),
+      isNull,
+    );
   });
 }

@@ -220,8 +220,16 @@ class VoiceController extends ChangeNotifier {
     return null;
   }
 
-  Future<bool> _openMic() async {
-    if (_micSub != null) return true;
+  /// One open at a time: at launch the settings and the constructor both
+  /// ask, and a second start ended the first stream.
+  Future<bool> _openMic() {
+    if (_micSub != null) return Future.value(true);
+    return _micOpening ??= _startMic().whenComplete(() => _micOpening = null);
+  }
+
+  Future<bool>? _micOpening;
+
+  Future<bool> _startMic() async {
     final mic = _mic ??= AudioRecorder();
     if (!await mic.hasPermission()) {
       problem = 'Le\'Casa needs the microphone for voice';

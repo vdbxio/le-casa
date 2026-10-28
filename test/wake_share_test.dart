@@ -28,4 +28,20 @@ void main() {
       isNull,
     );
   });
+
+  test("an iPhone's claim that arrives late still counts", () {
+    final late = at.add(const Duration(milliseconds: 3600));
+    expect(
+      answeredBy('aaaa0000', 10, at, [PeerWake('bbbb0000', 12, late)])?.screen,
+      'bbbb0000',
+    );
+  });
+
+  test('a claim from an earlier wake word does not count', () {
+    final old = at.subtract(const Duration(seconds: 27));
+    expect(
+      answeredBy('aaaa0000', 1, at, [PeerWake('bbbb0000', 1, old)]),
+      isNull,
+    );
+  });
 }

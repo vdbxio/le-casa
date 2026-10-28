@@ -29,6 +29,19 @@ abstract interface class WakeShare {
   Stream<PeerWake> get wakes;
 }
 
+/// Whether [p] heard the same "Hey, Gary" as a screen that heard it at
+/// [at]. An iPhone's claim can take some 4 s to reach an Android screen
+/// (iOS is slow to change its advert), so a claim seen up to [late] after
+/// counts.
+bool sameWake(
+  PeerWake p,
+  DateTime at, {
+  Duration late = const Duration(seconds: 5),
+}) {
+  final d = p.seen.difference(at);
+  return d > const Duration(seconds: -2) && d < late;
+}
+
 /// Whether a screen that heard the wake word at [at], [level] dB over its
 /// background, should leave the command to another screen. The one that
 /// heard it most clearly over its own background answers, so a tablet by
@@ -38,13 +51,12 @@ PeerWake? answeredBy(
   String screen,
   int level,
   DateTime at,
-  Iterable<PeerWake> peers, {
-  Duration window = const Duration(seconds: 2),
-}) {
+  Iterable<PeerWake> peers,
+) {
   PeerWake? best;
   for (final p in peers) {
     if (p.screen == screen) continue;
-    if (p.seen.difference(at).abs() > window) continue;
+    if (!sameWake(p, at)) continue;
     final wins =
         p.level > level || (p.level == level && p.screen.compareTo(screen) > 0);
     if (!wins) continue;

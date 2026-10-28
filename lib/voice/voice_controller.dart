@@ -238,16 +238,17 @@ class VoiceController extends ChangeNotifier {
       return false;
     }
     final stream = await mic.startStream(
-      const RecordConfig(
+      RecordConfig(
         encoder: AudioEncoder.pcm16bits,
         sampleRate: SpeechGate.rate,
         numChannels: 1,
-        // The phone-call cleanup: on iOS, echoCancel turns on Apple's voice
-        // processing, which also damps steady noise like a TV across the
-        // room; on Android, the system noise suppressor where there is
-        // one. No auto gain: the speech gate follows the room's level.
-        echoCancel: true,
-        noiseSuppress: true,
+        // The phone-call cleanup on Android: the system echo canceller and
+        // noise suppressor, where there are any. Not on iOS: there it is
+        // Apple's voice processing, which tunes for a voice at the phone and
+        // made an iPhone miss "Hey, Gary" across the room that the M10
+        // heard. No auto gain: the speech gate follows the room's level.
+        echoCancel: !Platform.isIOS,
+        noiseSuppress: !Platform.isIOS,
       ),
     );
     _micSub = stream.listen(
@@ -353,11 +354,11 @@ class VoiceController extends ChangeNotifier {
     if (_busy || phase == VoicePhase.listening) return;
     _wakeAt = DateTime.now();
     final raw = _gate.clarity;
-    // Mics differ: iOS's voice processing hears the same voice some 20 dB
-    // clearer over its background than the M10 does. So each screen
+    // Mics differ: an iPhone hears the same voice some 10 dB clearer over
+    // its background than the M10 does. So each screen
     // compares with how clearly it usually hears the wake word, which
     // also says how far it is from where people usually stand.
-    final usual = _usualWake ??= Platform.isIOS ? 38.0 : 16.0;
+    final usual = _usualWake ??= Platform.isIOS ? 27.0 : 16.0;
     _wakeLevel = (raw - usual).round();
     _usualWake = usual * 0.9 + raw * 0.1;
     share?.announceWake(_wakeLevel);
@@ -516,18 +517,20 @@ class VoiceController extends ChangeNotifier {
     final share = this.share;
     _wakeAt = null;
     if (at == null || share == null) return false;
-    final wait = at
-        .add(const Duration(milliseconds: 1500))
-        .difference(DateTime.now());
+    // Long enough for an iPhone's claim to reach an Android screen; the
+    // command is usually still being said meanwhile.
+    final wait = at.add(const Duration(seconds: 4)).difference(DateTime.now());
     if (wait > Duration.zero) await Future<void>.delayed(wait);
     final w = answeredBy(share.screen, _wakeLevel, at, _peerWakes);
-    final others = _peerWakes
-        .where((p) => p.seen.difference(at).abs() < const Duration(seconds: 2))
-        .length;
+    final heard = [
+      for (final p in _peerWakes)
+        if (sameWake(p, at)) p,
+    ];
+    final others = heard.length;
     wakeNote = '$_wakeLevel dB, $others other${others == 1 ? '' : 's'}';
     debugPrint(
       'voice: wake $_wakeLevel dB, others '
-      '${[for (final p in _peerWakes) '${p.screen} ${p.level} dB']} -> '
+      '${[for (final p in heard) '${p.screen} ${p.level} dB']} -> '
       '${w == null ? 'answering' : 'left to ${w.screen}'}',
     );
     return w != null;

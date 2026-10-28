@@ -196,6 +196,22 @@ void main() {
       });
     });
 
+    test("Chloe's H5074 on the roof, captured on the Mac", () {
+      final out = DecoderRegistry.standard().decode(
+        adv(
+          name: 'Govee_H5074_91B2',
+          manufacturerData: {0xEC88: '00b3059a0f6402'},
+          serviceUuids: [0xEC88],
+        ),
+      )!;
+      expect(out.model, 'Govee H5074');
+      expect(values(out), {
+        'temperature': 14.59,
+        'humidity': 39.94,
+        'battery': 100,
+      });
+    });
+
     test('H5100', () {
       final out = DecoderRegistry.standard().decode(
         adv(name: 'GVH5100_7738', manufacturerData: {0x0001: '010103465464'}),

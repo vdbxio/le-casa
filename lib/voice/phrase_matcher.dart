@@ -282,9 +282,10 @@ VoiceDevice? _device(
   var best = <VoiceDevice>[];
   var bestScore = 0.0;
   for (final d in home.devices) {
-    final name = _words(
-      d.name,
-    ).where((w) => !_filler.contains(w)).map(_stem).toList();
+    final name = _words(d.name)
+        .where((w) => !_filler.contains(w))
+        .map(_stem)
+        .toList();
     if (name.isEmpty) continue;
     final hits = name.where(heard.contains).length;
     if (hits == 0) continue;

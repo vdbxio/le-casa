@@ -67,12 +67,14 @@ List<Map<String, Object?>>? matchPhrase(VoiceCatalog home, String heard) {
     final said = words.map(_stem).toSet();
     final picked =
         target != null &&
-        _words(target.name).map(_stem).any(
-          (w) =>
-              !_filler.contains(w) &&
-              !const {'battery', 'solar', 'charger'}.contains(w) &&
-              said.contains(w),
-        );
+        _words(target.name)
+            .map(_stem)
+            .any(
+              (w) =>
+                  !_filler.contains(w) &&
+                  !const {'battery', 'solar', 'charger'}.contains(w) &&
+                  said.contains(w),
+            );
     if (topic != null &&
         (every || !picked || target?.state?.kind != topic) &&
         home.devices.any((d) => d.state?.kind == topic)) {

@@ -31,6 +31,21 @@ dashboard and shares it between screens. The app currently
 - decodes **stock Xiaomi MiBeacon** broadcasts (AES-CCM) once you enter
   the sensor's bindkey (see below), and reads the pvvx "custom" and
   ATC1441 formats;
+- decodes **SwitchBot** broadcasts with no account or key: Meter, Meter
+  Plus, Indoor/Outdoor Meter, Meter Pro (and CO2), Weather Station, Hub 2
+  and 3, contact, motion, presence and leak sensors, Plug Mini, Relay
+  Switch, Bot, Curtain, Roller Shade, Blind Tilt, remotes and the Lock's
+  state. Plug Minis (US/JP) switch on and off from their page or a tap
+  on their card. Details in [docs/switchbot-govee.md](docs/switchbot-govee.md);
+- decodes **Govee** broadcasts with no account: the thermo-hygrometers
+  (H5072/H5074/H5075, H5100-H5110, H5174/H5177/H5179, H5178 indoor +
+  outdoor, H5051/H5052/H5071), the H5140 CO2 and H5106 air quality
+  monitors, the BBQ probe thermometers (H5055, H5181-H5198) and the
+  H5121-H5130 motion, door, vibration, pressure and button sensors;
+- switches, dims and colours LED strip controllers made for the **iDeal
+  LED** app (ISP-xxxxxx / IDL-xxxxxx) with no account. They cannot report
+  their state, so the card shows what Le'Casa last set. See
+  [docs/ideal-led.md](docs/ideal-led.md);
 - recognises **Improv BLE** Wi-Fi setup broadcasts and parks them in
   their own group;
 - stores per-device encryption keys on the tablet;
@@ -169,12 +184,15 @@ lib/
     bthome.dart  BTHome v2 (plain + encrypted)
     victron.dart Victron Instant Readout
     xiaomi.dart  stock MiBeacon detection, pvvx custom, ATC1441
+    switchbot.dart, govee.dart  SwitchBot and Govee broadcasts
     registry.dart "match a broadcast, pick a decoder"
   drivers/       GATT drivers for devices that need a connection
     daly_protocol.dart  Daly frame building/parsing (pure, tested)
     daly_driver.dart    auto-detects the Daly dialect and reads a snapshot
     xiaomi_driver.dart  stock LYWSD03MMC live characteristic
     bms_driver.dart     runs the aiobmsble port and builds the card
+    switchbot_driver.dart  SwitchBot Plug Mini on/off
+    ideal_led.dart      iDeal LED strips: commands, decoder and driver
   bms/           aiobmsble port: BaseBms, 50 drivers, registry (generated
                  by tool/aiobmsble/gen_registry.py)
   ble/           radio wrapper (bluetooth_low_energy), device tracker,
@@ -188,6 +206,8 @@ lib/
   ui/            scan list, group and device pages, Alpicool controls
 docs/
   bms.md         every supported BMS, PINs, upstream update steps
+  ideal-led.md   iDeal LED strip controllers
+  switchbot-govee.md  supported SwitchBot and Govee models, setup notes
   sync.md        setting up several screens and phones
   tablets.md     what each tested tablet's Bluetooth can do
 ```

@@ -8,6 +8,7 @@ RawAdvertisement adv({
   String? name,
   Map<int, String> serviceData = const {},
   Map<int, String> manufacturerData = const {},
+  List<int> serviceUuids = const [],
   DateTime? seenAt,
 }) => RawAdvertisement(
   id: id,
@@ -17,6 +18,7 @@ RawAdvertisement adv({
   seenAt: seenAt ?? DateTime.utc(2026, 10, 23),
   serviceData: serviceData.map((k, v) => MapEntry(k, fromHex(v))),
   manufacturerData: manufacturerData.map((k, v) => MapEntry(k, fromHex(v))),
+  serviceUuids: serviceUuids,
 );
 
 Uint8List? Function(String) keyFor(String id, String hexKey) =>

@@ -49,10 +49,15 @@ class LiveScriptedDriver extends ScriptedDriver implements LiveDriver {
 /// Another screen that wants a device, or not.
 class _Aside implements RemoteLinks {
   String? why;
+  bool locked = false;
+  final sent = <DeviceCommand>[];
+  @override
+  bool lockedElsewhere(String id) => locked;
   @override
   RemoteOwner? ownerOf(String id) => null;
   @override
-  Future<void> control(String id, DeviceCommand command) async {}
+  Future<void> control(String id, DeviceCommand command) async =>
+      sent.add(command);
   @override
   String? standAside(String id) => why;
 }
@@ -71,11 +76,17 @@ class ControlDriver extends ScriptedDriver implements ControllableDriver {
   }
 }
 
+class LingerDriver extends ControlDriver implements LingeringDriver {
+  @override
+  Duration get linger => const Duration(milliseconds: 200);
+}
+
 void main() {
   late DeviceTracker tracker;
   late List<FakeSession> opened;
 
   setUp(() {
+    ConnectionManager.retryGap = Duration.zero;
     tracker = DeviceTracker(DecoderRegistry.standard());
     opened = [];
   });
@@ -292,10 +303,112 @@ void main() {
     expect(opened.single.closed, isTrue);
     expect(m.busyId, isNull);
     await m.setDeviceEnabled(testAdv.id, false);
+    // A command from another screen does not turn connecting back on...
     expect(
-      () => m.control(testAdv.id, const DeviceCommand('power', true)),
+      () =>
+          m.control(testAdv.id, const DeviceCommand('power', true), here: true),
       throwsStateError,
     );
+    // ...but the person asking for a change on this screen does.
+    await m.control(testAdv.id, const DeviceCommand('power', true));
+    expect(m.allows(testAdv.id), isTrue);
+    expect(driver.commands.last.value, true);
+    m.dispose();
+  });
+
+  test('control tries a second connect when the first fails', () async {
+    final driver = ControlDriver();
+    var tries = 0;
+    final m = manager(
+      driver,
+      open: (id) async {
+        if (++tries == 1) throw StateError('status 133');
+        return FakeSession(characteristics: const []);
+      },
+    );
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.control(testAdv.id, const DeviceCommand('power', true));
+    expect(tries, 2);
+    expect(driver.commands, hasLength(1));
+    m.dispose();
+  });
+
+  test('a lingering driver reuses its link for the next command', () async {
+    final driver = LingerDriver();
+    final m = manager(driver);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.control(testAdv.id, const DeviceCommand('power', true));
+    await m.control(testAdv.id, const DeviceCommand('power', false));
+    expect(opened, hasLength(1));
+    expect(opened.single.closed, isFalse);
+    expect(driver.commands, hasLength(2));
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    expect(opened.single.closed, isTrue);
+    await m.control(testAdv.id, const DeviceCommand('power', true));
+    expect(opened, hasLength(2));
+    m.dispose();
+  });
+
+  test('a connect refused with 133 says another screen may hold it', () async {
+    final m = manager(
+      ControlDriver(),
+      open: (id) async => throw StateError('Connect failed with status: 133'),
+    );
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await expectLater(
+      m.control(testAdv.id, const DeviceCommand('power', true)),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('Another screen or app'),
+        ),
+      ),
+    );
+    m.dispose();
+  });
+
+  test('warm links ahead of commands and cool lets go', () async {
+    final driver = LingerDriver();
+    final m = manager(driver);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.warm(testAdv.id);
+    expect(m.isLinked(testAdv.id), isTrue);
+    expect(opened, hasLength(1));
+    await m.control(testAdv.id, const DeviceCommand('power', true));
+    // Still the warm link, and held past the driver's own linger.
+    expect(opened, hasLength(1));
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    expect(opened.single.closed, isFalse);
+    m.cool(testAdv.id);
+    await Future<void>.delayed(const Duration(seconds: 4));
+    expect(opened.single.closed, isTrue);
+    expect(m.isLinked(testAdv.id), isFalse);
+    m.dispose();
+  });
+
+  test('warm leaves other drivers alone', () async {
+    final m = manager(ControlDriver());
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.warm(testAdv.id);
+    expect(opened, isEmpty);
+    m.dispose();
+  });
+
+  test('a device locked to another screen is controlled there', () async {
+    final driver = ControlDriver();
+    final aside = _Aside()..locked = true;
+    final m = manager(driver)..remote = aside;
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.control(testAdv.id, const DeviceCommand('power', true));
+    expect(aside.sent.single.setting, 'power');
+    expect(driver.commands, isEmpty);
     m.dispose();
   });
 

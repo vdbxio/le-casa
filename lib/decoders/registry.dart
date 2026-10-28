@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Chloe Madison and contributors.
 // SPDX-License-Identifier: GPL-3.0-or-later WITH App-Store-Exception
 
+import '../drivers/ideal_led.dart' show IdealLedDecoder;
 import 'appliances.dart';
 import 'apple.dart';
 import 'bms.dart';
@@ -9,9 +10,11 @@ import 'bthome.dart';
 import 'daly.dart';
 import 'decoded.dart';
 import 'decoder.dart';
+import 'govee.dart';
 import 'improv.dart';
 import 'lecasa.dart';
 import 'raw_advertisement.dart';
+import 'switchbot.dart';
 import 'victron.dart';
 import 'xiaomi.dart';
 
@@ -29,10 +32,13 @@ class DecoderRegistry {
         VictronDecoder(keyFor: keyFor),
         XiaomiStockDecoder(keyFor: keyFor),
         const PvvxCustomDecoder(),
+        SwitchBotDecoder(),
+        GoveeDecoder(),
         const ImprovDecoder(),
         const DalyDecoder(),
         const HcaloryDecoder(),
         const AlpicoolDecoder(),
+        const IdealLedDecoder(),
         // after the appliances: some BMS name patterns are broad
         const BmsDecoder(),
         const AppleDecoder(),

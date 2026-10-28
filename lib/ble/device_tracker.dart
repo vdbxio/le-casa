@@ -53,13 +53,17 @@ class TrackedDevice {
   /// What to show: the broadcast readings once they can be read (a stock
   /// Xiaomi after its bindkey is entered, when nothing connects to it any
   /// more), else the connected reading, else whatever the broadcast
-  /// decoder made of the device.
-  Decoded? get view =>
-      (decoded?.isReadable ?? false) ? decoded : polled ?? decoded;
+  /// decoder made of the device. A broadcast that names the device but
+  /// carries nothing (an LED controller) gives way to a connected reading.
+  Decoded? get view => _broadcastReads ? decoded : polled ?? decoded;
+
+  bool get _broadcastReads =>
+      (decoded?.isReadable ?? false) &&
+      (decoded!.readings.isNotEmpty || polled == null);
 
   /// Whether readings come from the device's broadcasts rather than a
   /// connection.
-  bool get readsBroadcasts => polled != null && (decoded?.isReadable ?? false);
+  bool get readsBroadcasts => polled != null && _broadcastReads;
 
   /// The device's MAC: from the radio (Android), or from inside its
   /// broadcast when it carries one (iOS hides MACs; stock Xiaomi and pvvx
@@ -151,11 +155,11 @@ class DeviceTracker extends ChangeNotifier {
   ];
 
   /// Stores a reading taken over a connection.
-  void setPolled(String id, Decoded decoded) {
+  void setPolled(String id, Decoded decoded, {DateTime? at}) {
     final d = _devices[id];
     if (d == null) return;
     d.polled = decoded;
-    d.polledAt = DateTime.now();
+    d.polledAt = at ?? DateTime.now();
     d.polledBy = null;
     notifyListeners();
   }

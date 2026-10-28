@@ -14,6 +14,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../decoders/decoded.dart';
 import '../decoders/raw_advertisement.dart';
 import '../drivers/driver.dart';
 import 'ble_scanner.dart';
@@ -115,6 +116,9 @@ abstract interface class RemoteLinks {
   /// locked to another one, or another one hears it better), or null when
   /// this screen may read it.
   String? standAside(String id);
+
+  /// Whether the person locked [id] to another screen ("Read by").
+  bool lockedElsewhere(String id);
 }
 
 /// Opens a connected, service-discovered session to a device id, or throws.
@@ -196,6 +200,116 @@ class ConnectionManager extends ChangeNotifier {
 
   /// Open links kept for [holdLinks], by device id.
   final Map<String, ClosableSession> _held = {};
+
+  /// Links kept open briefly after a command to a [LingeringDriver], with
+  /// the timer that closes them.
+  final Map<String, (ClosableSession, Timer)> _lingering = {};
+
+  ClosableSession? _takeLingering(String id) {
+    final l = _lingering.remove(id);
+    if (l == null) return null;
+    l.$2.cancel();
+    return l.$1.droppedByDevice ? null : l.$1;
+  }
+
+  void _linger(String id, ClosableSession link, Duration d) {
+    final before = _lingering[id];
+    if (before != null) {
+      before.$2.cancel();
+      if (before.$1 != link) unawaited(before.$1.close());
+    }
+    final timer = Timer(d, () {
+      if (_lingering[id]?.$1 != link) return;
+      _lingering.remove(id);
+      debugPrint('control: closing $id after ${d.inSeconds} s');
+      unawaited(link.close());
+      notifyListeners();
+    });
+    _lingering[id] = (link, timer);
+    if (before?.$1 == link) return;
+    unawaited(
+      link.onDisconnected.then((_) {
+        if (_lingering[id]?.$1 != link) return;
+        _lingering.remove(id)?.$2.cancel();
+        notifyListeners();
+      }),
+    );
+  }
+
+  /// How long a link opened by [warm] stays up with nothing sent.
+  static const warmIdle = Duration(seconds: 60);
+  final Set<String> _warm = {};
+  final Set<String> _warming = {};
+
+  /// Whether a link to [id] is open and ready for a command.
+  bool isLinked(String id) => _lingering.containsKey(id);
+
+  /// Whether [warm] is connecting to [id] right now.
+  bool isWarming(String id) => _warming.contains(id);
+
+  /// Connects to [id] ahead of any command, while a page that adjusts it
+  /// is open, so changes go out at once. The link closes [warmIdle] after
+  /// the last command, or soon after [cool]. Only for [LingeringDriver]
+  /// devices this screen controls itself; failures are left for the first
+  /// command to retry.
+  Future<void> warm(String id) async {
+    _warm.add(id);
+    if (_lingering[id] case final l?) {
+      _linger(id, l.$1, warmIdle);
+      return;
+    }
+    final l = _links[id];
+    final r = remote;
+    if (_warming.contains(id) ||
+        l == null ||
+        l.driver is! LingeringDriver ||
+        !_enabled ||
+        (r != null && r.lockedElsewhere(id)) ||
+        !_free()) {
+      return;
+    }
+    _warming.add(id);
+    final turn = _take(id);
+    notifyListeners();
+    try {
+      ClosableSession? link;
+      for (var attempt = 1; link == null; attempt++) {
+        try {
+          link = await _open(id);
+        } catch (e) {
+          if (attempt == 2) rethrow;
+          await Future<void>.delayed(retryGap);
+        }
+      }
+      if (!_warm.contains(id) || _disposed) {
+        await link.close();
+      } else {
+        debugPrint('warm: $id linked');
+        _linger(id, link, warmIdle);
+      }
+    } catch (e) {
+      debugPrint('warm: $id failed: $e');
+    } finally {
+      _warming.remove(id);
+      _giveBack(turn);
+      notifyListeners();
+    }
+  }
+
+  /// The page that wanted [id] linked has gone: let the link go shortly.
+  void cool(String id) {
+    _warm.remove(id);
+    if (_lingering[id] case final l?) {
+      _linger(id, l.$1, const Duration(seconds: 3));
+    }
+  }
+
+  Future<void> _closeLingering(String id) async {
+    final l = _lingering.remove(id);
+    if (l == null) return;
+    l.$2.cancel();
+    await l.$1.close();
+  }
 
   /// Connect only to devices the person turned on. Otherwise every device
   /// a driver recognises is read, which at a campground full of other
@@ -322,6 +436,9 @@ class ConnectionManager extends ChangeNotifier {
       _choice.putIfAbsent(id, () => false);
     }
     _enabled = _prefs!.getBool(_globalKey) ?? true;
+    for (final id in _links.keys) {
+      _restoreLook(id);
+    }
     for (final l in _links.values) {
       if (!allows(l.id) && !l.busy) l.phase = LinkPhase.off;
       if (allows(l.id) && l.phase == LinkPhase.off) {
@@ -412,9 +529,15 @@ class ConnectionManager extends ChangeNotifier {
     bool here = false,
   }) async {
     final r = remote;
+    // A device whose broadcasts carry its state (a plug) has no reader
+    // to defer to: whoever is asked connects just for the command.
+    // A device locked to another screen still goes there.
+    final broadcasts = tracker[id]?.decoded?.isReadable ?? false;
     if (!here &&
         r != null &&
-        (heldElsewhere(id) != null || r.standAside(id) != null)) {
+        (r.lockedElsewhere(id) ||
+            !broadcasts &&
+                (heldElsewhere(id) != null || r.standAside(id) != null))) {
       return r.control(id, command);
     }
     final l = _links[id];
@@ -423,7 +546,12 @@ class ConnectionManager extends ChangeNotifier {
       throw StateError('This device cannot be controlled');
     }
     if (!_enabled) throw StateError('Connections are paused');
-    if (!l.enabled) throw StateError('Turn on "Connect to this device" first');
+    // Asking for a change is saying yes to connecting. A command from
+    // another screen does not decide for this one.
+    if (!l.enabled) {
+      if (here) throw StateError('Turn on "Connect to this device" first');
+      await setDeviceEnabled(id, true);
+    }
     final until = DateTime.now().add(const Duration(seconds: 60));
     while (!_free()) {
       if (DateTime.now().isAfter(until)) {
@@ -443,14 +571,36 @@ class ConnectionManager extends ChangeNotifier {
     debugPrint('control: $id $command');
     notifyListeners();
     ClosableSession? link;
+    var done = false;
     try {
-      link = await _open(id);
-      l.phase = LinkPhase.reading;
-      notifyListeners();
-      final decoded = await driver
-          .control(link, dev.lastRecognised ?? dev.latest, command)
-          .timeout(driver.timeout);
-      tracker.setPolled(id, decoded);
+      // Commands set a state rather than step it, so another go is safe;
+      // the M10 often fails the first connect (133) or drops during
+      // discovery, and a later attempt then works.
+      late Decoded decoded;
+      for (var attempt = 1; ; attempt++) {
+        try {
+          link = _takeLingering(id) ?? await _open(id);
+          l.phase = LinkPhase.reading;
+          notifyListeners();
+          decoded = await driver
+              .control(link, dev.lastRecognised ?? dev.latest, command)
+              .timeout(driver.timeout);
+          break;
+        } on ArgumentError {
+          rethrow;
+        } catch (e) {
+          if (attempt == 3) rethrow;
+          debugPrint('control: $id attempt $attempt failed: $e; retrying');
+          await link?.close();
+          link = null;
+          // The second wait outlasts another screen's lingering link.
+          await Future<void>.delayed(retryGap * (attempt == 1 ? 1 : 8));
+        }
+      }
+      final look = _keepLook(dev.view, decoded);
+      tracker.setPolled(id, look);
+      if (look.kind == DeviceKind.lights) unawaited(_saveLook(id, look));
+      done = true;
       l
         ..phase = LinkPhase.ok
         ..failures = 0
@@ -463,9 +613,26 @@ class ConnectionManager extends ChangeNotifier {
         ..phase = LinkPhase.failed
         ..error = _describe(e)
         ..nextDue = DateTime.now().add(driver.interval);
+      // Status 133 straight away usually means the device already has a
+      // connection (most take one), from another screen or its own app.
+      if ('$e'.contains('status: 133')) {
+        throw StateError(
+          'Could not connect. Another screen or app may be connected to '
+          'it; try again in a few seconds.',
+        );
+      }
       rethrow;
     } finally {
-      await link?.close();
+      final keep = link;
+      if (done &&
+          keep != null &&
+          driver is LingeringDriver &&
+          !keep.droppedByDevice &&
+          !_disposed) {
+        _linger(id, keep, _warm.contains(id) ? warmIdle : driver.linger);
+      } else {
+        await link?.close();
+      }
       _giveBack(turn);
       notifyListeners();
     }
@@ -505,7 +672,61 @@ class ConnectionManager extends ChangeNotifier {
     final driver = drivers.forAdvertisement(adv);
     if (driver == null) return;
     _links[adv.id] = Link(adv.id, driver, enabled: allows(adv.id));
+    _restoreLook(adv.id);
     notifyListeners();
+  }
+
+  static const _lookKey = 'gatt:lights';
+
+  /// The pause before a control's second connect; tests shorten it.
+  @visibleForTesting
+  static Duration retryGap = const Duration(seconds: 1);
+
+  /// A light cannot be asked what it shows, so the last look set from this
+  /// screen is kept across restarts.
+  Future<void> _saveLook(String id, Decoded d) async {
+    final p = _prefs;
+    if (p == null) return;
+    Map<String, Object?> all;
+    try {
+      all = (jsonDecode(p.getString(_lookKey) ?? '{}') as Map).cast();
+    } catch (_) {
+      all = {};
+    }
+    all[id] = {
+      'at': DateTime.now().toIso8601String(),
+      'protocol': d.protocol,
+      'model': d.model,
+      'r': [
+        for (final r in d.readings)
+          if (r.value is bool || r.value is num || r.value is String)
+            [r.label, r.value, r.unit],
+      ],
+    };
+    await p.setString(_lookKey, jsonEncode(all));
+  }
+
+  void _restoreLook(String id) {
+    final dev = tracker[id];
+    if (dev == null || dev.polled != null) return;
+    try {
+      final all = jsonDecode(_prefs?.getString(_lookKey) ?? '{}') as Map;
+      final j = all[id];
+      if (j is! Map) return;
+      tracker.setPolled(
+        id,
+        Decoded(
+          protocol: '${j['protocol']}',
+          model: '${j['model']}',
+          kind: DeviceKind.lights,
+          readings: [
+            for (final r in j['r'] as List)
+              Reading('${r[0]}', r[1] as Object?, '${r[2]}'),
+          ],
+        ),
+        at: DateTime.parse('${j['at']}'),
+      );
+    } catch (_) {}
   }
 
   /// Starts the most overdue poll if nothing is in flight, and reads held
@@ -616,6 +837,9 @@ class ConnectionManager extends ChangeNotifier {
     for (final id in _held.keys.toList()) {
       await _release(id);
     }
+    for (final id in _lingering.keys.toList()) {
+      await _closeLingering(id);
+    }
   }
 
   Future<void> _poll(Link l) async {
@@ -721,6 +945,27 @@ class ConnectionManager extends ChangeNotifier {
       unawaited(link.close());
     }
     _held.clear();
+    for (final id in _lingering.keys.toList()) {
+      unawaited(_closeLingering(id));
+    }
     super.dispose();
   }
+}
+
+/// A light that cannot be read only reports what a command changed: switching
+/// it on or off keeps the colour and brightness it was last set to.
+Decoded _keepLook(Decoded? before, Decoded after) {
+  if (after.kind != DeviceKind.lights || before == null) return after;
+  final have = {for (final r in after.readings) r.label};
+  return Decoded(
+    protocol: after.protocol,
+    kind: after.kind,
+    model: after.model,
+    readings: [
+      ...after.readings,
+      for (final r in before.readings)
+        if (!have.contains(r.label)) r,
+    ],
+    info: after.info,
+  );
 }

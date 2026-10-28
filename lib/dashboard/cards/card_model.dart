@@ -101,6 +101,10 @@ class CardModel {
   /// The short label next to the number on a pill.
   final String pillLabel;
 
+  /// What tapping the card changes on its device, outside edit mode: a
+  /// setting and the value to send ('on', false for a plug that is on).
+  final (String, Object)? action;
+
   const CardModel({
     required this.title,
     this.subtitle = '',
@@ -118,6 +122,7 @@ class CardModel {
     this.stale = false,
     this.quiet,
     this.setup,
+    this.action,
     String? pillLabel,
   }) : pillLabel = pillLabel ?? title;
 
@@ -139,6 +144,7 @@ class CardModel {
     stale: stale,
     quiet: quiet,
     setup: setup,
+    action: action,
     pillLabel: pillLabel == this.title ? null : pillLabel,
   );
 }

@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Chloe Madison and contributors.
 // SPDX-License-Identifier: GPL-3.0-or-later WITH App-Store-Exception
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../ble/connection_manager.dart';
@@ -38,7 +40,33 @@ const _colours = <(String, int)>[
   ('Purple', 0x8000FF),
 ];
 
-class _LightControlsState extends State<LightControls> {
+class _LightControlsState extends State<LightControls>
+    with WidgetsBindingObserver {
+  // The page connects as it opens so that changes go out at once; the
+  // strip blinks three times as it does.
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(widget.connections.warm(widget.id));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(widget.connections.warm(widget.id));
+    } else if (state == AppLifecycleState.paused) {
+      widget.connections.cool(widget.id);
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    widget.connections.cool(widget.id);
+    super.dispose();
+  }
+
   bool _sending = false;
   double? _dragging;
   double? _speedDrag;
@@ -145,10 +173,21 @@ class _LightControlsState extends State<LightControls> {
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Power'),
-          subtitle: Text(
-            _sending
-                ? 'Sending…'
-                : '${patternName ?? 'Nothing set yet'} · as Le\'Casa last set it',
+          subtitle: ListenableBuilder(
+            listenable: widget.connections,
+            builder: (context, _) {
+              final link = widget.connections.isLinked(widget.id)
+                  ? 'connected'
+                  : widget.connections.isWarming(widget.id)
+                  ? 'connecting…'
+                  : 'connects on change';
+              return Text(
+                _sending
+                    ? 'Sending…'
+                    : '${patternName ?? 'Nothing set yet'} · as Le\'Casa last '
+                          'set it · $link',
+              );
+            },
           ),
           value: on,
           onChanged: _sending ? null : (v) => _send(LightSetting.on, v),

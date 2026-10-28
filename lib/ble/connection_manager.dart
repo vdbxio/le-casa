@@ -213,18 +213,95 @@ class ConnectionManager extends ChangeNotifier {
   }
 
   void _linger(String id, ClosableSession link, Duration d) {
+    final before = _lingering[id];
+    if (before != null) {
+      before.$2.cancel();
+      if (before.$1 != link) unawaited(before.$1.close());
+    }
     final timer = Timer(d, () {
       if (_lingering[id]?.$1 != link) return;
       _lingering.remove(id);
       debugPrint('control: closing $id after ${d.inSeconds} s');
       unawaited(link.close());
+      notifyListeners();
     });
     _lingering[id] = (link, timer);
+    if (before?.$1 == link) return;
     unawaited(
       link.onDisconnected.then((_) {
-        if (_lingering[id]?.$1 == link) _lingering.remove(id)?.$2.cancel();
+        if (_lingering[id]?.$1 != link) return;
+        _lingering.remove(id)?.$2.cancel();
+        notifyListeners();
       }),
     );
+  }
+
+  /// How long a link opened by [warm] stays up with nothing sent.
+  static const warmIdle = Duration(seconds: 60);
+  final Set<String> _warm = {};
+  final Set<String> _warming = {};
+
+  /// Whether a link to [id] is open and ready for a command.
+  bool isLinked(String id) => _lingering.containsKey(id);
+
+  /// Whether [warm] is connecting to [id] right now.
+  bool isWarming(String id) => _warming.contains(id);
+
+  /// Connects to [id] ahead of any command, while a page that adjusts it
+  /// is open, so changes go out at once. The link closes [warmIdle] after
+  /// the last command, or soon after [cool]. Only for [LingeringDriver]
+  /// devices this screen controls itself; failures are left for the first
+  /// command to retry.
+  Future<void> warm(String id) async {
+    _warm.add(id);
+    if (_lingering[id] case final l?) {
+      _linger(id, l.$1, warmIdle);
+      return;
+    }
+    final l = _links[id];
+    final r = remote;
+    if (_warming.contains(id) ||
+        l == null ||
+        l.driver is! LingeringDriver ||
+        !_enabled ||
+        (r != null && r.lockedElsewhere(id)) ||
+        !_free()) {
+      return;
+    }
+    _warming.add(id);
+    final turn = _take(id);
+    notifyListeners();
+    try {
+      ClosableSession? link;
+      for (var attempt = 1; link == null; attempt++) {
+        try {
+          link = await _open(id);
+        } catch (e) {
+          if (attempt == 2) rethrow;
+          await Future<void>.delayed(retryGap);
+        }
+      }
+      if (!_warm.contains(id) || _disposed) {
+        await link.close();
+      } else {
+        debugPrint('warm: $id linked');
+        _linger(id, link, warmIdle);
+      }
+    } catch (e) {
+      debugPrint('warm: $id failed: $e');
+    } finally {
+      _warming.remove(id);
+      _giveBack(turn);
+      notifyListeners();
+    }
+  }
+
+  /// The page that wanted [id] linked has gone: let the link go shortly.
+  void cool(String id) {
+    _warm.remove(id);
+    if (_lingering[id] case final l?) {
+      _linger(id, l.$1, const Duration(seconds: 3));
+    }
   }
 
   Future<void> _closeLingering(String id) async {
@@ -552,7 +629,7 @@ class ConnectionManager extends ChangeNotifier {
           driver is LingeringDriver &&
           !keep.droppedByDevice &&
           !_disposed) {
-        _linger(id, keep, driver.linger);
+        _linger(id, keep, _warm.contains(id) ? warmIdle : driver.linger);
       } else {
         await link?.close();
       }

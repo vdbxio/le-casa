@@ -371,6 +371,35 @@ void main() {
     m.dispose();
   });
 
+  test('warm links ahead of commands and cool lets go', () async {
+    final driver = LingerDriver();
+    final m = manager(driver);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.warm(testAdv.id);
+    expect(m.isLinked(testAdv.id), isTrue);
+    expect(opened, hasLength(1));
+    await m.control(testAdv.id, const DeviceCommand('power', true));
+    // Still the warm link, and held past the driver's own linger.
+    expect(opened, hasLength(1));
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    expect(opened.single.closed, isFalse);
+    m.cool(testAdv.id);
+    await Future<void>.delayed(const Duration(seconds: 4));
+    expect(opened.single.closed, isTrue);
+    expect(m.isLinked(testAdv.id), isFalse);
+    m.dispose();
+  });
+
+  test('warm leaves other drivers alone', () async {
+    final m = manager(ControlDriver());
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.warm(testAdv.id);
+    expect(opened, isEmpty);
+    m.dispose();
+  });
+
   test('a device locked to another screen is controlled there', () async {
     final driver = ControlDriver();
     final aside = _Aside()..locked = true;

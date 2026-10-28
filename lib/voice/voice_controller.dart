@@ -71,6 +71,7 @@ class VoiceController extends ChangeNotifier {
     this.share,
   }) {
     _peerSub = share?.wakes.listen((w) {
+      debugPrint('voice: ${w.screen} heard "Hey, Gary", ${w.level} dB');
       _peerWakes
         ..add(w)
         ..removeWhere((p) => w.seen.difference(p.seen).inSeconds > 10);
@@ -80,6 +81,10 @@ class VoiceController extends ChangeNotifier {
       onResume: _followSettings,
       onHide: () => unawaited(_closeMic()),
     );
+    // Settings may have loaded before this was made, and a launch is not a
+    // resume: on the iPhone the mic never opened with "Hey, Gary" already
+    // on.
+    scheduleMicrotask(_followSettings);
   }
 
   late final AppLifecycleListener _lifecycle;

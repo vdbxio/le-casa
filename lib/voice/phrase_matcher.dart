@@ -21,19 +21,26 @@ List<Map<String, Object?>>? matchPhrase(VoiceCatalog home, String heard) {
   bool has(String w) => text.contains(' $w ');
   bool any(Iterable<String> ws) => ws.any(has);
 
+  final off = any(const ['off', 'shut', 'kill']);
+  final on = !off && any(const ['on', 'start']);
   final asks =
       const {
         'what',
         'whats',
         'how',
         'hows',
+        // "How's" as the iPhone heard it.
+        'has',
         'is',
         'are',
+        'does',
+        'did',
         'tell',
+        'show',
       }.contains(words.first) ||
-      has('status');
-  final off = any(const ['off', 'shut', 'kill']);
-  final on = !off && any(const ['on', 'start']);
+      has('status') ||
+      // "My batteries?" with nothing to switch is a question too.
+      (_topic(text) != null && !on && !off);
   final lights = home.of(VoiceKind.light).toList();
   final target = _device(home, words, control: !asks);
   // A number in the device's own name ("Sol 30") is not a setting.

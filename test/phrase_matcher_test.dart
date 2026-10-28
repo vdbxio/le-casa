@@ -198,6 +198,7 @@ void main() {
     final home = VoiceCatalog([
       VoiceDevice('l', 'Outside LEDs', VoiceKind.light, null),
       VoiceDevice('k', 'Kitchen strip', VoiceKind.light, null),
+      VoiceDevice('c', 'Battery Chargers', VoiceKind.plug, null),
       VoiceDevice(
         'o',
         'Outside',
@@ -234,6 +235,19 @@ void main() {
       [
         'get_reading',
         {'device': 'Outside'},
+      ],
+    ]);
+    expect(_m('turn off the battery chargers', home), [
+      [
+        'turn_off',
+        {'device': 'Battery Chargers'},
+      ],
+    ]);
+    // Whistle on the iPhone, for "how's my batteries".
+    expect(_m('has my batteries.', home), [
+      [
+        'get_reading',
+        {'device': allBatteries},
       ],
     ]);
     expect(_m('how are my batteries?', home), [

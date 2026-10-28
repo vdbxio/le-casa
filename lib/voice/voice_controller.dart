@@ -387,6 +387,7 @@ class VoiceController extends ChangeNotifier {
       }
       lastMs = watch.elapsedMilliseconds;
       outcome = o;
+      debugPrint('voice: ${_logged(o)} in $lastMs ms');
       _set(VoicePhase.showing);
       if (o is VoiceAct) await _run(o.commands);
     } catch (err) {
@@ -397,6 +398,15 @@ class VoiceController extends ChangeNotifier {
     _hideLater();
     _rest();
   }
+
+  static String _logged(VoiceOutcome o) => switch (o) {
+    VoiceAct(:final commands) =>
+      'did ${commands.map((c) => c.summary).join('; ')}',
+    VoiceConfirm(:final commands) =>
+      'asked about ${commands.map((c) => c.summary).join('; ')}',
+    VoiceAnswer(:final answer) => 'answered $answer',
+    VoiceNotUnderstood() => 'not understood',
+  };
 
   static String _dateFact() {
     final n = DateTime.now();

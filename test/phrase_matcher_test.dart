@@ -194,6 +194,56 @@ void main() {
     expect(_m('she wore the blue dress to the party', one), isNull);
   });
 
+  test('an LED strip and a sensor of the same name', () {
+    final home = VoiceCatalog([
+      VoiceDevice('l', 'Outside LEDs', VoiceKind.light, null),
+      VoiceDevice('k', 'Kitchen strip', VoiceKind.light, null),
+      VoiceDevice(
+        'o',
+        'Outside',
+        VoiceKind.sensor,
+        _kind(DeviceKind.climate, const [Reading('temperature', 15.6, '°C')]),
+      ),
+      VoiceDevice(
+        'b',
+        'Battery 12BA',
+        VoiceKind.sensor,
+        _kind(DeviceKind.battery, const [Reading('voltage', 13.2, 'V')]),
+      ),
+    ]);
+    // As the M10 heard it.
+    expect(_m('turn off the outside leg.', home), [
+      [
+        'turn_off',
+        {'device': 'Outside LEDs'},
+      ],
+    ]);
+    expect(_m('Set outside to rainbow flow.', home), [
+      [
+        'set_light_scene',
+        {'device': 'Outside LEDs', 'scene': 'rainbow flow'},
+      ],
+    ]);
+    expect(_m('said outside to rainbow', home), [
+      [
+        'set_light_scene',
+        {'device': 'Outside LEDs', 'scene': 'rainbow flow'},
+      ],
+    ]);
+    expect(_m('how warm is it outside', home), [
+      [
+        'get_reading',
+        {'device': 'Outside'},
+      ],
+    ]);
+    expect(_m('how are my batteries?', home), [
+      [
+        'get_reading',
+        {'device': 'Battery 12BA'},
+      ],
+    ]);
+  });
+
   test('anything else is left for Needle', () {
     expect(_m('I think the game is on later'), isNull);
     expect(_m('what time is it'), isNull);

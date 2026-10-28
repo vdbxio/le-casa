@@ -35,7 +35,7 @@ List<Map<String, Object?>>? matchPhrase(VoiceCatalog home, String heard) {
   final off = any(const ['off', 'shut', 'kill']);
   final on = !off && any(const ['on', 'start']);
   final lights = home.of(VoiceKind.light).toList();
-  final target = _device(home, words);
+  final target = _device(home, words, control: !asks);
   // A number in the device's own name ("Sol 30") is not a setting.
   final named = target == null ? const <String>{} : _words(target.name).toSet();
   final number = _number([
@@ -96,18 +96,23 @@ List<Map<String, Object?>>? matchPhrase(VoiceCatalog home, String heard) {
             ];
     }
   }
-  for (final p in idealPatterns) {
-    if (text.contains(' ${_words(p.name).join(' ')} ')) {
-      final l = lightName();
-      return l == null
-          ? null
-          : [
-              call('set_light_scene', {
-                'device': l,
-                'scene': p.name.toLowerCase(),
-              }),
-            ];
-    }
+  // The whole name ("rainbow flow"), or else its first word ("rainbow"):
+  // the first pattern of that family.
+  final pattern =
+      idealPatterns
+          .where((p) => text.contains(' ${_words(p.name).join(' ')} '))
+          .firstOrNull ??
+      idealPatterns.where((p) => has(_words(p.name).first)).firstOrNull;
+  if (pattern != null) {
+    final l = lightName();
+    return l == null
+        ? null
+        : [
+            call('set_light_scene', {
+              'device': l,
+              'scene': pattern.name.toLowerCase(),
+            }),
+          ];
   }
 
   final fridge =
@@ -190,7 +195,8 @@ List<Map<String, Object?>>? matchPhrase(VoiceCatalog home, String heard) {
   return null;
 }
 
-/// Lower-case words, apostrophes dropped ("what's" -> "whats").
+/// Lower-case words, apostrophes dropped ("what's" -> "whats"), with the
+/// ways Whistle mishears "LEDs" put right.
 List<String> _words(String s) => s
     .toLowerCase()
     .replaceAll(RegExp(r"['’]"), '')
@@ -198,7 +204,22 @@ List<String> _words(String s) => s
     .replaceAll('°', ' degrees ')
     .split(RegExp(r'[^a-z0-9\-]+'))
     .where((w) => w.isNotEmpty)
+    .map((w) => _misheard[w] ?? w)
     .toList();
+
+/// Heard on the M10 for "LEDs" (2026-10-28): "the outside legs".
+const _misheard = {
+  'leg': 'leds',
+  'legs': 'leds',
+  'lace': 'leds',
+  'lids': 'leds',
+  'elities': 'leds',
+};
+
+/// "batteries" for "Battery", "chargers" for "Charger".
+String _stem(String w) => w.length > 4 && w.endsWith('ies')
+    ? '${w.substring(0, w.length - 3)}y'
+    : (w.length > 3 && w.endsWith('s') ? w.substring(0, w.length - 1) : w);
 
 /// Words that say nothing about which device.
 const _filler = {
@@ -249,14 +270,21 @@ const _filler = {
 };
 
 /// The device whose name shares the most telling words with what was said.
-/// A tie between two different devices names neither.
-VoiceDevice? _device(VoiceCatalog home, List<String> said) {
-  final heard = said.where((w) => !_filler.contains(w)).toSet();
-  VoiceDevice? best;
+/// A tie is settled by what was asked: "outside off" means the Outside LEDs
+/// over the Outside sensor, "how warm is outside" the other way round.
+/// Otherwise a tie names neither.
+VoiceDevice? _device(
+  VoiceCatalog home,
+  List<String> said, {
+  required bool control,
+}) {
+  final heard = said.where((w) => !_filler.contains(w)).map(_stem).toSet();
+  var best = <VoiceDevice>[];
   var bestScore = 0.0;
-  var tie = false;
   for (final d in home.devices) {
-    final name = _words(d.name).where((w) => !_filler.contains(w)).toList();
+    final name = _words(
+      d.name,
+    ).where((w) => !_filler.contains(w)).map(_stem).toList();
     if (name.isEmpty) continue;
     final hits = name.where(heard.contains).length;
     if (hits == 0) continue;
@@ -264,21 +292,29 @@ VoiceDevice? _device(VoiceCatalog home, List<String> said) {
     // "Bed reading lamp" a partial one.
     final score = hits / name.length + hits;
     if (score > bestScore) {
-      best = d;
+      best = [d];
       bestScore = score;
-      tie = false;
     } else if (score == bestScore) {
-      tie = true;
+      best.add(d);
     }
   }
-  return tie ? null : best;
+  if (best.length > 1) {
+    best = [
+      for (final d in best)
+        if ((d.kind == VoiceKind.sensor) != control) d,
+    ];
+  }
+  return best.length == 1 ? best.single : null;
 }
 
 /// "What's the battery at?" with no device named: the one device of that
 /// kind.
 VoiceDevice? _askedAbout(VoiceCatalog home, String text) {
   final kind = switch (text) {
-    _ when text.contains(' battery ') || text.contains(' charge ') =>
+    _
+        when text.contains(' battery ') ||
+            text.contains(' batteries ') ||
+            text.contains(' charge ') =>
       DeviceKind.battery,
     _ when text.contains(' solar ') || text.contains(' sun ') =>
       DeviceKind.solar,

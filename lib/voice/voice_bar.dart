@@ -84,7 +84,11 @@ class VoiceOverlay extends StatelessWidget {
           );
     Widget timing() => voice.lastMs == null
         ? const SizedBox.shrink()
-        : Text('${voice.lastMs} ms', style: small.copyWith(fontSize: 12));
+        : Text(
+            '${voice.lastMs} ms'
+            '${voice.wakeNote == null ? '' : ' · ${voice.wakeNote}'}',
+            style: small.copyWith(fontSize: 12),
+          );
 
     switch (voice.phase) {
       case VoicePhase.listening:

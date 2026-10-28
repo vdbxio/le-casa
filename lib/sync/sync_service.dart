@@ -661,7 +661,9 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     _wakeSeq = (_wakeSeq + 1) & 0xF;
     _wakeLevel = level;
     _wakeEnd?.cancel();
-    _wakeEnd = Timer(const Duration(seconds: 3), () {
+    debugPrint('sync: wake word $level dB in the advert (#$_wakeSeq)');
+    // Long enough for a screen whose scan is paused for a visit.
+    _wakeEnd = Timer(const Duration(seconds: 6), () {
       _wakeLevel = null;
       unawaited(_advertise());
     });
@@ -744,7 +746,11 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     nearby[h.id] = h;
     final level = h.wakeLevel;
     final s = h.screen;
-    if (level == null || s == null || h.tag != home.tag) return;
+    if (level == null || s == null) return;
+    if (h.tag != home.tag) {
+      debugPrint('sync: wake word from ${h.tag}.$s, not this home');
+      return;
+    }
     if (s == shortScreen(home.me.id)) return;
     // Each advert repeats many times a second: pass each wake on once.
     final key = '$s.${h.wakeSeq}.$level';

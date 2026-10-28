@@ -97,6 +97,10 @@ class VoiceController extends ChangeNotifier {
   /// tablets.
   int? lastMs;
 
+  /// How clearly this screen heard the last wake word, and how many other
+  /// screens heard it too, for tuning which one answers.
+  String? wakeNote;
+
   /// Mic level, 0..1, while listening.
   double get level => _gate.level;
 
@@ -233,13 +237,55 @@ class VoiceController extends ChangeNotifier {
         noiseSuppress: true,
       ),
     );
-    _micSub = stream.listen(_onAudio);
+    _micSub = stream.listen(
+      _onAudio,
+      onError: (Object e) => _micLost('$e'),
+      onDone: () => _micLost('the stream ended'),
+    );
+    _lastAudio = DateTime.now();
+    // An alarm or a call takes the mic on iOS without telling the app, and
+    // it does not come back by itself.
+    _micWatch ??= Timer.periodic(const Duration(seconds: 5), (_) {
+      if (_micSub != null &&
+          DateTime.now().difference(_lastAudio) > const Duration(seconds: 4)) {
+        _micLost('no sound for 4 s');
+      }
+    });
     return true;
+  }
+
+  DateTime _lastAudio = DateTime(0);
+  Timer? _micWatch;
+  var _reopening = false;
+
+  /// Opens the mic again after something else took it.
+  void _micLost(String why) {
+    if (_reopening || _micSub == null) return;
+    _reopening = true;
+    debugPrint('voice: lost the mic ($why), opening it again');
+    unawaited(() async {
+      try {
+        await _closeMic();
+        await _mic?.dispose();
+        _mic = null;
+        if (phase == VoicePhase.listening) _rest();
+        await Future<void>.delayed(const Duration(seconds: 1));
+        if (wake) {
+          _followSettings();
+        } else if (phase == VoicePhase.listening) {
+          _set(VoicePhase.off);
+        }
+      } finally {
+        _reopening = false;
+      }
+    }());
   }
 
   Future<void> _closeMic() async {
     final s = _micSub;
     _micSub = null;
+    _micWatch?.cancel();
+    _micWatch = null;
     await s?.cancel();
     await _mic?.stop();
     _gate.flush();
@@ -274,6 +320,7 @@ class VoiceController extends ChangeNotifier {
     _hide?.cancel();
     problem = null;
     _wakeAt = null;
+    wakeNote = null;
     final e = await _ready();
     if (e == null) {
       problem = _whyNot;
@@ -330,6 +377,7 @@ class VoiceController extends ChangeNotifier {
   }
 
   void _onAudio(Uint8List bytes) {
+    _lastAudio = DateTime.now();
     final samples = SpeechGate.fromPcm16(bytes);
     switch (phase) {
       case VoicePhase.listening:
@@ -443,10 +491,14 @@ class VoiceController extends ChangeNotifier {
     _wakeAt = null;
     if (at == null || share == null) return false;
     final wait = at
-        .add(const Duration(milliseconds: 1000))
+        .add(const Duration(milliseconds: 1500))
         .difference(DateTime.now());
     if (wait > Duration.zero) await Future<void>.delayed(wait);
     final w = answeredBy(share.screen, _wakeLevel, at, _peerWakes);
+    final others = _peerWakes
+        .where((p) => p.seen.difference(at).abs() < const Duration(seconds: 2))
+        .length;
+    wakeNote = '$_wakeLevel dB, $others other${others == 1 ? '' : 's'}';
     debugPrint(
       'voice: wake $_wakeLevel dB, others '
       '${[for (final p in _peerWakes) '${p.screen} ${p.level} dB']} -> '
@@ -530,6 +582,7 @@ class VoiceController extends ChangeNotifier {
     _lifecycle.dispose();
     _timeout?.cancel();
     _hide?.cancel();
+    _micWatch?.cancel();
     unawaited(_peerSub?.cancel());
     unawaited(_closeMic().then((_) => _mic?.dispose()));
     _engine?.dispose();

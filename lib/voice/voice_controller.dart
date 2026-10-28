@@ -19,6 +19,7 @@ import 'phrase_matcher.dart';
 import 'speech_gate.dart';
 import 'voice_engine.dart';
 import 'voice_tools.dart';
+import 'wake_share.dart';
 import 'wake_word.dart';
 
 enum VoicePhase {
@@ -67,7 +68,13 @@ class VoiceController extends ChangeNotifier {
     required this.tracker,
     required this.connections,
     required this.settings,
+    this.share,
   }) {
+    _peerSub = share?.wakes.listen((w) {
+      _peerWakes
+        ..add(w)
+        ..removeWhere((p) => w.seen.difference(p.seen).inSeconds > 10);
+    });
     settings.addListener(_followSettings);
     _lifecycle = AppLifecycleListener(
       onResume: _followSettings,
@@ -114,6 +121,17 @@ class VoiceController extends ChangeNotifier {
 
   /// A command that ended while the wake word alone was being transcribed.
   Float32List? _held;
+
+  /// The other screens of the home, to settle which one answers a
+  /// "Hey, Gary" they all heard.
+  final WakeShare? share;
+  StreamSubscription<PeerWake>? _peerSub;
+  final _peerWakes = <PeerWake>[];
+
+  /// When this screen heard the wake word for the command in hand, and how
+  /// clearly. Null for a command started with the mic button.
+  DateTime? _wakeAt;
+  var _wakeLevel = 0;
 
   bool get wake => settings.voiceWake;
 
@@ -250,6 +268,7 @@ class VoiceController extends ChangeNotifier {
     if (_busy) return;
     _hide?.cancel();
     problem = null;
+    _wakeAt = null;
     final e = await _ready();
     if (e == null) {
       problem = _whyNot;
@@ -263,7 +282,10 @@ class VoiceController extends ChangeNotifier {
 
   void _onWake() {
     if (_busy || phase == VoicePhase.listening) return;
-    debugPrint('voice: "Hey, Gary"');
+    _wakeAt = DateTime.now();
+    _wakeLevel = _gate.clarity;
+    share?.announceWake(_wakeLevel);
+    debugPrint('voice: "Hey, Gary", $_wakeLevel dB over the room');
     unawaited(() async {
       if (await _ready() == null) {
         problem = _whyNot;
@@ -367,6 +389,13 @@ class VoiceController extends ChangeNotifier {
         if (h != null) await _command(h);
         return;
       }
+      if (await _leftToPeer()) {
+        problem = 'Another screen heard you more clearly';
+        _set(VoicePhase.showing);
+        _hideLater();
+        _rest();
+        return;
+      }
       VoiceOutcome o;
       if (heard.isEmpty) {
         o = const VoiceNotUnderstood('');
@@ -398,6 +427,27 @@ class VoiceController extends ChangeNotifier {
     }
     _hideLater();
     _rest();
+  }
+
+  /// Whether another screen heard the same "Hey, Gary" more clearly and
+  /// answers it instead. Waits until the others have had a moment to say
+  /// so; transcribing has usually taken longer than that already.
+  Future<bool> _leftToPeer() async {
+    final at = _wakeAt;
+    final share = this.share;
+    _wakeAt = null;
+    if (at == null || share == null) return false;
+    final wait = at
+        .add(const Duration(milliseconds: 1000))
+        .difference(DateTime.now());
+    if (wait > Duration.zero) await Future<void>.delayed(wait);
+    final w = answeredBy(share.screen, _wakeLevel, at, _peerWakes);
+    debugPrint(
+      'voice: wake $_wakeLevel dB, others '
+      '${[for (final p in _peerWakes) '${p.screen} ${p.level} dB']} -> '
+      '${w == null ? 'answering' : 'left to ${w.screen}'}',
+    );
+    return w != null;
   }
 
   static String _logged(VoiceOutcome o) => switch (o) {
@@ -475,6 +525,7 @@ class VoiceController extends ChangeNotifier {
     _lifecycle.dispose();
     _timeout?.cancel();
     _hide?.cancel();
+    unawaited(_peerSub?.cancel());
     unawaited(_closeMic().then((_) => _mic?.dispose()));
     _engine?.dispose();
     _wakeWord?.dispose();

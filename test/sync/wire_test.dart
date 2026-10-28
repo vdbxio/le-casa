@@ -89,6 +89,31 @@ void main() {
       BleSyncRadio.sightingOf(adv(name: 'LeCasa 1a2b3c4d.0f1e2d3c+'))?.adding,
       isTrue,
     );
+    // Just after "Hey, Gary": its count and how clearly it was heard.
+    final woke = BleSyncRadio.sightingOf(
+      adv(
+        uuids: const [],
+        mfr: {
+          syncCompanyId: Uint8List.fromList([
+            0x4c, 0x43, 0x00, //
+            0x1a, 0x2b, 0x3c, 0x4d, //
+            0x0f, 0x1e, 0x2d, 0x3c, //
+            0x03, 27,
+          ]),
+        },
+      ),
+    );
+    expect(woke?.wakeSeq, 3);
+    expect(woke?.wakeLevel, 27);
+    expect(android?.wakeLevel, isNull);
+    final iosWoke = BleSyncRadio.sightingOf(
+      adv(name: 'LeCasa 1a2b3c4d.0f1e2d3c~31b+'),
+    );
+    expect(iosWoke?.screen, '0f1e2d3c');
+    expect(iosWoke?.adding, isTrue);
+    expect(iosWoke?.wakeSeq, 3);
+    expect(iosWoke?.wakeLevel, 27);
+    expect(ios?.wakeLevel, isNull);
     // Other test gear on 0xFFFF, and anything else, is not a screen.
     expect(
       BleSyncRadio.sightingOf(

@@ -56,6 +56,18 @@ class SpeechGate {
   /// The latest frame's level over the floor, 0..1, for a level meter.
   double level = 0;
 
+  final _recent = <double>[];
+
+  /// How far the loudest of the last second rose over the room's
+  /// background, in dB: how clearly this mic heard what was just said,
+  /// to compare with other screens' mics.
+  int get clarity {
+    if (_recent.isEmpty) return 0;
+    final peak = _recent.reduce(math.max);
+    final db = 20 * math.log(peak / math.max(floor, 1e-4)) / math.ln10;
+    return db.round().clamp(0, 255);
+  }
+
   /// Feeds microphone samples; returns each utterance that ended.
   List<Float32List> add(Float32List samples) {
     final done = <Float32List>[];
@@ -101,6 +113,8 @@ class SpeechGate {
       sum += s * s;
     }
     final rms = math.sqrt(sum / f.length);
+    _recent.add(rms);
+    if (_recent.length > 50) _recent.removeAt(0);
     final loud = rms > math.max(floor * overFloor, minLevel);
     level = (rms / math.max(floor * overFloor * 4, minLevel * 4)).clamp(0, 1);
     if (!loud) {

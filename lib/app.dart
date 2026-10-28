@@ -156,6 +156,7 @@ class _LeCasaAppState extends State<LeCasaApp> {
     tracker: tracker,
     connections: connections,
     settings: settings,
+    share: sync,
   );
   late final Throttled liveData = Throttled(
     Listenable.merge([tracker, tablet, weather]),

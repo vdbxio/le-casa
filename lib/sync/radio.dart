@@ -42,7 +42,18 @@ class PeerAdvert {
   /// Taking new screens right now.
   final bool adding;
 
-  const PeerAdvert(this.tag, this.screen, {this.adding = false});
+  /// While this screen has just heard "Hey, Gary": how clearly, in dB over
+  /// its background, and a count that tells one wake from the next.
+  final int? wakeLevel;
+  final int wakeSeq;
+
+  const PeerAdvert(
+    this.tag,
+    this.screen, {
+    this.adding = false,
+    this.wakeLevel,
+    this.wakeSeq = 0,
+  });
 }
 
 /// A Le'Casa screen heard on the air.
@@ -63,6 +74,10 @@ class PeerSighting {
   /// cannot send).
   final bool android;
 
+  /// See [PeerAdvert.wakeLevel].
+  final int? wakeLevel;
+  final int wakeSeq;
+
   const PeerSighting(
     this.id,
     this.tag,
@@ -71,6 +86,8 @@ class PeerSighting {
     this.screen,
     this.adding = false,
     this.android = false,
+    this.wakeLevel,
+    this.wakeSeq = 0,
   });
 }
 

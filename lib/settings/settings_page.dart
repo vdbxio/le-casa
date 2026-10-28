@@ -82,8 +82,8 @@ class SettingsPage extends StatelessWidget {
                 subtitle: Text(
                   !s.home.inHome
                       ? 'Share readings, keys and controls with your other screens over Bluetooth'
-                      : s.sync.connected
-                      ? '${s.home.homeName} · linked to ${s.sync.linked.map((p) => p.name).join(', ')}'
+                      : s.sync.inTouch
+                      ? '${s.home.homeName} · linked to ${s.sync.touching.map((p) => p.name).join(', ')}'
                       : '${s.home.homeName} · looking for your other screens',
                 ),
                 trailing: const Icon(Icons.chevron_right),

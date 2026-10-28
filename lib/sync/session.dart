@@ -27,6 +27,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show ZLibCodec;
 import 'dart:typed_data';
 
 import 'crypto.dart';
@@ -34,6 +35,11 @@ import 'framing.dart';
 
 const _plain = 0x01;
 const _sealed = 0x02;
+
+/// Sealed, with the JSON deflated first. Readings and beacons shrink to a
+/// third or so, and every byte a screen sends costs the M10 scan time.
+const _sealedZ = 0x03;
+final _zlib = ZLibCodec(level: 6);
 const protocolVersion = 1;
 
 /// Who is on the other end of a link.
@@ -101,17 +107,30 @@ class SyncSession {
 
   Future<void> get closed => _link.link.closed;
 
+  /// The other screen reads deflated messages. Learnt from its beacon (it
+  /// says `z`) or from a deflated message; until then it may be an older
+  /// version, so messages go out plain.
+  bool peerInflates = false;
+
   void _start(Stream<Uint8List> raw) {
     _sub = raw.listen(
       (m) {
         try {
-          if (m.isEmpty || m[0] != _sealed) return;
-          final j = jsonDecode(
-            utf8.decode(_rx.open(Uint8List.sublistView(m, 1))),
-          );
-          if (j is Map<String, Object?>) _in.add(j);
-        } on FormatException {
-          // Garbage or a replay: drop it, the link stays up.
+          if (m.isEmpty || (m[0] != _sealed && m[0] != _sealedZ)) return;
+          List<int> body = _rx.open(Uint8List.sublistView(m, 1));
+          if (m[0] == _sealedZ) {
+            body = _zlib.decode(body);
+            peerInflates = true;
+          }
+          final j = jsonDecode(utf8.decode(body));
+          if (j is! Map<String, Object?>) return;
+          if (j['t'] == 'hi' && j['o'] == peer.id && j['z'] == true) {
+            peerInflates = true;
+          }
+          _in.add(j);
+        } catch (_) {
+          // Garbage, a replay or bad deflate data: drop it, the link stays
+          // up.
         }
       },
       onDone: () {
@@ -120,8 +139,11 @@ class SyncSession {
     );
   }
 
-  Future<void> send(Map<String, Object?> message) =>
-      _link.send(_seal(_tx, message));
+  Future<void> send(Map<String, Object?> message) {
+    final m = peerInflates ? _sealDeflated(_tx, message) : _seal(_tx, message);
+    SyncTraffic.sent(m.length);
+    return _link.send(m);
+  }
 
   Future<void> close() async {
     await _sub?.cancel();
@@ -379,6 +401,31 @@ Uint8List _plainMsg(Map<String, Object?> j) =>
 
 Uint8List _seal(SealKey k, Map<String, Object?> j) =>
     Uint8List.fromList([_sealed, ...k.seal(utf8.encode(jsonEncode(j)))]);
+
+Uint8List _sealDeflated(SealKey k, Map<String, Object?> j) =>
+    Uint8List.fromList([
+      _sealedZ,
+      ...k.seal(Uint8List.fromList(_zlib.encode(utf8.encode(jsonEncode(j))))),
+    ]);
+
+/// Bytes and messages screen sync sent since the last [take], for the
+/// once-a-minute radio log.
+class SyncTraffic {
+  static int _bytes = 0;
+  static int _messages = 0;
+
+  static void sent(int bytes) {
+    _bytes += bytes;
+    _messages++;
+  }
+
+  static ({int bytes, int messages}) take() {
+    final out = (bytes: _bytes, messages: _messages);
+    _bytes = 0;
+    _messages = 0;
+    return out;
+  }
+}
 
 String _hex(List<int> b) =>
     b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();

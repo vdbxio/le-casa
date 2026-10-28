@@ -33,6 +33,11 @@ const syncChunkMax = 180;
 /// finish before it is disconnected.
 const _settleBeforeDisconnect = Duration(minutes: 2);
 
+/// How long one connect to another screen may take. Screens advertise
+/// all the time, so a connect that works is up in a second or two, and the
+/// scan stays paused while one is pending. Device polls wait 32 s.
+const _syncConnectLimit = Duration(seconds: 10);
+
 /// Disconnects once [inFlight] has settled. A write that never answers
 /// means the radio is stuck, and a disconnect sent then timed out on the
 /// M10 and crashed its Bluetooth stack. If the write is still stuck after
@@ -97,6 +102,7 @@ class BleSyncRadio implements SyncRadio {
         a.seenAt,
         screen: hex(m.sublist(7, 11), sep: ''),
         adding: m[2] & 1 != 0,
+        android: true,
       );
     }
     final name = a.name;
@@ -366,10 +372,14 @@ class BleSyncRadio implements SyncRadio {
     try {
       for (var attempt = 1; ; attempt++) {
         try {
-          link = await GattLink.open(scanner.central, p);
+          link = await GattLink.open(
+            scanner.central,
+            p,
+            timeout: _syncConnectLimit,
+          );
           break;
         } catch (e) {
-          if (attempt >= 3 || !'$e'.contains('133')) rethrow;
+          if (attempt >= 2 || !'$e'.contains('133')) rethrow;
           debugPrint('sync: connect got 133, retry $attempt');
           await Future<void>.delayed(Duration(milliseconds: 700 * attempt));
         }

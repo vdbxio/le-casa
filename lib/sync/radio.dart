@@ -59,6 +59,10 @@ class PeerSighting {
   final int rssi;
   final DateTime seen;
 
+  /// An Android screen (its advert carries manufacturer data, which iOS
+  /// cannot send).
+  final bool android;
+
   const PeerSighting(
     this.id,
     this.tag,
@@ -66,6 +70,7 @@ class PeerSighting {
     this.seen, {
     this.screen,
     this.adding = false,
+    this.android = false,
   });
 }
 

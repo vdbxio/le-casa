@@ -51,6 +51,15 @@ Does not work, or not reliably:
   tile (Developer options › Quick settings developer tiles) turns it back
   on in one tap.
 
+- **Scanning while linked:** while any connection is up, its scan hears
+  about 2 broadcasts a second instead of about 30 (another computer in
+  the same room heard 37 to 50). Measured 2026-10-27 with one link to the
+  iPad: the same whether the M10 or the iPad dialled, at a 15 ms or
+  125 ms interval, and with sync sending only 25 bytes a second. Short
+  device reads barely dent it. So Le'Casa on Android only visits the
+  other screens for a few seconds every 20 seconds instead of holding
+  links up (see docs/sync.md).
+
 Suggested use: a display that reads broadcasts and short connections,
 with connection-heavy devices locked to an iPad or a better tablet.
 

@@ -142,6 +142,12 @@ class _LeCasaAppState extends State<LeCasaApp> {
     keys: keys,
     connections: connections,
     radio: BleSyncRadio(scanner, connections: connections),
+    dialsFirst: defaultTargetPlatform == TargetPlatform.android,
+    // Cheap Android tablets hear a tenth of the broadcasts around them
+    // while a link is up, so they visit the other screens instead.
+    visitEvery: defaultTargetPlatform == TargetPlatform.android
+        ? const Duration(seconds: 20)
+        : null,
   );
   late final Throttled liveData = Throttled(
     Listenable.merge([tracker, tablet, weather]),

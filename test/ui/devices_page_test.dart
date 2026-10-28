@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lecasa/app.dart';
+import 'package:lecasa/voice/voice_controller.dart';
 import 'package:lecasa/ble/ble_scanner.dart';
 import 'package:lecasa/ble/connection_manager.dart';
 import 'package:lecasa/ble/scan_autostart.dart';
@@ -78,6 +79,11 @@ Future<Future<void> Function()> _pump(
         settings: settings,
         weather: WeatherService(settings),
         home: home,
+        voice: VoiceController(
+          tracker: tracker,
+          connections: connections,
+          settings: settings,
+        ),
         sync: sync,
         liveData: tracker,
         child: MaterialApp(

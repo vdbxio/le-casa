@@ -30,16 +30,6 @@ class LightControls extends StatefulWidget {
   State<LightControls> createState() => _LightControlsState();
 }
 
-const _colours = <(String, int)>[
-  ('Warm', 0xFF8C3C),
-  ('White', 0xFFFFFF),
-  ('Red', 0xFF0000),
-  ('Orange', 0xFF6000),
-  ('Green', 0x00FF00),
-  ('Blue', 0x0000FF),
-  ('Purple', 0x8000FF),
-];
-
 class _LightControlsState extends State<LightControls>
     with WidgetsBindingObserver {
   // The page connects as it opens so that changes go out at once; the
@@ -237,7 +227,7 @@ class _LightControlsState extends State<LightControls>
           spacing: 8,
           runSpacing: 8,
           children: [
-            for (final (name, colour) in _colours)
+            for (final (name, colour) in lightColours)
               ChoiceChip(
                 avatar: CircleAvatar(
                   backgroundColor: Color(0xFF000000 | colour),

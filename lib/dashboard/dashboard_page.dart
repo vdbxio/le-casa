@@ -13,6 +13,7 @@ import '../ui/dashed_outline.dart';
 import '../ui/palette.dart';
 import '../platform/form_factor.dart';
 import '../ui/devices_page.dart';
+import '../voice/voice_bar.dart';
 import 'auto_layout.dart';
 import 'card_picker.dart';
 import 'cards/card_view.dart';
@@ -293,12 +294,27 @@ class _Board extends StatelessWidget {
                 onDone: () => dash.setEditing(false),
               ),
             ),
-          ] else
+          ] else ...[
             Positioned(
               top: 0,
               right: 0,
-              child: _SettingsButton(onSettings: onOpenSettings),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  VoiceButton(voice: AppServices.of(context).voice),
+                  _SettingsButton(onSettings: onOpenSettings),
+                ],
+              ),
             ),
+            Positioned(
+              left: _screenPad,
+              right: _screenPad,
+              bottom: _screenPad + 12,
+              child: Center(
+                child: VoiceOverlay(voice: AppServices.of(context).voice),
+              ),
+            ),
+          ],
         ],
       ),
     );

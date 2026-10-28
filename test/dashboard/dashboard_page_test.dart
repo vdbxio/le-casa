@@ -12,6 +12,7 @@ import 'package:lecasa/sync/ble_radio.dart';
 import 'package:lecasa/sync/home.dart';
 import 'package:lecasa/sync/sync_service.dart';
 import 'package:lecasa/app.dart';
+import 'package:lecasa/voice/voice_controller.dart';
 import 'package:lecasa/ble/ble_scanner.dart';
 import 'package:lecasa/ble/connection_manager.dart';
 import 'package:lecasa/ble/scan_autostart.dart';
@@ -97,6 +98,11 @@ void main() {
                 settings: settings,
                 weather: weather,
                 home: home,
+                voice: VoiceController(
+                  tracker: tracker,
+                  connections: connections,
+                  settings: settings,
+                ),
                 sync: SyncService(
                   home: home,
                   tracker: tracker,

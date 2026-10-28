@@ -36,6 +36,9 @@ class SettingsStore extends ChangeNotifier {
   /// way to get it.
   bool weatherInternet = false;
 
+  /// Keep the microphone open for "Hey, Gary" while the app is in front.
+  bool voiceWake = false;
+
   Future<void> load() async {
     final p = await SharedPreferences.getInstance();
     themeMode =
@@ -44,6 +47,7 @@ class SettingsStore extends ChangeNotifier {
     autoDim = p.getBool('settings:autoDim') ?? true;
     minBrightness = p.getDouble('settings:minBrightness') ?? 0.15;
     keepScreenOn = p.getBool('settings:keepScreenOn') ?? true;
+    voiceWake = p.getBool('settings:voiceWake') ?? false;
     final name = p.getString('settings:placeName');
     final lat = p.getDouble('settings:placeLat');
     final lon = p.getDouble('settings:placeLon');
@@ -70,17 +74,20 @@ class SettingsStore extends ChangeNotifier {
     bool? autoDim,
     double? minBrightness,
     bool? keepScreenOn,
+    bool? voiceWake,
   }) async {
     this.themeMode = themeMode ?? this.themeMode;
     this.autoDim = autoDim ?? this.autoDim;
     this.minBrightness = minBrightness ?? this.minBrightness;
     this.keepScreenOn = keepScreenOn ?? this.keepScreenOn;
+    this.voiceWake = voiceWake ?? this.voiceWake;
     notifyListeners();
     final p = await SharedPreferences.getInstance();
     await p.setString('settings:theme', this.themeMode.name);
     await p.setBool('settings:autoDim', this.autoDim);
     await p.setDouble('settings:minBrightness', this.minBrightness);
     await p.setBool('settings:keepScreenOn', this.keepScreenOn);
+    await p.setBool('settings:voiceWake', this.voiceWake);
   }
 
   /// Picks a place by name, which also stops following the tablet's

@@ -184,6 +184,17 @@ const idealPatterns = [
 IdealPattern? idealPatternNamed(Object? name) =>
     idealPatterns.where((p) => p.name == name).firstOrNull;
 
+/// The colours offered for a light, on its page and by voice.
+const lightColours = <(String, int)>[
+  ('Warm', 0xFF8C3C),
+  ('White', 0xFFFFFF),
+  ('Red', 0xFF0000),
+  ('Orange', 0xFF6000),
+  ('Green', 0x00FF00),
+  ('Blue', 0x0000FF),
+  ('Purple', 0x8000FF),
+];
+
 /// Setting names [IdealLedDriver.control] understands.
 abstract final class LightSetting {
   static const on = 'on'; // bool

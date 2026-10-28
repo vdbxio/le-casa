@@ -39,6 +39,7 @@ jobs:
           flutter-version: 3.47.8
           cache: true
       - run: flutter pub get
+      - run: tool/fetch_voice.sh android
       - run: flutter build apk --debug
       - uses: actions/upload-artifact@v4
         with:
@@ -75,6 +76,7 @@ jobs:
           flutter-version: 3.47.8
           cache: true
       - run: flutter pub get
+      - run: tool/fetch_voice.sh ios
       # Proves the iPad app compiles and links its plugins. Installing on an
       # iPad still needs signing in Xcode on the Mac.
       - run: flutter build ios --no-codesign --debug

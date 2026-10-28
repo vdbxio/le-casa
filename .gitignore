@@ -46,3 +46,7 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Cactus voice engine and models, fetched by tool/fetch_voice.sh
+/assets/voice/*.cact
+/third_party/needle/*/libneedle.a

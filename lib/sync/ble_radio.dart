@@ -157,7 +157,11 @@ class BleSyncRadio implements SyncRadio {
               ? Advertisement(
                   name:
                       '$syncNamePrefix${ad.tag}.${ad.screen}'
-                      '${ad.adding ? '+' : ad.wakeLevel == null ? '' : '~${wakeDigit(ad.wakeLevel!).toRadixString(36)}'}',
+                      '${ad.adding
+                          ? '+'
+                          : ad.wakeLevel == null
+                          ? ''
+                          : '~${wakeDigit(ad.wakeLevel!).toRadixString(36)}'}',
                   serviceUUIDs: [UUID.fromString(syncServiceUuid)],
                 )
               : Advertisement(

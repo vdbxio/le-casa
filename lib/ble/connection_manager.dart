@@ -134,7 +134,10 @@ SessionOpener scannerOpener(BleScanner scanner, {bool pauseScan = true}) =>
       // links that time out right after they come up. Pause it for the few
       // seconds the link lives.
       final wasScanning =
-          pauseScan && scanner.scanning && await RadioWrites.settle();
+          pauseScan &&
+          BleScanner.pausesForLinks &&
+          scanner.scanning &&
+          await RadioWrites.settle();
       if (wasScanning) await scanner.stop();
       try {
         final link = await GattLink.open(scanner.central, p);

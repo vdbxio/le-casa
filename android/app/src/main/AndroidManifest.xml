@@ -25,6 +25,8 @@
          in its options (Open-Meteo, no account). Everything else works
          offline. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Voice commands, heard and understood on the tablet itself. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true"/>
     <application
         android:label="Le'Casa"

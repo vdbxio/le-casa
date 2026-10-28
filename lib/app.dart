@@ -26,6 +26,7 @@ import 'sync/sync_service.dart';
 import 'sync/wire.dart';
 import 'ui/bluetooth_gate.dart';
 import 'ui/palette.dart';
+import 'voice/voice_controller.dart';
 import 'weather/weather.dart';
 
 /// Hand-rolled dependency wiring. Small enough that a DI package would be
@@ -43,6 +44,7 @@ class AppServices extends InheritedWidget {
   final WeatherService weather;
   final HomeStore home;
   final SyncService sync;
+  final VoiceController voice;
 
   /// Fires when anything a card shows has changed, at most once a second.
   final Listenable liveData;
@@ -61,6 +63,7 @@ class AppServices extends InheritedWidget {
     required this.weather,
     required this.home,
     required this.sync,
+    required this.voice,
     required this.liveData,
     required super.child,
   });
@@ -149,6 +152,12 @@ class _LeCasaAppState extends State<LeCasaApp> {
         ? const Duration(seconds: 20)
         : null,
   );
+  late final VoiceController voice = VoiceController(
+    tracker: tracker,
+    connections: connections,
+    settings: settings,
+    share: sync,
+  );
   late final Throttled liveData = Throttled(
     Listenable.merge([tracker, tablet, weather]),
     const Duration(seconds: 1),
@@ -202,6 +211,7 @@ class _LeCasaAppState extends State<LeCasaApp> {
     _lifecycle.dispose();
     _dimmer?.dispose();
     liveData.dispose();
+    voice.dispose();
     weather.dispose();
     sync.dispose();
     tablet.dispose();
@@ -228,6 +238,7 @@ class _LeCasaAppState extends State<LeCasaApp> {
       weather: weather,
       home: home,
       sync: sync,
+      voice: voice,
       liveData: liveData,
       child: ListenableBuilder(
         listenable: settings,

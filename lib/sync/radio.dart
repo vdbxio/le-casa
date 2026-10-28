@@ -32,6 +32,12 @@ const syncNamePrefix = 'LeCasa ';
 /// The first 8 hex digits of a screen id, which is what fits in an advert.
 String shortScreen(String id) => id.length <= 8 ? id : id.substring(0, 8);
 
+/// A wake word's level (dB over the screen's usual, -35..35) in the one
+/// base-36 digit an iOS advert has room for: 2 dB steps.
+int wakeDigit(int level) => ((level.clamp(-35, 35) + 35) ~/ 2).clamp(0, 35);
+
+int wakeLevelOf(int digit) => digit * 2 - 35;
+
 /// What a screen in a home puts on the air.
 class PeerAdvert {
   final String tag;
@@ -42,7 +48,19 @@ class PeerAdvert {
   /// Taking new screens right now.
   final bool adding;
 
-  const PeerAdvert(this.tag, this.screen, {this.adding = false});
+  /// While this screen has just heard "Hey, Gary": how much more clearly
+  /// than it usually does, in dB, and (Android only) a count that tells
+  /// one wake from the next.
+  final int? wakeLevel;
+  final int wakeSeq;
+
+  const PeerAdvert(
+    this.tag,
+    this.screen, {
+    this.adding = false,
+    this.wakeLevel,
+    this.wakeSeq = 0,
+  });
 }
 
 /// A Le'Casa screen heard on the air.
@@ -63,6 +81,10 @@ class PeerSighting {
   /// cannot send).
   final bool android;
 
+  /// See [PeerAdvert.wakeLevel].
+  final int? wakeLevel;
+  final int wakeSeq;
+
   const PeerSighting(
     this.id,
     this.tag,
@@ -71,6 +93,8 @@ class PeerSighting {
     this.screen,
     this.adding = false,
     this.android = false,
+    this.wakeLevel,
+    this.wakeSeq = 0,
   });
 }
 

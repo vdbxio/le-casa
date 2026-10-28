@@ -74,6 +74,17 @@ class SettingsPage extends StatelessWidget {
               value: st.keepScreenOn,
               onChanged: (v) => st.update(keepScreenOn: v),
             ),
+            const _Header('Voice'),
+            SwitchListTile(
+              title: const Text('Listen for "Hey, Gary"'),
+              subtitle: Text(
+                st.voiceWake
+                    ? 'Say "Hey, Gary" then a command. Heard on this tablet only, never sent anywhere.'
+                    : 'Or tap the mic at the top of the dashboard. Everything stays on this tablet.',
+              ),
+              value: st.voiceWake,
+              onChanged: (v) => st.update(voiceWake: v),
+            ),
             const _Header('Sync'),
             ListenableBuilder(
               listenable: Listenable.merge([s.sync, s.home]),

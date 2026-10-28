@@ -13,6 +13,7 @@ import '../ui/dashed_outline.dart';
 import '../ui/palette.dart';
 import '../platform/form_factor.dart';
 import '../ui/devices_page.dart';
+import '../voice/voice_bar.dart';
 import 'auto_layout.dart';
 import 'card_picker.dart';
 import 'cards/card_view.dart';
@@ -293,12 +294,32 @@ class _Board extends StatelessWidget {
                 onDone: () => dash.setEditing(false),
               ),
             ),
-          ] else
+          ] else ...[
             Positioned(
               top: 0,
               right: 0,
-              child: _SettingsButton(onSettings: onOpenSettings),
+              // Side by side the two cover a phone's clock: there they
+              // stack in the corner, the width of one.
+              child: Flex(
+                direction: size.width < 480 ? Axis.vertical : Axis.horizontal,
+                // The gear stays in the very corner either way.
+                verticalDirection: VerticalDirection.up,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  VoiceButton(voice: AppServices.of(context).voice),
+                  _SettingsButton(onSettings: onOpenSettings),
+                ],
+              ),
             ),
+            Positioned(
+              left: _screenPad,
+              right: _screenPad,
+              bottom: _screenPad + 12,
+              child: Center(
+                child: VoiceOverlay(voice: AppServices.of(context).voice),
+              ),
+            ),
+          ],
         ],
       ),
     );

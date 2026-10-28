@@ -23,6 +23,7 @@ import '../ble/device_tracker.dart';
 import '../decoders/raw_advertisement.dart';
 import '../drivers/driver.dart';
 import '../keys/key_store.dart';
+import '../voice/wake_share.dart';
 import 'crypto.dart';
 import 'framing.dart';
 import 'home.dart';
@@ -116,7 +117,7 @@ class PeerInfo {
 /// One screen hearing another, for working out where a phone is.
 typedef Hearing = ({ScreenId by, int rssi});
 
-class SyncService extends ChangeNotifier implements RemoteLinks {
+class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
   final HomeStore home;
   final DeviceTracker tracker;
   final KeyStore keys;
@@ -344,6 +345,8 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     _disposed = true;
     _tick?.cancel();
     _sightingSub?.cancel();
+    _wakeEnd?.cancel();
+    unawaited(_wakes.close());
     keys.removeListener(_onKeys);
     readBy.removeListener(tracker.relabel);
     readBy.removeListener(_onReadBy);
@@ -634,8 +637,41 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
     notifyListeners();
   }
 
-  PeerAdvert get _advert =>
-      PeerAdvert(home.tag, shortScreen(home.me.id), adding: adding);
+  PeerAdvert get _advert => PeerAdvert(
+    home.tag,
+    shortScreen(home.me.id),
+    adding: adding,
+    wakeLevel: _wakeLevel,
+    wakeSeq: _wakeSeq,
+  );
+
+  int? _wakeLevel;
+  var _wakeSeq = 0;
+  Timer? _wakeEnd;
+  final _wakes = StreamController<PeerWake>.broadcast();
+  final _wakesSeen = <String, DateTime>{};
+
+  @override
+  String get screen => shortScreen(home.me.id);
+
+  /// Puts the wake word in this screen's advert for a few seconds, for the
+  /// other screens to compare: the advert is heard without a link.
+  @override
+  void announceWake(int level) {
+    _wakeSeq = (_wakeSeq + 1) & 0xF;
+    _wakeLevel = level;
+    _wakeEnd?.cancel();
+    debugPrint('sync: wake word $level dB in the advert (#$_wakeSeq)');
+    // Long enough for a screen whose scan is paused for a visit.
+    _wakeEnd = Timer(const Duration(seconds: 6), () {
+      _wakeLevel = null;
+      unawaited(_advertise());
+    });
+    unawaited(_advertise());
+  }
+
+  @override
+  Stream<PeerWake> get wakes => _wakes.stream;
 
   /// Starts serving; on failure [tick] tries again a little later.
   Future<void> _startServer() async {
@@ -708,6 +744,21 @@ class SyncService extends ChangeNotifier implements RemoteLinks {
 
   void _onSighting(PeerSighting h) {
     nearby[h.id] = h;
+    final level = h.wakeLevel;
+    final s = h.screen;
+    if (level == null || s == null) return;
+    if (h.tag != home.tag) {
+      debugPrint('sync: wake word from ${h.tag}.$s, not this home');
+      return;
+    }
+    if (s == shortScreen(home.me.id)) return;
+    // Each advert repeats many times a second: pass each wake on once.
+    final key = '$s.${h.wakeSeq}.$level';
+    // The advert carries a wake for six seconds.
+    _wakesSeen.removeWhere((_, t) => h.seen.difference(t).inSeconds > 7);
+    if (_wakesSeen.containsKey(key)) return;
+    _wakesSeen[key] = h.seen;
+    _wakes.add(PeerWake(s, level, h.seen));
   }
 
   Future<void> _connectPeer(PeerSighting h) async {

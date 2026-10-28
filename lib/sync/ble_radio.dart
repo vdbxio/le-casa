@@ -103,6 +103,8 @@ class BleSyncRadio implements SyncRadio {
         screen: hex(m.sublist(7, 11), sep: ''),
         adding: m[2] & 1 != 0,
         android: true,
+        wakeSeq: m.length >= 13 ? m[11] : 0,
+        wakeLevel: m.length >= 13 ? m[12] - 128 : null,
       );
     }
     final name = a.name;
@@ -111,6 +113,10 @@ class BleSyncRadio implements SyncRadio {
     var rest = name.substring(syncNamePrefix.length).trim().toLowerCase();
     final adding = rest.endsWith('+');
     if (adding) rest = rest.substring(0, rest.length - 1);
+    // "~c": a wake word heard, its level in one base-36 digit. iOS cuts
+    // the name at 26 characters, which leaves room for two.
+    final wake = RegExp(r'~([0-9a-z])$').firstMatch(rest);
+    if (wake != null) rest = rest.substring(0, wake.start);
     final parts = rest.split('.');
     return PeerSighting(
       a.id,
@@ -119,6 +125,9 @@ class BleSyncRadio implements SyncRadio {
       a.seenAt,
       screen: parts.length > 1 ? parts[1] : null,
       adding: adding,
+      wakeLevel: wake == null
+          ? null
+          : wakeLevelOf(int.parse(wake[1]!, radix: 36)),
     );
   }
 
@@ -147,7 +156,12 @@ class BleSyncRadio implements SyncRadio {
           apple
               ? Advertisement(
                   name:
-                      '$syncNamePrefix${ad.tag}.${ad.screen}${ad.adding ? '+' : ''}',
+                      '$syncNamePrefix${ad.tag}.${ad.screen}'
+                      '${ad.adding
+                          ? '+'
+                          : ad.wakeLevel == null
+                          ? ''
+                          : '~${wakeDigit(ad.wakeLevel!).toRadixString(36)}'}',
                   serviceUUIDs: [UUID.fromString(syncServiceUuid)],
                 )
               : Advertisement(
@@ -159,6 +173,10 @@ class BleSyncRadio implements SyncRadio {
                         ad.adding ? 1 : 0,
                         ...fromHexString(ad.tag),
                         ...fromHexString(ad.screen),
+                        if (ad.wakeLevel case final l?) ...[
+                          ad.wakeSeq & 0xFF,
+                          (l + 128).clamp(0, 255),
+                        ],
                       ]),
                     ),
                   ],
@@ -365,6 +383,7 @@ class BleSyncRadio implements SyncRadio {
     // cheap tablets; pause it for the connect, as device polls do.
     final wasScanning =
         !(connections?.holdLinks ?? false) &&
+        BleScanner.pausesForLinks &&
         scanner.scanning &&
         await RadioWrites.settle();
     if (wasScanning) await scanner.stop();

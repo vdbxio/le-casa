@@ -61,6 +61,14 @@ abstract interface class ControllableDriver implements GattDriver {
   );
 }
 
+/// A device people adjust in quick runs (a light's brightness and speed):
+/// the link stays open for [linger] after a command, so the next one goes
+/// out at once instead of reconnecting (which the iDeal strips also greet
+/// with three blinks).
+abstract interface class LingeringDriver implements ControllableDriver {
+  Duration get linger;
+}
+
 /// All connection drivers, in priority order. Mirrors [DecoderRegistry]
 /// for broadcasts.
 class GattDriverRegistry {

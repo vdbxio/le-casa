@@ -241,8 +241,13 @@ class IdealLedDecoder implements Decoder {
   Decoded? decode(RawAdvertisement adv) => _decoded(adv.name);
 }
 
-class IdealLedDriver implements ControllableDriver {
+class IdealLedDriver implements LingeringDriver {
   const IdealLedDriver();
+
+  // Brightness and speed come in runs; each new connection also makes the
+  // strip blink three times.
+  @override
+  Duration get linger => const Duration(seconds: 15);
 
   @override
   String get name => 'iDeal LED controller';

@@ -76,6 +76,11 @@ class ControlDriver extends ScriptedDriver implements ControllableDriver {
   }
 }
 
+class LingerDriver extends ControlDriver implements LingeringDriver {
+  @override
+  Duration get linger => const Duration(milliseconds: 200);
+}
+
 void main() {
   late DeviceTracker tracker;
   late List<FakeSession> opened;
@@ -325,6 +330,23 @@ void main() {
     await m.control(testAdv.id, const DeviceCommand('power', true));
     expect(tries, 2);
     expect(driver.commands, hasLength(1));
+    m.dispose();
+  });
+
+  test('a lingering driver reuses its link for the next command', () async {
+    final driver = LingerDriver();
+    final m = manager(driver);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.control(testAdv.id, const DeviceCommand('power', true));
+    await m.control(testAdv.id, const DeviceCommand('power', false));
+    expect(opened, hasLength(1));
+    expect(opened.single.closed, isFalse);
+    expect(driver.commands, hasLength(2));
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    expect(opened.single.closed, isTrue);
+    await m.control(testAdv.id, const DeviceCommand('power', true));
+    expect(opened, hasLength(2));
     m.dispose();
   });
 

@@ -201,6 +201,39 @@ class ConnectionManager extends ChangeNotifier {
   /// Open links kept for [holdLinks], by device id.
   final Map<String, ClosableSession> _held = {};
 
+  /// Links kept open briefly after a command to a [LingeringDriver], with
+  /// the timer that closes them.
+  final Map<String, (ClosableSession, Timer)> _lingering = {};
+
+  ClosableSession? _takeLingering(String id) {
+    final l = _lingering.remove(id);
+    if (l == null) return null;
+    l.$2.cancel();
+    return l.$1.droppedByDevice ? null : l.$1;
+  }
+
+  void _linger(String id, ClosableSession link, Duration d) {
+    final timer = Timer(d, () {
+      if (_lingering[id]?.$1 != link) return;
+      _lingering.remove(id);
+      debugPrint('control: closing $id after ${d.inSeconds} s');
+      unawaited(link.close());
+    });
+    _lingering[id] = (link, timer);
+    unawaited(
+      link.onDisconnected.then((_) {
+        if (_lingering[id]?.$1 == link) _lingering.remove(id)?.$2.cancel();
+      }),
+    );
+  }
+
+  Future<void> _closeLingering(String id) async {
+    final l = _lingering.remove(id);
+    if (l == null) return;
+    l.$2.cancel();
+    await l.$1.close();
+  }
+
   /// Connect only to devices the person turned on. Otherwise every device
   /// a driver recognises is read, which at a campground full of other
   /// people's batteries and fridges means connecting to all of them (and
@@ -458,6 +491,7 @@ class ConnectionManager extends ChangeNotifier {
     debugPrint('control: $id $command');
     notifyListeners();
     ClosableSession? link;
+    var done = false;
     try {
       // Commands set a state rather than step it, so a second go is safe;
       // the M10 often fails the first connect (133) or drops during
@@ -465,7 +499,7 @@ class ConnectionManager extends ChangeNotifier {
       late Decoded decoded;
       for (var attempt = 1; ; attempt++) {
         try {
-          link = await _open(id);
+          link = _takeLingering(id) ?? await _open(id);
           l.phase = LinkPhase.reading;
           notifyListeners();
           decoded = await driver
@@ -483,6 +517,7 @@ class ConnectionManager extends ChangeNotifier {
         }
       }
       tracker.setPolled(id, _keepLook(dev.view, decoded));
+      done = true;
       l
         ..phase = LinkPhase.ok
         ..failures = 0
@@ -497,7 +532,16 @@ class ConnectionManager extends ChangeNotifier {
         ..nextDue = DateTime.now().add(driver.interval);
       rethrow;
     } finally {
-      await link?.close();
+      final keep = link;
+      if (done &&
+          keep != null &&
+          driver is LingeringDriver &&
+          !keep.droppedByDevice &&
+          !_disposed) {
+        _linger(id, keep, driver.linger);
+      } else {
+        await link?.close();
+      }
       _giveBack(turn);
       notifyListeners();
     }
@@ -648,6 +692,9 @@ class ConnectionManager extends ChangeNotifier {
     for (final id in _held.keys.toList()) {
       await _release(id);
     }
+    for (final id in _lingering.keys.toList()) {
+      await _closeLingering(id);
+    }
   }
 
   Future<void> _poll(Link l) async {
@@ -753,6 +800,9 @@ class ConnectionManager extends ChangeNotifier {
       unawaited(link.close());
     }
     _held.clear();
+    for (final id in _lingering.keys.toList()) {
+      unawaited(_closeLingering(id));
+    }
     super.dispose();
   }
 }

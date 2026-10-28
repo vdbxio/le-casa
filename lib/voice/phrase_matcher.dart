@@ -62,8 +62,19 @@ List<Map<String, Object?>>? matchPhrase(VoiceCatalog home, String heard) {
     // "Batteries" also matches a battery's name ("Battery 12BA"); the plural
     // still means every battery.
     final every = topic == DeviceKind.battery && words.contains('batteries');
+    // "How's my battery?" names no battery in particular: only a word of
+    // the name beyond "battery" or "solar" picks one ("how is Lilith").
+    final said = words.map(_stem).toSet();
+    final picked =
+        target != null &&
+        _words(target.name).map(_stem).any(
+          (w) =>
+              !_filler.contains(w) &&
+              !const {'battery', 'solar', 'charger'}.contains(w) &&
+              said.contains(w),
+        );
     if (topic != null &&
-        (every || target?.state?.kind != topic) &&
+        (every || !picked || target?.state?.kind != topic) &&
         home.devices.any((d) => d.state?.kind == topic)) {
       return [
         call('get_reading', {

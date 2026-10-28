@@ -243,6 +243,13 @@ void main() {
         {'device': 'Battery Chargers'},
       ],
     ]);
+    // One battery by name, or any of them.
+    expect(_m("how's my battery?", home), [
+      [
+        'get_reading',
+        {'device': allBatteries},
+      ],
+    ]);
     // Whistle on the iPhone, for "how's my batteries".
     expect(_m('has my batteries.', home), [
       [

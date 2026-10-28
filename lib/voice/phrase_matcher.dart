@@ -76,7 +76,7 @@ List<Map<String, Object?>>? matchPhrase(VoiceCatalog home, String heard) {
                   said.contains(w),
             );
     if (topic != null &&
-        (every || !picked || target?.state?.kind != topic) &&
+        (every || !picked || target.state?.kind != topic) &&
         home.devices.any((d) => d.state?.kind == topic)) {
       return [
         call('get_reading', {

@@ -64,6 +64,16 @@ void main() {
     expect(g.inSpeech, isFalse);
   });
 
+  test('keepLast keeps the end of speech in progress', () {
+    final g = SpeechGate();
+    g.add(_tone(0.5, 0.001));
+    g.add(_tone(4, 0.3));
+    g.keepLast(100);
+    final out = g.add(_tone(1.5, 0.001));
+    // Two seconds kept, plus the quiet that ended it.
+    expect(out.single.length, (100 + g.endFrames) * SpeechGate.frame);
+  });
+
   test('pcm16 to float', () {
     final b = Uint8List.fromList([0x00, 0x80, 0xFF, 0x7F, 0x00, 0x00]);
     expect(SpeechGate.fromPcm16(b), [-1.0, 32767 / 32768, 0.0]);

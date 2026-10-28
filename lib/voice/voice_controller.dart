@@ -108,6 +108,12 @@ class VoiceController extends ChangeNotifier {
   DateTime _soundUntil = DateTime(0);
   final _quiet = <Float32List>[];
 
+  /// Listening began at the wake word, and only it has been heard so far.
+  var _wakeOnly = false;
+
+  /// A command that ended while the wake word alone was being transcribed.
+  Float32List? _held;
+
   bool get wake => settings.voiceWake;
 
   bool get _busy => phase == VoicePhase.thinking || phase == VoicePhase.loading;
@@ -260,16 +266,24 @@ class VoiceController extends ChangeNotifier {
       }
       _hide?.cancel();
       problem = null;
-      _listen();
+      _listen(afterWake: true);
     }());
   }
 
-  void _listen() {
+  void _listen({bool afterWake = false, bool keep = false}) {
     outcome = null;
     results = [];
-    // What the gate held before the wake word (the TV, the phrase itself)
-    // is not the command.
-    _gate.flush();
+    _wakeOnly = afterWake;
+    _held = null;
+    if (afterWake) {
+      // "Hey, Gary, turn off the lights" in one breath: the spotter wakes
+      // a moment after "Gary", so the command has begun. Keep the last
+      // two seconds (the wake word is cut from the transcript); older
+      // sound, like the TV, is not the command.
+      _gate.keepLast(100);
+    } else if (!keep) {
+      _gate.flush();
+    }
     _set(VoicePhase.listening);
     _timeout?.cancel();
     // Nobody spoke: give up quietly.
@@ -285,9 +299,15 @@ class VoiceController extends ChangeNotifier {
     final samples = SpeechGate.fromPcm16(bytes);
     switch (phase) {
       case VoicePhase.listening:
+      case VoicePhase.thinking when _wakeOnly:
         notifyListeners();
         final ended = _gate.add(samples);
-        if (ended.isNotEmpty) unawaited(_command(ended.first));
+        if (ended.isEmpty) break;
+        if (phase == VoicePhase.thinking) {
+          _held = ended.first;
+        } else {
+          unawaited(_command(ended.first));
+        }
       case VoicePhase.waiting || VoicePhase.showing when wake:
         // The spotter only hears the room when there is sound: on the M10
         // it takes most of a core while it decodes.
@@ -327,10 +347,18 @@ class VoiceController extends ChangeNotifier {
         _configured = key;
       }
       final t = await e.transcribe(u);
-      var heard = '${t['text'] ?? ''}'.trim();
+      final said = '${t['text'] ?? ''}'.trim();
       // "Hey Gary" said again, or its tail caught by the gate.
-      heard = afterWakeWord(heard) ?? heard;
+      final heard = afterWakeWord(said) ?? said;
       debugPrint('voice: heard "$heard" in ${t['ms']} ms');
+      if (heard.isEmpty && said.isNotEmpty && _wakeOnly) {
+        // Only "Hey, Gary", then a pause: the command comes next, and
+        // what was said meanwhile is in the gate.
+        final h = _held;
+        _listen(keep: true);
+        if (h != null) await _command(h);
+        return;
+      }
       VoiceOutcome o;
       if (heard.isEmpty) {
         o = const VoiceNotUnderstood('');

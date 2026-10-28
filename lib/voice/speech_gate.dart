@@ -79,6 +79,15 @@ class SpeechGate {
     return out;
   }
 
+  /// Drops all but the last [frames] of an utterance in progress, keeping
+  /// the sound before it. For the wake word: what follows "Hey, Gary" in
+  /// the same breath is already in here by the time the spotter hears it.
+  void keepLast(int frames) {
+    if (_speech.length > frames) {
+      _speech.removeRange(0, _speech.length - frames);
+    }
+  }
+
   void _reset() {
     _speech.clear();
     _preroll.clear();

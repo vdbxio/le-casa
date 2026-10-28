@@ -104,7 +104,7 @@ class BleSyncRadio implements SyncRadio {
         adding: m[2] & 1 != 0,
         android: true,
         wakeSeq: m.length >= 13 ? m[11] : 0,
-        wakeLevel: m.length >= 13 ? m[12] : null,
+        wakeLevel: m.length >= 13 ? m[12] - 128 : null,
       );
     }
     final name = a.name;
@@ -113,8 +113,9 @@ class BleSyncRadio implements SyncRadio {
     var rest = name.substring(syncNamePrefix.length).trim().toLowerCase();
     final adding = rest.endsWith('+');
     if (adding) rest = rest.substring(0, rest.length - 1);
-    // "~sll": a wake word heard, its count and level in hex.
-    final wake = RegExp(r'~([0-9a-f])([0-9a-f]{2})$').firstMatch(rest);
+    // "~c": a wake word heard, its level in one base-36 digit. iOS cuts
+    // the name at 26 characters, which leaves room for two.
+    final wake = RegExp(r'~([0-9a-z])$').firstMatch(rest);
     if (wake != null) rest = rest.substring(0, wake.start);
     final parts = rest.split('.');
     return PeerSighting(
@@ -124,8 +125,9 @@ class BleSyncRadio implements SyncRadio {
       a.seenAt,
       screen: parts.length > 1 ? parts[1] : null,
       adding: adding,
-      wakeSeq: wake == null ? 0 : int.parse(wake[1]!, radix: 16),
-      wakeLevel: wake == null ? null : int.parse(wake[2]!, radix: 16),
+      wakeLevel: wake == null
+          ? null
+          : wakeLevelOf(int.parse(wake[1]!, radix: 36)),
     );
   }
 
@@ -155,8 +157,7 @@ class BleSyncRadio implements SyncRadio {
               ? Advertisement(
                   name:
                       '$syncNamePrefix${ad.tag}.${ad.screen}'
-                      '${ad.wakeLevel == null ? '' : '~${(ad.wakeSeq & 0xF).toRadixString(16)}${ad.wakeLevel!.clamp(0, 255).toRadixString(16).padLeft(2, '0')}'}'
-                      '${ad.adding ? '+' : ''}',
+                      '${ad.adding ? '+' : ad.wakeLevel == null ? '' : '~${wakeDigit(ad.wakeLevel!).toRadixString(36)}'}',
                   serviceUUIDs: [UUID.fromString(syncServiceUuid)],
                 )
               : Advertisement(
@@ -170,7 +171,7 @@ class BleSyncRadio implements SyncRadio {
                         ...fromHexString(ad.screen),
                         if (ad.wakeLevel case final l?) ...[
                           ad.wakeSeq & 0xFF,
-                          l.clamp(0, 255),
+                          (l + 128).clamp(0, 255),
                         ],
                       ]),
                     ),

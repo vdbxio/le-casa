@@ -5,6 +5,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi' show Abi;
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -141,6 +142,10 @@ class VoiceController extends ChangeNotifier {
   /// clearly. Null for a command started with the mic button.
   DateTime? _wakeAt;
   var _wakeLevel = 0;
+
+  /// How clearly this screen usually hears the wake word, in dB over its
+  /// background. Starts from what the M10 and iOS measured (2026-10-28).
+  double? _usualWake;
 
   bool get wake => settings.voiceWake;
 
@@ -339,9 +344,18 @@ class VoiceController extends ChangeNotifier {
   void _onWake() {
     if (_busy || phase == VoicePhase.listening) return;
     _wakeAt = DateTime.now();
-    _wakeLevel = _gate.clarity;
+    final raw = _gate.clarity;
+    // Mics differ: iOS's voice processing hears the same voice some 20 dB
+    // clearer over its background than the M10 does. So each screen
+    // compares with how clearly it usually hears the wake word, which
+    // also says how far it is from where people usually stand.
+    final usual = _usualWake ??= Platform.isIOS ? 38.0 : 16.0;
+    _wakeLevel = (raw - usual).round();
+    _usualWake = usual * 0.9 + raw * 0.1;
     share?.announceWake(_wakeLevel);
-    debugPrint('voice: "Hey, Gary", $_wakeLevel dB over the room');
+    debugPrint(
+      'voice: "Hey, Gary", $raw dB over the room, $_wakeLevel over usual',
+    );
     unawaited(() async {
       if (await _ready() == null) {
         problem = _whyNot;

@@ -7,7 +7,8 @@ class PeerWake {
   /// The screen's short id, as its advert carries it.
   final String screen;
 
-  /// How far the wake word rose over that screen's background, in dB.
+  /// How much more clearly than usual that screen heard the wake word,
+  /// in dB.
   final int level;
   final DateTime seen;
 

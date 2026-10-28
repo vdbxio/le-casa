@@ -754,7 +754,8 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     if (s == shortScreen(home.me.id)) return;
     // Each advert repeats many times a second: pass each wake on once.
     final key = '$s.${h.wakeSeq}.$level';
-    _wakesSeen.removeWhere((_, t) => h.seen.difference(t).inSeconds > 10);
+    // The advert carries a wake for six seconds.
+    _wakesSeen.removeWhere((_, t) => h.seen.difference(t).inSeconds > 7);
     if (_wakesSeen.containsKey(key)) return;
     _wakesSeen[key] = h.seen;
     _wakes.add(PeerWake(s, level, h.seen));

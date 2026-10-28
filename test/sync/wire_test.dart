@@ -98,21 +98,24 @@ void main() {
             0x4c, 0x43, 0x00, //
             0x1a, 0x2b, 0x3c, 0x4d, //
             0x0f, 0x1e, 0x2d, 0x3c, //
-            0x03, 27,
+            0x03, 128 + 7,
           ]),
         },
       ),
     );
     expect(woke?.wakeSeq, 3);
-    expect(woke?.wakeLevel, 27);
+    expect(woke?.wakeLevel, 7);
     expect(android?.wakeLevel, isNull);
     final iosWoke = BleSyncRadio.sightingOf(
-      adv(name: 'LeCasa 1a2b3c4d.0f1e2d3c~31b+'),
+      adv(name: 'LeCasa 1a2b3c4d.0f1e2d3c~${wakeDigit(7).toRadixString(36)}'),
     );
+    // iOS cuts the name at 26 characters: the wake word must fit.
+    expect('LeCasa 1a2b3c4d.0f1e2d3c~x'.length, lessThanOrEqualTo(26));
     expect(iosWoke?.screen, '0f1e2d3c');
-    expect(iosWoke?.adding, isTrue);
-    expect(iosWoke?.wakeSeq, 3);
-    expect(iosWoke?.wakeLevel, 27);
+    expect(iosWoke?.adding, isFalse);
+    expect(iosWoke?.wakeLevel, 7);
+    expect(wakeLevelOf(wakeDigit(-40)), -35);
+    expect(wakeLevelOf(wakeDigit(40)), 35);
     expect(ios?.wakeLevel, isNull);
     // Other test gear on 0xFFFF, and anything else, is not a screen.
     expect(

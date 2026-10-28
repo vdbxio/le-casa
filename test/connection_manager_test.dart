@@ -86,6 +86,7 @@ void main() {
   late List<FakeSession> opened;
 
   setUp(() {
+    ConnectionManager.retryGap = Duration.zero;
     tracker = DeviceTracker(DecoderRegistry.standard());
     opened = [];
   });
@@ -347,6 +348,26 @@ void main() {
     expect(opened.single.closed, isTrue);
     await m.control(testAdv.id, const DeviceCommand('power', true));
     expect(opened, hasLength(2));
+    m.dispose();
+  });
+
+  test('a connect refused with 133 says another screen may hold it', () async {
+    final m = manager(
+      ControlDriver(),
+      open: (id) async => throw StateError('Connect failed with status: 133'),
+    );
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await expectLater(
+      m.control(testAdv.id, const DeviceCommand('power', true)),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('Another screen or app'),
+        ),
+      ),
+    );
     m.dispose();
   });
 

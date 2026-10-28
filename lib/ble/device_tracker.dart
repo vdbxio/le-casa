@@ -155,11 +155,11 @@ class DeviceTracker extends ChangeNotifier {
   ];
 
   /// Stores a reading taken over a connection.
-  void setPolled(String id, Decoded decoded) {
+  void setPolled(String id, Decoded decoded, {DateTime? at}) {
     final d = _devices[id];
     if (d == null) return;
     d.polled = decoded;
-    d.polledAt = DateTime.now();
+    d.polledAt = at ?? DateTime.now();
     d.polledBy = null;
     notifyListeners();
   }

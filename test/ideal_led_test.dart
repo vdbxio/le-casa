@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:lecasa/ble/connection_manager.dart';
 import 'package:lecasa/ble/device_tracker.dart';
 import 'package:lecasa/ble/gatt_session.dart';
@@ -239,6 +240,46 @@ void main() {
       ),
     );
     expect(t['led']!.view!.readings.single.value, isTrue);
+  });
+
+  test('the last look set survives a restart', () async {
+    SharedPreferences.setMockInitialValues({});
+    final x = adv(id: 'fourth', name: 'ISP-000004', seenAt: DateTime.now());
+    Future<DeviceTracker> start() async {
+      final t = DeviceTracker(DecoderRegistry.standard());
+      final m = ConnectionManager(
+        t,
+        drivers: GattDriverRegistry.standard(),
+        tick: const Duration(hours: 1),
+        open: (id) async => session([]),
+      );
+      await m.load();
+      t.onAdvertisement(x);
+      m.onAdvertisement(x);
+      return t;
+    }
+
+    final first = await start();
+    expect(first['fourth']!.view!.readings, isEmpty);
+    final m = ConnectionManager(
+      first,
+      drivers: GattDriverRegistry.standard(),
+      tick: const Duration(hours: 1),
+      open: (id) async => session([]),
+    );
+    await m.load();
+    m.onAdvertisement(x);
+    await m.control(
+      'fourth',
+      const DeviceCommand('pattern', {'pattern': 'Twinkle', 'brightness': 70}),
+    );
+    final again = await start();
+    final r = {
+      for (final y in again['fourth']!.view!.readings) y.label: y.value,
+    };
+    expect(r['pattern'], 'Twinkle');
+    expect(r['brightness'], 70);
+    expect(r['on'], isTrue);
   });
 
   test('switching off from any screen keeps the look on the card', () async {

@@ -247,7 +247,7 @@ class IdealLedDriver implements LingeringDriver {
   // Brightness and speed come in runs; each new connection also makes the
   // strip blink three times.
   @override
-  Duration get linger => const Duration(seconds: 15);
+  Duration get linger => const Duration(seconds: 6);
 
   @override
   String get name => 'iDeal LED controller';

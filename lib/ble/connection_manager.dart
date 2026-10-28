@@ -359,6 +359,9 @@ class ConnectionManager extends ChangeNotifier {
       _choice.putIfAbsent(id, () => false);
     }
     _enabled = _prefs!.getBool(_globalKey) ?? true;
+    for (final id in _links.keys) {
+      _restoreLook(id);
+    }
     for (final l in _links.values) {
       if (!allows(l.id) && !l.busy) l.phase = LinkPhase.off;
       if (allows(l.id) && l.phase == LinkPhase.off) {
@@ -493,9 +496,9 @@ class ConnectionManager extends ChangeNotifier {
     ClosableSession? link;
     var done = false;
     try {
-      // Commands set a state rather than step it, so a second go is safe;
+      // Commands set a state rather than step it, so another go is safe;
       // the M10 often fails the first connect (133) or drops during
-      // discovery, and the second attempt then works.
+      // discovery, and a later attempt then works.
       late Decoded decoded;
       for (var attempt = 1; ; attempt++) {
         try {
@@ -509,14 +512,17 @@ class ConnectionManager extends ChangeNotifier {
         } on ArgumentError {
           rethrow;
         } catch (e) {
-          if (attempt == 2) rethrow;
+          if (attempt == 3) rethrow;
           debugPrint('control: $id attempt $attempt failed: $e; retrying');
           await link?.close();
           link = null;
-          await Future<void>.delayed(const Duration(seconds: 1));
+          // The second wait outlasts another screen's lingering link.
+          await Future<void>.delayed(retryGap * (attempt == 1 ? 1 : 8));
         }
       }
-      tracker.setPolled(id, _keepLook(dev.view, decoded));
+      final look = _keepLook(dev.view, decoded);
+      tracker.setPolled(id, look);
+      if (look.kind == DeviceKind.lights) unawaited(_saveLook(id, look));
       done = true;
       l
         ..phase = LinkPhase.ok
@@ -530,6 +536,14 @@ class ConnectionManager extends ChangeNotifier {
         ..phase = LinkPhase.failed
         ..error = _describe(e)
         ..nextDue = DateTime.now().add(driver.interval);
+      // Status 133 straight away usually means the device already has a
+      // connection (most take one), from another screen or its own app.
+      if ('$e'.contains('status: 133')) {
+        throw StateError(
+          'Could not connect. Another screen or app may be connected to '
+          'it; try again in a few seconds.',
+        );
+      }
       rethrow;
     } finally {
       final keep = link;
@@ -581,7 +595,61 @@ class ConnectionManager extends ChangeNotifier {
     final driver = drivers.forAdvertisement(adv);
     if (driver == null) return;
     _links[adv.id] = Link(adv.id, driver, enabled: allows(adv.id));
+    _restoreLook(adv.id);
     notifyListeners();
+  }
+
+  static const _lookKey = 'gatt:lights';
+
+  /// The pause before a control's second connect; tests shorten it.
+  @visibleForTesting
+  static Duration retryGap = const Duration(seconds: 1);
+
+  /// A light cannot be asked what it shows, so the last look set from this
+  /// screen is kept across restarts.
+  Future<void> _saveLook(String id, Decoded d) async {
+    final p = _prefs;
+    if (p == null) return;
+    Map<String, Object?> all;
+    try {
+      all = (jsonDecode(p.getString(_lookKey) ?? '{}') as Map).cast();
+    } catch (_) {
+      all = {};
+    }
+    all[id] = {
+      'at': DateTime.now().toIso8601String(),
+      'protocol': d.protocol,
+      'model': d.model,
+      'r': [
+        for (final r in d.readings)
+          if (r.value is bool || r.value is num || r.value is String)
+            [r.label, r.value, r.unit],
+      ],
+    };
+    await p.setString(_lookKey, jsonEncode(all));
+  }
+
+  void _restoreLook(String id) {
+    final dev = tracker[id];
+    if (dev == null || dev.polled != null) return;
+    try {
+      final all = jsonDecode(_prefs?.getString(_lookKey) ?? '{}') as Map;
+      final j = all[id];
+      if (j is! Map) return;
+      tracker.setPolled(
+        id,
+        Decoded(
+          protocol: '${j['protocol']}',
+          model: '${j['model']}',
+          kind: DeviceKind.lights,
+          readings: [
+            for (final r in j['r'] as List)
+              Reading('${r[0]}', r[1] as Object?, '${r[2]}'),
+          ],
+        ),
+        at: DateTime.parse('${j['at']}'),
+      );
+    } catch (_) {}
   }
 
   /// Starts the most overdue poll if nothing is in flight, and reads held

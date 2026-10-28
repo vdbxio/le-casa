@@ -544,7 +544,8 @@ CardModel _light(Decoded v, String name) {
   final onText = on == null ? null : (on == true ? 'On' : 'Off');
   return CardModel(
     title: name,
-    subtitle: v.model,
+    // Its own button and remote change it unseen.
+    subtitle: on == null ? v.model : 'As last set from Le\'Casa',
     icon: Icons.lightbulb_outline,
     tone: Tone.solar,
     headline: Metric('Light', onText ?? 'Tap to turn on'),

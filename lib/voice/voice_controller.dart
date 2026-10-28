@@ -7,13 +7,13 @@ import 'dart:convert';
 import 'dart:ffi' show Abi;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:record/record.dart';
 
 import '../ble/connection_manager.dart';
 import '../ble/device_tracker.dart';
 import '../settings/settings_store.dart';
+import 'asset_files.dart';
 import 'phrase_matcher.dart';
 import 'speech_gate.dart';
 import 'voice_engine.dart';
@@ -105,6 +105,8 @@ class VoiceController extends ChangeNotifier {
   StreamSubscription<Uint8List>? _micSub;
   Timer? _timeout;
   Timer? _hide;
+  DateTime _soundUntil = DateTime(0);
+  final _quiet = <Float32List>[];
 
   bool get wake => settings.voiceWake;
 
@@ -137,16 +139,9 @@ class VoiceController extends ChangeNotifier {
     final was = phase;
     _set(VoicePhase.loading);
     try {
-      final needle = _needle
-          ? await rootBundle.load('assets/voice/needle3.cact')
-          : null;
-      final whistle = await rootBundle.load('assets/voice/whistle.cact');
       final e = await VoiceEngine.start(
-        needle?.buffer.asUint8List(needle.offsetInBytes, needle.lengthInBytes),
-        whistle.buffer.asUint8List(
-          whistle.offsetInBytes,
-          whistle.lengthInBytes,
-        ),
+        _needle ? await voiceFile('assets/voice/needle3.cact') : null,
+        await voiceFile('assets/voice/whistle.cact'),
       );
       _engine = e;
       _set(was == VoicePhase.loading ? VoicePhase.off : was);
@@ -294,7 +289,22 @@ class VoiceController extends ChangeNotifier {
         final ended = _gate.add(samples);
         if (ended.isNotEmpty) unawaited(_command(ended.first));
       case VoicePhase.waiting || VoicePhase.showing when wake:
-        _wakeWord?.add(samples);
+        // The spotter only hears the room when there is sound: on the M10
+        // it takes most of a core while it decodes.
+        _gate.add(samples);
+        final now = DateTime.now();
+        if (_gate.inSpeech) _soundUntil = now.add(const Duration(seconds: 2));
+        if (now.isBefore(_soundUntil)) {
+          for (final p in _quiet) {
+            _wakeWord?.add(p);
+          }
+          _quiet.clear();
+          _wakeWord?.add(samples);
+        } else {
+          // Kept so the start of "Hey" is not lost.
+          _quiet.add(samples);
+          if (_quiet.length > 4) _quiet.removeAt(0);
+        }
       default:
     }
   }

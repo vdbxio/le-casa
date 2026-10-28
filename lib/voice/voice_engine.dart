@@ -5,7 +5,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
+import 'dart:io';
 import 'dart:isolate';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -40,11 +42,9 @@ class VoiceEngine {
     });
   }
 
-  /// Starts the worker and loads the models. [needle] and [whistle] are
-  /// the .cact files' bytes; the engine reads them in place, so the worker
-  /// keeps its native copy for as long as it lives. Without [needle] it
-  /// only transcribes.
-  static Future<VoiceEngine> start(Uint8List? needle, Uint8List whistle) async {
+  /// Starts the worker and loads the models from the .cact files at
+  /// [needle] and [whistle]. Without [needle] it only transcribes.
+  static Future<VoiceEngine> start(String? needle, String whistle) async {
     final ready = ReceivePort();
     final isolate = await Isolate.spawn(
       _worker,
@@ -56,10 +56,7 @@ class VoiceEngine {
     to.send(from.sendPort);
     final e = VoiceEngine._(to, from, isolate);
     try {
-      await e._ask('load', [
-        if (needle != null) TransferableTypedData.fromList([needle]),
-        TransferableTypedData.fromList([whistle]),
-      ]);
+      await e._ask('load', [?needle, whistle]);
     } catch (_) {
       e.dispose();
       rethrow;
@@ -154,16 +151,28 @@ void _worker(SendPort ready) {
       Object? result;
       switch (op) {
         case 'load':
-          for (final t in arg as List) {
-            final bytes = (t as TransferableTypedData)
-                .materialize()
-                .asUint8List();
-            // Kept for the life of the process: the engine maps the
+          for (final path in arg as List) {
+            // Read straight into native memory, with no copy on the Dart
+            // heap. Kept for the life of the process: the engine uses the
             // weights where they lie.
-            final p = malloc<Uint8>(bytes.length);
-            p.asTypedList(bytes.length).setAll(0, bytes);
-            if (needle_load(p, bytes.length) < 0) {
-              throw VoiceEngineError(lastError());
+            final f = File(path as String).openSync();
+            try {
+              final n = f.lengthSync();
+              final p = malloc<Uint8>(n);
+              final view = p.asTypedList(n);
+              var at = 0;
+              while (at < n) {
+                final got = f.readIntoSync(
+                  view,
+                  at,
+                  math.min(n, at + (1 << 20)),
+                );
+                if (got <= 0) throw VoiceEngineError('Short read of $path');
+                at += got;
+              }
+              if (needle_load(p, n) < 0) throw VoiceEngineError(lastError());
+            } finally {
+              f.closeSync();
             }
           }
           final want = (arg.length > 1 ? needleText : 0) | needleSpeech;

@@ -26,6 +26,11 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Real tablets and phones only: the voice engine has no x86 build,
+        // and sherpa-onnx's x86 libraries alone added about 60 MB.
+        ndk {
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
+        }
     }
 
     buildTypes {

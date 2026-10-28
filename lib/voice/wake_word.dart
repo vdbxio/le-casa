@@ -6,11 +6,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
-import 'dart:typed_data';
 
-import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
+
+import 'asset_files.dart';
 
 /// "Hey, Gary" in the keyword spotter's word pieces (its bpe.model), with
 /// the usual ways of saying it. `:` boosts the phrase, `#` is how sure the
@@ -33,9 +33,23 @@ class WakeWord {
 
   WakeWord._(this._to, this._from, this._isolate, void Function() onWake) {
     _from.listen((m) {
-      if (m == 'wake') onWake();
+      if (m == 'wake') {
+        onWake();
+      } else if (m is int) {
+        _inFlight--;
+        _busyUs += m;
+      }
     });
   }
+
+  /// Chunks sent and not yet decoded. A slow chip that falls behind would
+  /// otherwise queue the mic up in memory until Android kills the app.
+  var _inFlight = 0;
+  static const _maxInFlight = 8;
+  var _dropped = 0;
+  var _busyUs = 0;
+  var _heardUs = 0;
+  final _since = Stopwatch()..start();
 
   static const _files = [
     'encoder.onnx',
@@ -44,27 +58,17 @@ class WakeWord {
     'tokens.txt',
   ];
 
-  /// Copies the model out of the app bundle (sherpa-onnx reads files) and
-  /// starts the spotter. Throws when the model is not in this build.
+  /// Copies the model out of the app bundle once (sherpa-onnx reads files)
+  /// and starts the spotter. Throws when the model is not in this build.
   static Future<WakeWord> start(void Function() onWake) async {
-    final dir = Directory(
-      '${(await getApplicationSupportDirectory()).path}/kws',
-    );
-    await dir.create(recursive: true);
+    String? dir;
     for (final f in _files) {
-      final data = await rootBundle.load('assets/voice/kws/$f');
-      final out = File('${dir.path}/$f');
-      if (!await out.exists() || await out.length() != data.lengthInBytes) {
-        await out.writeAsBytes(
-          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
-          flush: true,
-        );
-      }
+      dir = File(await voiceFile('assets/voice/kws/$f')).parent.path;
     }
     final ready = ReceivePort();
     final isolate = await Isolate.spawn(_worker, (
       ready.sendPort,
-      dir.path,
+      dir!,
     ), debugName: 'wake word');
     final first = await ready.first;
     if (first is String) {
@@ -77,9 +81,25 @@ class WakeWord {
     return WakeWord._(to, from, isolate, onWake);
   }
 
-  /// 16 kHz mono samples in [-1, 1].
-  void add(Float32List samples) =>
+  /// 16 kHz mono samples in [-1, 1]. Dropped while the spotter is behind.
+  void add(Float32List samples) {
+    if (_inFlight >= _maxInFlight) {
+      _dropped++;
+    } else {
+      _inFlight++;
+      _heardUs += samples.length * 1000000 ~/ 16000;
       _to.send(TransferableTypedData.fromList([samples]));
+    }
+    if (_since.elapsed.inSeconds >= 30) {
+      // How hard the spotter works per second of sound, for slow tablets.
+      debugPrint(
+        'voice: wake word decoded ${_heardUs ~/ 1000} ms of sound in '
+        '${_busyUs ~/ 1000} ms, dropped $_dropped chunks',
+      );
+      _since.reset();
+      _busyUs = _heardUs = _dropped = 0;
+    }
+  }
 
   /// Forgets what it has heard, after a command.
   void reset() => _to.send('reset');
@@ -126,6 +146,7 @@ void _worker((SendPort, String) args) {
       stream.free();
       stream = kws.createStream();
     } else if (m is TransferableTypedData) {
+      final watch = Stopwatch()..start();
       stream.acceptWaveform(
         samples: m.materialize().asFloat32List(),
         sampleRate: 16000,
@@ -137,6 +158,7 @@ void _worker((SendPort, String) args) {
           reply?.send('wake');
         }
       }
+      reply?.send(watch.elapsedMicroseconds);
     }
   });
 }

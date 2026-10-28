@@ -107,4 +107,25 @@ void main() {
       expect(afterWakeWord(''), isNull);
     });
   });
+
+  group('command in a transcript', () {
+    test('the first sentence after the wake word', () {
+      expect(
+        commandIn('Hey Gary. Hey Gary, turn on the outside LEDs. Hey Gary'),
+        'turn on the outside LEDs.',
+      );
+      expect(commandIn('Outside on.'), 'Outside on.');
+      expect(commandIn('Hey, Gary.'), '');
+    });
+
+    test('a stream of TV talk is not a command', () {
+      expect(
+        commandIn(
+          'when he turns to cover it up he is crying and the whole town '
+          'knows it by now',
+        ),
+        isNull,
+      );
+    });
+  });
 }

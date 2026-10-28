@@ -72,8 +72,11 @@ List<Map<String, Object?>>? matchPhrase(VoiceCatalog home, String heard) {
       'lamps',
     ]);
     if (!generic && !any(const ['everything', 'all'])) {
-      // "make it blue" with one light in the home.
-      return lights.length == 1 ? lights.single.name : null;
+      // "make it blue" with one light in the home; in a longer sentence
+      // a stray "on" or "blue" is somebody else talking.
+      return lights.length == 1 && words.length <= 4
+          ? lights.single.name
+          : null;
     }
     if (lights.length == 1) return lights.single.name;
     if (lights.length > 1) return allLights;
@@ -177,7 +180,7 @@ List<Map<String, Object?>>? matchPhrase(VoiceCatalog home, String heard) {
                 'everything',
                 'all',
               ]) ||
-              lights.length == 1)) {
+              (lights.length == 1 && words.length <= 4))) {
         return [
           call(tool, {'device': l}),
         ];

@@ -355,9 +355,10 @@ class VoiceController extends ChangeNotifier {
       final t = await e.transcribe(u);
       final said = '${t['text'] ?? ''}'.trim();
       // "Hey Gary" said again, or its tail caught by the gate.
-      final heard = afterWakeWord(said) ?? said;
-      debugPrint('voice: heard "$heard" in ${t['ms']} ms');
-      if (heard.isEmpty && said.isNotEmpty && _wakeOnly) {
+      final cmd = commandIn(said);
+      final heard = cmd ?? said;
+      debugPrint('voice: heard "$said" in ${t['ms']} ms');
+      if (cmd != null && cmd.isEmpty && said.isNotEmpty && _wakeOnly) {
         // Only "Hey, Gary", then a pause: the command comes next, and
         // what was said meanwhile is in the gate.
         final h = _held;
@@ -368,6 +369,9 @@ class VoiceController extends ChangeNotifier {
       VoiceOutcome o;
       if (heard.isEmpty) {
         o = const VoiceNotUnderstood('');
+      } else if (cmd == null) {
+        // Too long for a command: most likely the TV.
+        o = VoiceNotUnderstood(heard);
       } else if (matchPhrase(catalog, heard) case final calls?) {
         o = catalog.interpret({
           'function_calls': calls,

@@ -179,6 +179,21 @@ void main() {
     ]);
   });
 
+  test('a single light is not switched by talk around it', () {
+    final one = VoiceCatalog([
+      VoiceDevice('o', 'Outside', VoiceKind.light, null),
+    ]);
+    expect(_m('turn it off', one), [
+      [
+        'turn_off',
+        {'device': 'Outside'},
+      ],
+    ]);
+    // The TV beside the iPad.
+    expect(_m('he came back on him and that is when', one), isNull);
+    expect(_m('she wore the blue dress to the party', one), isNull);
+  });
+
   test('anything else is left for Needle', () {
     expect(_m('I think the game is on later'), isNull);
     expect(_m('what time is it'), isNull);

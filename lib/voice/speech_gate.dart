@@ -162,3 +162,17 @@ String? afterWakeWord(String heard) {
   ).firstMatch(heard.trim());
   return m?[1]!.trim();
 }
+
+/// What to act on in a transcript: the first sentence that is not only the
+/// wake word, with the wake word cut from its start. Null when that is too
+/// long to be a command, as when a TV beside the tablet talked over it and
+/// the gate kept listening: a command is a few words, a TV a stream.
+String? commandIn(String heard, {int maxWords = 12}) {
+  for (final s in heard.split(RegExp(r'(?<=[.?!])\s+'))) {
+    final c = (afterWakeWord(s) ?? s).trim();
+    if (RegExp(r'^\W*$').hasMatch(c)) continue;
+    final words = c.split(RegExp(r'\s+')).length;
+    return words > maxWords ? null : c;
+  }
+  return '';
+}

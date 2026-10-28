@@ -438,6 +438,15 @@ class VoiceCatalog {
     ];
     if (rs.isEmpty) return "${d.name}: no readings yet";
     return '${d.name}: '
-        '${rs.take(most).map((r) => '${r.label} ${r.display}').join(', ')}';
+        '${rs.take(most).map(_say).join(', ')}';
+  }
+
+  /// "power 0 W"; a plain on/off reading is just "off", not "on off".
+  static String _say(Reading r) {
+    final l = r.label.toLowerCase();
+    if (r.value is bool && (l == 'on' || l == 'power' || l == 'state')) {
+      return r.display;
+    }
+    return '${r.label} ${r.display}';
   }
 }

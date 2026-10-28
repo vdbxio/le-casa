@@ -49,6 +49,18 @@ List<Map<String, Object?>>? matchPhrase(VoiceCatalog home, String heard) {
   };
 
   if (asks) {
+    // "How are my batteries?", "how much solar today?": all of them, unless
+    // one was named ("how is Lilith").
+    final topic = _topic(text);
+    if (topic != null &&
+        target?.state?.kind != topic &&
+        home.devices.any((d) => d.state?.kind == topic)) {
+      return [
+        call('get_reading', {
+          'device': topic == DeviceKind.battery ? allBatteries : allSolar,
+        }),
+      ];
+    }
     final d = target ?? _askedAbout(home, text);
     return d == null
         ? null
@@ -306,6 +318,14 @@ VoiceDevice? _device(
     ];
   }
   return best.length == 1 ? best.single : null;
+}
+
+/// Batteries or solar, when that is what a question is about.
+DeviceKind? _topic(String text) {
+  bool has(String w) => text.contains(' $w ');
+  if (['battery', 'batteries', 'charge'].any(has)) return DeviceKind.battery;
+  if (['solar', 'sun', 'panels', 'panel'].any(has)) return DeviceKind.solar;
+  return null;
 }
 
 /// "What's the battery at?" with no device named: the one device of that

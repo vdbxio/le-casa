@@ -94,6 +94,12 @@ const voiceColours = <(String, int)>[
 /// The enum value that picks every light at once.
 const allLights = 'all lights';
 
+/// The answer to "how are my batteries?": every battery at once.
+const allBatteries = 'all batteries';
+
+/// The answer to "how much solar today?": every solar charger at once.
+const allSolar = 'all solar';
+
 /// Turns the devices in the home into Needle tools, and Needle's answers
 /// back into device commands. Pure Dart, so it is tested without the
 /// engine.
@@ -290,8 +296,15 @@ class VoiceCatalog {
       final args = (c['arguments'] as Map?)?.cast<String, Object?>() ?? {};
       final name = _polarity('${c['name']}', text);
       if (name == 'get_reading') {
+        final asked = '${args['device']}'.trim().toLowerCase();
         final d = _named(args['device']);
-        if (d != null) answers.add(describe(d));
+        if (asked == allBatteries) {
+          answers.add(batteries());
+        } else if (asked == allSolar) {
+          answers.add(solar());
+        } else if (d != null) {
+          answers.add(describe(d));
+        }
         continue;
       }
       commands.addAll(commandsFor(name, args));
@@ -431,6 +444,73 @@ class VoiceCatalog {
   }
 
   /// A device's readings in a line: "Lilith: 87 % state of charge, 13.2 V".
+  /// "Lilith 73 %, discharging 198 W, about 11 h left", a line for each
+  /// battery that has readings.
+  String batteries() {
+    final lines = <String>[];
+    for (final d in devices.where((d) => d.state?.kind == DeviceKind.battery)) {
+      final soc = _num(d, 'state of charge');
+      if (soc == null) continue;
+      final v = _num(d, 'voltage');
+      final a = _num(d, 'current');
+      final w = v != null && a != null ? (v * a).round() : null;
+      final flow = switch (w) {
+        null => null,
+        _ when w.abs() < 5 => 'resting',
+        _ when w > 0 => 'charging ${w.abs()} W',
+        _ => 'discharging ${w.abs()} W',
+      };
+      final ttg = _num(d, 'time to go');
+      final left = ttg != null && w != null && w < -5
+          ? 'about ${_hours(ttg)} left'
+          : null;
+      lines.add(
+        '${d.name} ${soc.round()} %${[?flow, ?left].map((s) => ', $s').join()}',
+      );
+    }
+    return lines.isEmpty ? 'No battery readings yet' : lines.join('\n');
+  }
+
+  /// "Solar 0 W now, 3.7 kWh today (Luna 50 3.4 kWh, Sol 30 0.3 kWh)".
+  String solar() {
+    final ds = [
+      for (final d in devices)
+        if (d.state?.kind == DeviceKind.solar) d,
+    ];
+    if (ds.isEmpty) return 'No solar readings yet';
+    var now = 0.0;
+    var today = 0.0;
+    final each = <String>[];
+    for (final d in ds) {
+      now += _num(d, 'solar power') ?? _num(d, 'power') ?? 0;
+      final y = _num(d, 'yield today');
+      if (y != null) {
+        today += y;
+        each.add('${d.name} ${_kwh(y)}');
+      }
+    }
+    final split = ds.length > 1 && each.isNotEmpty
+        ? ' (${each.join(', ')})'
+        : '';
+    return 'Solar ${now.round()} W now, ${_kwh(today)} today$split';
+  }
+
+  static double? _num(VoiceDevice d, String label) {
+    for (final r in d.state?.readings ?? const <Reading>[]) {
+      if (r.label == label && r.value is num) {
+        return (r.value as num).toDouble();
+      }
+    }
+    return null;
+  }
+
+  static String _kwh(double wh) =>
+      wh < 1000 ? '${wh.round()} Wh' : '${(wh / 1000).toStringAsFixed(1)} kWh';
+
+  static String _hours(double minutes) => minutes < 90
+      ? '${minutes.round()} min'
+      : '${(minutes / 60).round()} h';
+
   static String describe(VoiceDevice d, {int most = 4}) {
     final rs = [
       for (final r in d.state?.readings ?? const <Reading>[])

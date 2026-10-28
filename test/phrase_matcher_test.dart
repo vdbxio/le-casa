@@ -141,13 +141,13 @@ void main() {
     expect(_m("What's the battery at?"), [
       [
         'get_reading',
-        {'device': 'Lilith'},
+        {'device': allBatteries},
       ],
     ]);
     expect(_m('How much solar are we getting'), [
       [
         'get_reading',
-        {'device': 'Sol 30'},
+        {'device': allSolar},
       ],
     ]);
     expect(_m('is the kettle on'), [
@@ -239,7 +239,7 @@ void main() {
     expect(_m('how are my batteries?', home), [
       [
         'get_reading',
-        {'device': 'Battery 12BA'},
+        {'device': allBatteries},
       ],
     ]);
   });

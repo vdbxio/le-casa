@@ -222,4 +222,59 @@ void main() {
     final c = _home().commandsFor('turn_on', {'device': 'Kettle'}).single;
     expect(c.command, isA<DeviceCommand>());
   });
+
+  test('batteries and solar are answered all at once', () {
+    Decoded kind(DeviceKind k, List<Reading> rs) =>
+        Decoded(protocol: 'test', model: 'test', kind: k, readings: rs);
+    final home = VoiceCatalog([
+      VoiceDevice(
+        'l',
+        'Lilith',
+        VoiceKind.sensor,
+        kind(DeviceKind.battery, const [
+          Reading('state of charge', 72.6, '%'),
+          Reading('voltage', 26.51, 'V'),
+          Reading('current', -7.458, 'A'),
+          Reading('time to go', 688, 'min'),
+        ]),
+      ),
+      VoiceDevice('d', 'Battery 12BA', VoiceKind.sensor, null),
+      VoiceDevice(
+        's',
+        'Sol 30',
+        VoiceKind.sensor,
+        kind(DeviceKind.solar, const [
+          Reading('yield today', 270, 'Wh'),
+          Reading('solar power', 0, 'W'),
+        ]),
+      ),
+      VoiceDevice(
+        'u',
+        'Luna 50',
+        VoiceKind.sensor,
+        kind(DeviceKind.solar, const [
+          Reading('yield today', 3430, 'Wh'),
+          Reading('solar power', 0, 'W'),
+        ]),
+      ),
+    ]);
+    expect(
+      home.batteries(),
+      'Lilith 73 %, discharging 198 W, about 11 h left',
+    );
+    expect(
+      home.solar(),
+      'Solar 0 W now, 3.7 kWh today (Sol 30 270 Wh, Luna 50 3.4 kWh)',
+    );
+    final o = home.interpret({
+      'function_calls': [
+        {
+          'name': 'get_reading',
+          'arguments': {'device': allSolar},
+        },
+      ],
+      'confidence': 1.0,
+    }, heard: 'how much solar today');
+    expect((o as VoiceAnswer).answer, home.solar());
+  });
 }

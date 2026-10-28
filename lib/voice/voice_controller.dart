@@ -12,6 +12,7 @@ import 'package:record/record.dart';
 
 import '../ble/connection_manager.dart';
 import '../ble/device_tracker.dart';
+import '../dashboard/catalog.dart' show deviceName;
 import '../settings/settings_store.dart';
 import 'asset_files.dart';
 import 'phrase_matcher.dart';
@@ -420,7 +421,7 @@ class VoiceController extends ChangeNotifier {
     for (final d in tracker.devices)
       if (VoiceDevice.kindOf(d.view, controllable: connections.canControl(d.id))
           case final k?)
-        VoiceDevice(d.id, d.label ?? d.title, k, d.view),
+        VoiceDevice(d.id, deviceName(d), k, d.view),
   ]);
 
   Future<void> _run(List<VoiceCommand> commands) async {

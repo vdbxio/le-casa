@@ -258,10 +258,7 @@ void main() {
         ]),
       ),
     ]);
-    expect(
-      home.batteries(),
-      'Lilith 73 %, discharging 198 W, about 11 h left',
-    );
+    expect(home.batteries(), 'Lilith 73 %, discharging 198 W, about 11 h left');
     expect(
       home.solar(),
       'Solar 0 W now, 3.7 kWh today (Sol 30 270 Wh, Luna 50 3.4 kWh)',

@@ -507,9 +507,8 @@ class VoiceCatalog {
   static String _kwh(double wh) =>
       wh < 1000 ? '${wh.round()} Wh' : '${(wh / 1000).toStringAsFixed(1)} kWh';
 
-  static String _hours(double minutes) => minutes < 90
-      ? '${minutes.round()} min'
-      : '${(minutes / 60).round()} h';
+  static String _hours(double minutes) =>
+      minutes < 90 ? '${minutes.round()} min' : '${(minutes / 60).round()} h';
 
   static String describe(VoiceDevice d, {int most = 4}) {
     final rs = [

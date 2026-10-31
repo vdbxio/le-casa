@@ -302,6 +302,7 @@ CardModel _device(String id, CardSources s, String? savedName) {
       name,
       s,
     ),
+    DeviceKind.appliance when v.protocol == 'Hcalory' => _heater(d, v, name, s),
     DeviceKind.buttons || DeviceKind.leDevice => _buttons(d, v, name, s),
     DeviceKind.switches => _switch(d, v, name, s),
     DeviceKind.covers => _cover(d, v, name, s),
@@ -679,6 +680,45 @@ CardModel _fridge(TrackedDevice d, Decoded v, String name, CardSources s) {
         Metric('Supply', _fmt(b, 1), 'V', null, true),
     ],
     pillLabel: on ? 'on' : 'off',
+    series: s.history?.of(History.key(d.id, 'temperature')),
+  );
+}
+
+CardModel _heater(TrackedDevice d, Decoded v, String name, CardSources s) {
+  Reading? r(String label) =>
+      v.readings.where((x) => x.label == label).firstOrNull;
+  final unit = r('temperature')?.unit ?? '°C';
+  final on = r('power')?.value == true;
+  final fault = r('fault')?.value as String?;
+  final step = r('state')?.value as String?;
+  final byTemp = r('mode')?.value == 'Temperature';
+  final level = _n(v, 'level');
+  final target = _n(v, 'target');
+  final state = switch (step) {
+    _ when fault != null => fault,
+    'Running' when byTemp => 'Heating to ${_fmt(target, 0)} $unit',
+    'Running' => 'Running at level ${_fmt(level, 0)}',
+    'Standby' when !on => 'Off',
+    final st => st,
+  };
+  return CardModel(
+    title: name,
+    subtitle: v.model,
+    icon: Icons.local_fire_department_outlined,
+    tone: Tone.heat,
+    headline: Metric('Temperature', _fmt(_n(v, 'temperature'), 0), unit),
+    state: state,
+    details: [
+      if (byTemp)
+        Metric('Target', _fmt(target, 0), unit)
+      else
+        Metric('Level', _fmt(level, 0)),
+      if (_n(v, 'heater temperature') case final h?)
+        Metric('Heater', _fmt(h, 0), unit),
+      if (_n(v, 'supply voltage') case final b?)
+        Metric('Supply', _fmt(b, 1), 'V', null, true),
+    ],
+    pillLabel: fault != null ? 'fault' : (on ? 'on' : 'off'),
     series: s.history?.of(History.key(d.id, 'temperature')),
   );
 }

@@ -4,8 +4,8 @@
 //
 // Appliances that identify themselves only by their advertised name and a
 // generic serial-over-BLE service (0xFFE0 / 0xFFF0). Nothing useful is in
-// the advert itself; readings and control need a GATT connection, which
-// is a later phase. For now they are recognised so they get a card.
+// the advert itself; readings and control go over a GATT connection, in
+// lib/drivers/.
 
 import 'decoded.dart';
 import 'decoder.dart';
@@ -28,8 +28,11 @@ class HcaloryDecoder implements Decoder {
   Decoded? decode(RawAdvertisement adv) => Decoded(
     protocol: 'Hcalory',
     kind: DeviceKind.appliance,
-    model: 'Hcalory diesel heater',
-    needs: 'Needs a connection to read or control. Planned for a later phase.',
+    model: 'Diesel heater',
+    needs:
+        'The heater broadcasts no readings; Le\'Casa connects to it to read '
+        'and control it. Waiting for the first connection. Close the '
+        'heater\'s own app first: it takes one connection at a time.',
     info: {'module': adv.name!},
   );
 }

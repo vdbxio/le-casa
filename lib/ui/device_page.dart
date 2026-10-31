@@ -15,6 +15,7 @@ import '../decoders/decoded.dart';
 import '../decoders/raw_advertisement.dart';
 import 'format.dart';
 import 'fridge_controls.dart';
+import 'heater_controls.dart';
 import 'light_controls.dart';
 import 'switch_controls.dart';
 
@@ -186,6 +187,17 @@ class _DevicePageState extends State<DevicePage> {
                   services.connections.canControl(widget.id)) ...[
                 const Divider(height: 32),
                 FridgeControls(
+                  id: widget.id,
+                  state: d,
+                  connections: services.connections,
+                ),
+              ],
+              if (d != null &&
+                  d.isReadable &&
+                  d.protocol == 'Hcalory' &&
+                  services.connections.canControl(widget.id)) ...[
+                const Divider(height: 32),
+                HeaterControls(
                   id: widget.id,
                   state: d,
                   connections: services.connections,

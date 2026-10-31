@@ -58,8 +58,16 @@ class _HeaterControlsState extends State<HeaterControls> {
     final busy = _sending != null;
     final on = _v(HeaterSetting.power) == true;
     final byTemp = _v(HeaterSetting.mode) == 'Temperature';
+    final range = RegExp(r'^(-?\d+) to (-?\d+) (.+)$')
+        .firstMatch(widget.state.info['target range'] ?? '');
     final (setting, label, lo, hi, unit) = byTemp
-        ? (HeaterSetting.target, 'Target', heaterMinTemp, heaterMaxTemp, ' °C')
+        ? (
+            HeaterSetting.target,
+            'Target',
+            int.tryParse(range?[1] ?? '') ?? heaterMinTemp,
+            int.tryParse(range?[2] ?? '') ?? heaterMaxTemp,
+            ' ${range?[3] ?? '°C'}',
+          )
         : (HeaterSetting.level, 'Level', heaterMinLevel, heaterMaxLevel, '');
     final value = _v(setting);
     return Column(

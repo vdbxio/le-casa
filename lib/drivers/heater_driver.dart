@@ -2,9 +2,10 @@
 // Copyright (C) 2026 Chloe Madison and contributors.
 // SPDX-License-Identifier: GPL-3.0-or-later WITH App-Store-Exception
 //
-// Reads and controls diesel heaters with the BYD- module. Like the fridge,
-// every change is followed by a fresh status read, so the card shows what
-// the heater accepted rather than what we asked for.
+// Reads and controls diesel heaters: Hcalory's own MVP2 module, and the
+// BYD- module of Vevor-style heaters. Like the fridge, every change is
+// followed by a fresh status read, so the card shows what the heater
+// accepted rather than what we asked for.
 
 import 'dart:async';
 import 'dart:typed_data';
@@ -14,6 +15,7 @@ import '../decoders/appliances.dart';
 import '../decoders/decoded.dart';
 import '../decoders/raw_advertisement.dart';
 import 'driver.dart';
+import 'hcalory_protocol.dart';
 import 'heater_protocol.dart';
 
 /// Setting names [HeaterDriver.control] understands.
@@ -28,6 +30,7 @@ const heaterModeNames = {
   HeaterMode.manual: 'Manual',
   HeaterMode.level: 'Level',
   HeaterMode.temperature: 'Temperature',
+  HeaterMode.fan: 'Fan only',
 };
 
 Decoded heaterToDecoded(HeaterStatus s, {String? module}) {
@@ -48,7 +51,11 @@ Decoded heaterToDecoded(HeaterStatus s, {String? module}) {
       Reading('fault', s.errorName),
       if (s.coPpm case final co?) Reading('carbon monoxide', co, 'ppm'),
     ],
-    info: {'module': ?module, 'layout': s.layout},
+    info: {
+      'module': ?module,
+      'layout': s.layout,
+      'target range': '${s.minTarget} to ${s.maxTarget} $u',
+    },
   );
 }
 
@@ -84,29 +91,28 @@ class HeaterDriver implements ControllableDriver {
     final v = command.value;
     switch (command.setting) {
       case HeaterSetting.power:
-        await link.send(HeaterCmd.power, v as bool ? 1 : 0);
+        await link.power(v as bool);
       case HeaterSetting.mode:
-        final mode = v == 'Temperature'
-            ? HeaterMode.temperature
-            : HeaterMode.level;
-        await link.send(HeaterCmd.mode, mode);
+        await link.mode(
+          v == 'Temperature' ? HeaterMode.temperature : HeaterMode.level,
+        );
       case HeaterSetting.level || HeaterSetting.target:
-        // One command sets either, read by the heater per its mode, so
-        // switch the mode first when it is the other one.
         final want = command.setting == HeaterSetting.level
             ? HeaterMode.level
             : HeaterMode.temperature;
         if (before.mode != want) {
-          await link.send(HeaterCmd.mode, want);
+          await link.mode(want);
           await _settle();
         }
         final n = (v as num).round();
-        await link.send(
-          HeaterCmd.setValue,
-          want == HeaterMode.level
-              ? n.clamp(heaterMinLevel, heaterMaxLevel)
-              : n.clamp(heaterMinTemp, heaterMaxTemp),
-        );
+        if (want == HeaterMode.level) {
+          await link.level(n.clamp(heaterMinLevel, heaterMaxLevel));
+        } else {
+          await link.target(
+            n.clamp(before.minTarget, before.maxTarget),
+            before.fahrenheit,
+          );
+        }
       default:
         throw ArgumentError('Unknown setting ${command.setting}');
     }
@@ -119,36 +125,51 @@ class HeaterDriver implements ControllableDriver {
       Future<void>.delayed(const Duration(milliseconds: 500));
 }
 
-/// The heater's one characteristic and a stream of whole frames from it,
-/// for the length of one session.
-class _HeaterLink {
-  final GattSession s;
-  final GattChar char;
-  final Stream<Uint8List> frames;
-
-  _HeaterLink(this.s, this.char, this.frames);
-
+/// One session's way of talking to the heater, for either module.
+abstract class _HeaterLink {
   static Future<_HeaterLink> open(GattSession s) async {
+    if (s.find(hcaloryWrite) case final w?) {
+      final link = _HcaloryLink(
+        s,
+        w,
+        await _frames(
+          s,
+          s.require(hcaloryNotify, 'heater notify'),
+          HcaloryFramer().add,
+        ),
+      );
+      await link.unlock();
+      return link;
+    }
     final c = s.require(heaterChar, 'heater');
-    final framer = HeaterFramer();
-    final raw = await s.subscribe(c);
-    return _HeaterLink(s, c, raw.expand(framer.add).asBroadcastStream());
+    return _BydLink(s, c, await _frames(s, c, HeaterFramer().add));
   }
 
-  Future<void> send(int cmd, int arg) =>
-      s.write(char, heaterCommand(cmd, arg), withResponse: false);
+  static Future<Stream<Uint8List>> _frames(
+    GattSession s,
+    GattChar c,
+    List<Uint8List> Function(List<int>) framer,
+  ) async => (await s.subscribe(c)).expand(framer).asBroadcastStream();
 
-  /// Asks for the status. Most heaters also push it every second or so
-  /// once a command has arrived, so any status frame will do.
+  Stream<Uint8List> get frames;
+  HeaterStatus? parse(Uint8List f);
+  Future<void> askStatus();
+  Future<void> power(bool on);
+  Future<void> mode(int mode);
+  Future<void> level(int level);
+  Future<void> target(int target, bool fahrenheit);
+
+  /// Asks for the status. The heaters also push it every second or so,
+  /// so any status frame will do.
   Future<HeaterStatus> query() async {
     for (var attempt = 1; ; attempt++) {
       final reply = frames
-          .map(parseHeaterStatus)
+          .map(parse)
           .where((st) => st != null)
           .first
           .timeout(const Duration(seconds: 4));
       try {
-        await send(HeaterCmd.status, 0);
+        await askStatus();
       } catch (_) {
         reply.ignore();
         rethrow;
@@ -160,4 +181,82 @@ class _HeaterLink {
       }
     }
   }
+}
+
+class _BydLink extends _HeaterLink {
+  final GattSession s;
+  final GattChar char;
+  @override
+  final Stream<Uint8List> frames;
+
+  _BydLink(this.s, this.char, this.frames);
+
+  Future<void> _send(int cmd, int arg) =>
+      s.write(char, heaterCommand(cmd, arg), withResponse: false);
+
+  @override
+  HeaterStatus? parse(Uint8List f) => parseHeaterStatus(f);
+  @override
+  Future<void> askStatus() => _send(HeaterCmd.status, 0);
+  @override
+  Future<void> power(bool on) => _send(HeaterCmd.power, on ? 1 : 0);
+  @override
+  Future<void> mode(int mode) => _send(HeaterCmd.mode, mode);
+  @override
+  Future<void> level(int level) => _send(HeaterCmd.setValue, level);
+  @override
+  Future<void> target(int target, bool fahrenheit) =>
+      _send(HeaterCmd.setValue, target);
+}
+
+class _HcaloryLink extends _HeaterLink {
+  final GattSession s;
+  final GattChar tx;
+  @override
+  final Stream<Uint8List> frames;
+
+  _HcaloryLink(this.s, this.tx, this.frames);
+
+  Future<void> _send(Uint8List f) => s.write(tx, f, withResponse: false);
+
+  /// Sends the PIN; nothing else is answered until it is accepted.
+  Future<void> unlock() async {
+    for (final pin in hcaloryPins) {
+      final reply = frames
+          .map(hcaloryPinAccepted)
+          .where((ok) => ok != null)
+          .first
+          .timeout(const Duration(seconds: 3));
+      await _send(hcaloryPin(pin));
+      try {
+        if (await reply == true) return;
+      } on TimeoutException {
+        // try the next one
+      }
+    }
+    throw StateError(
+      'The heater refused its PIN (tried ${hcaloryPins.join(' and ')})',
+    );
+  }
+
+  @override
+  HeaterStatus? parse(Uint8List f) => parseHcaloryStatus(f);
+  @override
+  Future<void> askStatus() => _send(hcaloryPress(HcaloryButton.query));
+  @override
+  Future<void> power(bool on) =>
+      _send(hcaloryPress(on ? HcaloryButton.on : HcaloryButton.off));
+  @override
+  Future<void> mode(int mode) => _send(
+    hcaloryPress(
+      mode == HeaterMode.temperature
+          ? HcaloryButton.thermostat
+          : HcaloryButton.level,
+    ),
+  );
+  @override
+  Future<void> level(int level) => _send(hcaloryLevel(level));
+  @override
+  Future<void> target(int target, bool fahrenheit) =>
+      _send(hcaloryTarget(target, fahrenheit: fahrenheit));
 }

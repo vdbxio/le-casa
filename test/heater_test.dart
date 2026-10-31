@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lecasa/ble/gatt_session.dart';
 import 'package:lecasa/decoders/raw_advertisement.dart';
 import 'package:lecasa/drivers/driver.dart';
+import 'package:lecasa/drivers/hcalory_protocol.dart';
 import 'package:lecasa/drivers/heater_driver.dart';
 import 'package:lecasa/drivers/heater_protocol.dart';
 
@@ -46,7 +47,159 @@ Uint8List _aa55EncClear() {
   return d;
 }
 
+// Chloe's Hcalory heater (MVP2 module), read from a Mac on 2026-10-31.
+
+/// Running at level 2: cabin 21 °C, exchanger 230 °C, 26.0 V.
+final _mvp2Running = fromHex(
+  '00010001000100230300001effff01f4000000008502020201040008fc0000d2008cf9'
+  '0001000100000001',
+);
+
+/// The PIN replies: 1234 refused (02), 0000 accepted (01).
+final _pinRefused = fromHex('000300010001000b0c0000060101020304021f');
+final _pinAccepted = fromHex('000300010001000b0c00000601000000000114');
+
 void main() {
+  group('Hcalory MVP2', () {
+    test('frames match what Chloe\'s heater accepted', () {
+      expect(
+        hex(hcaloryPin('0000'), sep: ''),
+        '000200010001000a0c000005010000000012',
+      );
+      expect(
+        hex(hcaloryPin('1234'), sep: ''),
+        '000200010001000a0c00000501010203041c',
+      );
+      expect(
+        hex(hcaloryPress(HcaloryButton.query), sep: ''),
+        '000200010001000e040000090000000000000000000d',
+      );
+      // hcalory-control's start and stop presses.
+      expect(
+        hex(hcaloryPress(HcaloryButton.on), sep: '').substring(40),
+        '020f',
+      );
+      expect(
+        hex(hcaloryPress(HcaloryButton.off), sep: '').substring(40),
+        '010e',
+      );
+      // The set-temperature example from diesel-heater-ble: 20 °C.
+      expect(hex(hcaloryTarget(20), sep: ''), '00020001000100070600000214001c');
+    });
+
+    test('PIN replies', () {
+      expect(hcaloryPinAccepted(_pinAccepted), isTrue);
+      expect(hcaloryPinAccepted(_pinRefused), isFalse);
+      expect(hcaloryPinAccepted(_mvp2Running), isNull);
+    });
+
+    test('status', () {
+      final s = parseHcaloryStatus(_mvp2Running)!;
+      expect(s.on, isTrue);
+      expect(s.stepName, 'Running');
+      expect(s.mode, HeaterMode.level);
+      expect(s.level, 2);
+      expect(s.target, isNull);
+      expect(s.voltage, closeTo(26.0, 1e-9));
+      expect(s.caseTemp, 230);
+      expect(s.cabinTemp, 21);
+      expect(s.errorName, isNull);
+      expect((s.minTarget, s.maxTarget), (0, 40));
+      final bad = Uint8List.fromList(_mvp2Running)..[30] ^= 1;
+      expect(parseHcaloryStatus(bad), isNull, reason: 'checksum');
+    });
+
+    test('off, stopping and fault', () {
+      Uint8List withState(int b20, [int b22 = 2]) {
+        final f = Uint8List.fromList(_mvp2Running)
+          ..[20] = b20
+          ..[22] = b22;
+        f[f.length - 1] =
+            f.sublist(8, f.length - 1).fold<int>(0, (a, b) => a + b) & 0xFF;
+        return f;
+      }
+
+      final off = parseHcaloryStatus(withState(0x00))!;
+      expect((off.on, off.stepName, off.level), (false, 'Standby', null));
+      final stopping = parseHcaloryStatus(withState(0x45))!;
+      expect((stopping.on, stopping.stepName), (false, 'Cooling down'));
+      final fault = parseHcaloryStatus(withState(0xF0, 7))!;
+      expect(fault.errorName, 'E07 low voltage');
+    });
+
+    test('framer joins a status split by a small MTU', () {
+      final f = HcaloryFramer();
+      expect(f.add(_mvp2Running.sublist(0, 20)), isEmpty);
+      expect(f.add(_mvp2Running.sublist(20, 40)), isEmpty);
+      expect(f.add(_mvp2Running.sublist(40)).single, _mvp2Running);
+      expect(f.add(_pinAccepted).single, _pinAccepted);
+    });
+
+    group('driver', () {
+      late List<Uint8List> writes;
+      late Uint8List state;
+
+      FakeSession heater() => FakeSession(
+        characteristics: const [
+          GattChar(hcaloryWrite, canWrite: true, canWriteWithoutResponse: true),
+          GattChar(hcaloryNotify, canRead: true, canNotify: true),
+        ],
+        onWrite: (c, data) {
+          writes.add(data);
+          final dp = data[7] << 8 | data[8];
+          if (dp == HcaloryDp.pin) {
+            return [data[13] == 0 ? _pinAccepted : _pinRefused];
+          }
+          if (dp == HcaloryDp.setLevel) {
+            state = Uint8List.fromList(state)..[22] = data[12];
+            state[state.length - 1] =
+                state
+                    .sublist(8, state.length - 1)
+                    .fold<int>(0, (a, b) => a + b) &
+                0xFF;
+          }
+          return [state.sublist(0, 20), state.sublist(20)];
+        },
+      );
+
+      setUp(() {
+        writes = [];
+        state = Uint8List.fromList(_mvp2Running);
+      });
+
+      final a = adv(name: null, serviceUuids: const [0xBD39]);
+
+      test('matches the 0xBD39 advert', () {
+        expect(const HeaterDriver().matches(a), isTrue);
+      });
+
+      test('sends the PIN, then reads', () async {
+        final d = await const HeaterDriver().read(heater(), a);
+        String r(String l) =>
+            d.readings.firstWhere((x) => x.label == l).display;
+        expect(r('temperature'), '21 °C');
+        expect(r('level'), '2');
+        expect(r('state'), 'Running');
+        expect(r('supply voltage'), '26 V');
+        expect(d.info['target range'], '0 to 40 °C');
+        expect(writes.map((w) => hex(w, sep: '')), [
+          hex(hcaloryPin('0000'), sep: ''),
+          hex(hcaloryPress(HcaloryButton.query), sep: ''),
+        ]);
+      });
+
+      test('sets a level and reads it back', () async {
+        final d = await const HeaterDriver().control(
+          heater(),
+          a,
+          const DeviceCommand(HeaterSetting.level, 3),
+        );
+        expect(writes[2], hcaloryLevel(3));
+        expect(d.readings.firstWhere((r) => r.label == 'level').value, 3);
+      });
+    });
+  });
+
   group('commands', () {
     test('eight bytes with the passkey as base-100 digits', () {
       // The command matrix from homeassistant-diesel-heater, passkey 1234.

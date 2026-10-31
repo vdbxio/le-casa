@@ -106,9 +106,8 @@ On top of that the app has
   ([docs/sync.md](docs/sync.md)); each device can be read by the screen
   with the best radio for it ([docs/tablets.md](docs/tablets.md)).
 
-Written but not yet tested on a real heater: diesel heater control for the
-BYD- module ([docs/heater.md](docs/heater.md)). Not yet: the phone
-companion relaying weather and the internet, automations and voice. See the roadmap below.
+New and still being tested: Hcalory diesel heater reading and control
+([docs/heater.md](docs/heater.md)). Not yet: the phone companion relaying weather and the internet, automations and voice. See the roadmap below.
 
 ## Try it on the Android tablet
 

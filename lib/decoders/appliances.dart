@@ -11,7 +11,8 @@ import 'decoded.dart';
 import 'decoder.dart';
 import 'raw_advertisement.dart';
 
-/// Hcalory diesel heaters advertise as "BYD-<address>" with service 0xFFE0.
+/// Diesel heaters: Hcalory's own module advertises service 0xBD39, usually
+/// with no name; Vevor-style ones advertise "BYD-<address>" with 0xFFE0.
 class HcaloryDecoder implements Decoder {
   const HcaloryDecoder();
 
@@ -20,9 +21,10 @@ class HcaloryDecoder implements Decoder {
 
   @override
   bool matches(RawAdvertisement adv) =>
+      adv.serviceUuids.contains(0xBD39) ||
       (adv.name?.startsWith('BYD-') ?? false) &&
-      (adv.serviceUuids.contains(0xFFE0) ||
-          adv.serviceData.containsKey(0xFFE0));
+          (adv.serviceUuids.contains(0xFFE0) ||
+              adv.serviceData.containsKey(0xFFE0));
 
   @override
   Decoded? decode(RawAdvertisement adv) => Decoded(
@@ -33,7 +35,7 @@ class HcaloryDecoder implements Decoder {
         'The heater broadcasts no readings; Le\'Casa connects to it to read '
         'and control it. Waiting for the first connection. Close the '
         'heater\'s own app first: it takes one connection at a time.',
-    info: {'module': adv.name!},
+    info: {'module': ?adv.name},
   );
 }
 

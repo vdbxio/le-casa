@@ -34,6 +34,7 @@ abstract final class HeaterMode {
   static const manual = 0;
   static const level = 1;
   static const temperature = 2;
+  static const fan = 3; // Hcalory: fan only, no burner
 }
 
 /// The heater's running step: what it is doing right now.
@@ -124,6 +125,11 @@ class HeaterStatus {
   /// Carbon monoxide, on the encrypted layouts when a sensor is fitted.
   final double? coPpm;
 
+  /// What [error] means on this heater, and the targets it accepts.
+  final Map<int, String> errors;
+  final int minTarget;
+  final int maxTarget;
+
   const HeaterStatus({
     required this.layout,
     required this.on,
@@ -137,12 +143,14 @@ class HeaterStatus {
     required this.cabinTemp,
     this.fahrenheit = false,
     this.coPpm,
+    this.errors = heaterErrors,
+    this.minTarget = heaterMinTemp,
+    this.maxTarget = heaterMaxTemp,
   });
 
   String get unit => fahrenheit ? '°F' : '°C';
   String get stepName => heaterSteps[step] ?? 'Step $step';
-  String? get errorName =>
-      error == 0 ? null : heaterErrors[error] ?? 'Fault $error';
+  String? get errorName => error == 0 ? null : errors[error] ?? 'Fault $error';
 }
 
 int _s16(int v) => v >= 0x8000 ? v - 0x10000 : v;

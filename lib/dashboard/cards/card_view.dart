@@ -11,6 +11,7 @@ import '../layout.dart';
 import 'card_controls.dart';
 import 'card_model.dart';
 import 'fit.dart';
+import 'tape.dart';
 
 const _radius = BorderRadius.all(Radius.circular(20));
 
@@ -282,7 +283,9 @@ class DashCard extends StatelessWidget {
       model.note == null ? const SizedBox.shrink() : _line(c, model.note!);
 
   /// The graph: the history line, or the forecast bars.
-  Widget _chart(LeColors c, {bool faint = false}) => model.hours.isNotEmpty
+  Widget _chart(LeColors c, {bool faint = false}) => model.tape != null
+      ? TapeStrip(model.tape!, c, faint: faint)
+      : model.hours.isNotEmpty
       ? HourBars(model.hours, c, caption: model.hoursLabel, faint: faint)
       : CustomPaint(
           painter: SparkPainter(model.series!, _tone(c), faint: faint),
@@ -1204,6 +1207,12 @@ class Pill extends StatelessWidget {
     final c = LeColors.of(context);
     final h = model.headline;
     final controls = model.controls;
+    return LayoutBuilder(
+      builder: (context, box) => _pill(c, h, controls, box.maxWidth),
+    );
+  }
+
+  Widget _pill(LeColors c, Metric? h, CardControls? controls, double width) {
     return Opacity(
       opacity: model.stale ? 0.55 : 1,
       child: Container(
@@ -1217,13 +1226,19 @@ class Pill extends StatelessWidget {
           children: [
             Icon(model.icon, size: 22, color: c.tone(model.tone)),
             const SizedBox(width: 8),
-            Text(
-              h == null
-                  ? '–'
-                  : (h.unit == '%' || h.unit.startsWith('°')
-                        ? '${h.value}${h.unit.replaceAll('C', '')}'
-                        : h.inline),
-              style: numberStyle(21, c.ink),
+            // A word ("Checking") can be wider than a narrow pill.
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: math.max(40, width - 90)),
+              child: Text(
+                h == null
+                    ? '–'
+                    : (h.unit == '%' || h.unit.startsWith('°')
+                          ? '${h.value}${h.unit.replaceAll('C', '')}'
+                          : h.inline),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: numberStyle(21, c.ink),
+              ),
             ),
             const SizedBox(width: 8),
             Expanded(

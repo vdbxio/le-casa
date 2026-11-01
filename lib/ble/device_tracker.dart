@@ -259,7 +259,7 @@ class DeviceTracker extends ChangeNotifier {
       d.remoteOnly = false;
       d.packets++;
       if (decoded != null) {
-        d.decoded = decoded;
+        d.decoded = _keepReadings(d.decoded, decoded);
         d.lastRecognised = adv;
       }
       d.recent.add(adv);
@@ -281,6 +281,37 @@ class DeviceTracker extends ChangeNotifier {
     totalPackets = 0;
     notifyListeners();
   }
+}
+
+/// A trigger-based BTHome device (a Le'Fob) sends its readings in one
+/// kind of packet and its button presses in another. Keep the last
+/// readings through a press packet that carries none of them, so the
+/// card does not lose its battery and temperature on every press.
+Decoded _keepReadings(Decoded? before, Decoded now) {
+  if (before == null ||
+      before.protocol != now.protocol ||
+      !now.protocol.startsWith('BTHome') ||
+      now.info['mode'] != 'trigger based') {
+    return now;
+  }
+  final have = {for (final r in now.readings) r.label};
+  final kept = [
+    for (final r in before.readings)
+      if (!have.contains(r.label)) r,
+  ];
+  if (kept.isEmpty && before.model == now.model) return now;
+  return Decoded(
+    protocol: now.protocol,
+    // A press names the fob; its status chirps do not.
+    model: now.model == 'BTHome device' ? before.model : now.model,
+    kind: now.model == 'BTHome device' ? before.kind : now.kind,
+    readings: [...now.readings, ...kept],
+    events: now.events,
+    needs: now.needs,
+    info: {...before.info, ...now.info},
+    keyCheck: now.keyCheck,
+    decryptedAt: now.decryptedAt,
+  );
 }
 
 extension on TrackedDevice {

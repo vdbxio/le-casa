@@ -14,6 +14,8 @@ import '../ui/palette.dart';
 import '../weather/weather.dart';
 import 'cards/card_icons.dart';
 import 'cards/card_model.dart';
+import 'cards/tape.dart' show pressName;
+import 'fob_log.dart';
 import 'history.dart';
 import 'layout.dart';
 
@@ -312,7 +314,9 @@ CardModel _device(String id, CardSources s, String? savedName) {
     DeviceKind.security => _security(d, v, name, s),
     _ => _generic(d, v, name, s),
   };
-  if (!stale) return m;
+  // A remote is silent between presses on purpose: its card says home
+  // or away instead of fading.
+  if (!stale || m.tape != null) return m;
   return CardModel(
     title: m.title,
     subtitle: m.subtitle,
@@ -782,32 +786,88 @@ CardModel _heater(TrackedDevice d, Decoded v, String name, CardSources s) {
 }
 
 CardModel _buttons(TrackedDevice d, Decoded v, String name, CardSources s) {
-  final last = d.events.firstOrNull;
   final now = s.now();
-  final seen = switch (ago(d.lastSeen, now)) {
-    'now' => 'Just now',
-    final a => a,
+  final fob = v.model == "Le'Fob";
+  final logged = s.history?.fob(d.id, now);
+  final log = logged?.$1;
+  final listening = logged?.$2 ?? const <Span>[];
+  final presses = log?.presses ?? const <Press>[];
+  // Presence needs chirps to go on: a fob always chirps; any other remote
+  // only once its chirps have shown a rhythm.
+  final p = log == null ? null : presenceOf(log.bursts, listening, now);
+  final presence = p != null && (fob || p.learnt) ? p : null;
+  final home = presence?.home;
+  final last = presses.lastOrNull;
+  String pressText(Press x) => '${x.button} · ${pressName(x.kind)}';
+  bool? flag(String label) => switch (_r(v, label)?.value) {
+    final bool b => b,
+    _ => null,
   };
+  final charging = flag('battery charging') ?? false;
+  final low = flag('battery low') ?? false;
+  final heard = presence?.lastHeard ?? d.lastSeen;
+  final (String word, Tone tone) = switch (home) {
+    true => ('Home', Tone.accent),
+    false => ('Away', Tone.neutral),
+    null when presence != null => ('Checking', Tone.neutral),
+    null => (last == null ? 'No presses' : pressText(last), Tone.accent),
+  };
+  final tape = ButtonTape(
+    tracks: trackCount(presses, least: fob ? 4 : 1),
+    presses: presses,
+    away: presence?.away ?? const [],
+    listening: listening,
+    now: now,
+  );
   return CardModel(
     title: name,
-    subtitle: v.model,
+    // "Le'Fob · A421" already says what it is.
+    subtitle: name.startsWith(v.model) ? '' : v.model,
     icon: Icons.settings_remote_outlined,
-    tone: Tone.accent,
-    headline: Metric('Last seen', seen),
+    tone: tone,
+    headline: presence == null
+        ? Metric('Last press', word)
+        : Metric('Presence', word),
+    state: low
+        ? 'Low battery'
+        : charging
+        ? 'Charging'
+        : null,
     details: [
       Metric(
         'Last press',
-        last == null
-            ? 'None yet'
-            : '${last.event.label} ${last.event.kind.replaceAll('_', ' ')}',
+        last == null ? 'None yet' : '${pressText(last)}, ${ago(last.at, now)}',
       ),
-      if (last != null) Metric('Pressed', ago(last.at, now)),
+      if (presence != null)
+        Metric(
+          home == false ? 'Left' : 'Heard',
+          home == false && presence.since != null
+              ? ago(presence.since!, now)
+              : ago(heard, now),
+          '',
+          null,
+          true,
+        ),
       if (_n(v, 'battery') case final b?) Metric('Battery', _fmt(b, 0), '%'),
+      if (_n(v, 'temperature') case final t?)
+        Metric('Chip', _fmt(t, 1), '°C', null, true),
+      if (presence != null && presence.learnt)
+        Metric('Chirps', _every(presence.interval), '', null, true),
+      if (_r(v, 'text')?.value case final String t when t.isNotEmpty)
+        Metric('Status', t, '', null, true),
       if (_n(v, 'voltage') case final volts?)
-        Metric('Battery', _fmt(volts, 2), 'V'),
+        Metric('Supply', _fmt(volts, 2), 'V', null, true),
     ],
-    pillLabel: 'seen',
+    tape: tape,
+    pillLabel: presence == null ? 'last press' : name,
   );
+}
+
+String _every(Duration d) {
+  final s = d.inSeconds;
+  if (s < 90) return 'every ${s}s';
+  final m = (s / 60).round();
+  return 'every ${m}m';
 }
 
 CardModel _generic(TrackedDevice d, Decoded v, String name, CardSources s) {

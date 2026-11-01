@@ -1,3 +1,4 @@
+import 'package:lecasa/dashboard/fob_log.dart';
 import 'package:lecasa/ble/device_tracker.dart';
 import 'package:lecasa/decoders/decoded.dart';
 import 'package:lecasa/decoders/decoder.dart';
@@ -87,8 +88,46 @@ const fob = Decoded(
   protocol: 'BTHome',
   kind: DeviceKind.leDevice,
   model: "Le'Fob",
-  readings: [Reading('battery', 93, '%')],
+  readings: [
+    Reading('temperature', 22.41, '°C'),
+    Reading('voltage', 3.297, 'V'),
+    Reading('battery low', false),
+    Reading('battery charging', false),
+    Reading('text', 'battery'),
+  ],
 );
+
+/// A morning of a Le'Fob up to [now]: chirps every 5 min, out for an
+/// hour and a half, and presses of every kind on the four buttons.
+FobLog fobDay(DateTime now) {
+  final l = FobLog();
+  final start = now.subtract(const Duration(hours: 8));
+  final outFrom = now.subtract(const Duration(hours: 4));
+  final outTo = now.subtract(const Duration(hours: 2, minutes: 30));
+  for (var t = start; t.isBefore(now); t = t.add(const Duration(minutes: 5))) {
+    if (t.isAfter(outFrom) && t.isBefore(outTo)) continue;
+    l.bursts.add(Burst(t, false));
+  }
+  const kinds = [
+    'press',
+    'press',
+    'double_press',
+    'press',
+    'long_press',
+    'hold_press',
+    'triple_press',
+    'press',
+  ];
+  for (var i = 0; i < 40; i++) {
+    final at = now.subtract(Duration(minutes: 3 + i * 11 + (i * 7) % 5));
+    if (at.isAfter(outFrom) && at.isBefore(outTo)) continue;
+    final p = Press(at, 1 + (i * 3) % 4, kinds[i % kinds.length]);
+    l.presses.insert(0, p);
+    l.bursts.add(Burst(at, true));
+  }
+  l.bursts.sort((a, b) => a.at.compareTo(b.at));
+  return l;
+}
 
 /// A tracker that has heard Chloe's gear.
 DeviceTracker chloesGear() {

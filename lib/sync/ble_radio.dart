@@ -36,6 +36,9 @@ const _settleBeforeDisconnect = Duration(minutes: 2);
 /// How long one connect to another screen may take. Screens advertise
 /// all the time, so a connect that works is up in a second or two, and the
 /// scan stays paused while one is pending. Device polls wait 32 s.
+/// How long to wait for a screen to answer a connect. Android stretches
+/// this to its own 30 s limit (see [GattLink.open]); iOS, which never
+/// gives up by itself, is cut short here.
 const _syncConnectLimit = Duration(seconds: 10);
 
 /// Disconnects once [inFlight] has settled. A write that never answers

@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 
 import '../ble/device_tracker.dart';
 import '../decoders/decoded.dart';
+import '../drivers/heater_driver.dart';
+import '../drivers/heater_protocol.dart';
 import '../platform/tablet.dart';
 import '../ui/format.dart';
 import '../ui/palette.dart';
@@ -302,10 +304,11 @@ CardModel _device(String id, CardSources s, String? savedName) {
       name,
       s,
     ),
+    DeviceKind.appliance when v.protocol == 'Hcalory' => _heater(d, v, name, s),
     DeviceKind.buttons || DeviceKind.leDevice => _buttons(d, v, name, s),
     DeviceKind.switches => _switch(d, v, name, s),
     DeviceKind.covers => _cover(d, v, name, s),
-    DeviceKind.lights => _light(v, name),
+    DeviceKind.lights => _light(d, v, name),
     DeviceKind.security => _security(d, v, name, s),
     _ => _generic(d, v, name, s),
   };
@@ -326,6 +329,7 @@ CardModel _device(String id, CardSources s, String? savedName) {
     quiet: _quiet(heard, now),
     pillLabel: m.pillLabel,
     action: m.action,
+    controls: m.controls,
   );
 }
 
@@ -533,13 +537,16 @@ CardModel _switch(TrackedDevice d, Decoded v, String name, CardSources s) {
     ],
     pillLabel: onText?.toLowerCase() ?? 'switch',
     action: on is bool ? ('on', !on) : null,
+    controls: on is bool
+        ? CardControls(id: d.id, power: on, powerSetting: 'on', toggle: true)
+        : null,
     series: w == null ? null : s.history?.of(History.key(d.id, 'power')),
   );
 }
 
 /// A light whose state is what this screen last set; tapping toggles it,
 /// and turns it on when nothing has been set yet.
-CardModel _light(Decoded v, String name) {
+CardModel _light(TrackedDevice d, Decoded v, String name) {
   final on = _r(v, 'on')?.value;
   final onText = on == null ? null : (on == true ? 'On' : 'Off');
   return CardModel(
@@ -560,6 +567,12 @@ CardModel _light(Decoded v, String name) {
     ],
     pillLabel: onText?.toLowerCase() ?? 'light',
     action: ('on', on != true),
+    controls: CardControls(
+      id: d.id,
+      power: on == true,
+      powerSetting: 'on',
+      toggle: true,
+    ),
   );
 }
 
@@ -679,6 +692,91 @@ CardModel _fridge(TrackedDevice d, Decoded v, String name, CardSources s) {
         Metric('Supply', _fmt(b, 1), 'V', null, true),
     ],
     pillLabel: on ? 'on' : 'off',
+    series: s.history?.of(History.key(d.id, 'temperature')),
+  );
+}
+
+CardModel _heater(TrackedDevice d, Decoded v, String name, CardSources s) {
+  Reading? r(String label) =>
+      v.readings.where((x) => x.label == label).firstOrNull;
+  final unit = r('temperature')?.unit ?? '°C';
+  final on = r('power')?.value == true;
+  final fault = r('fault')?.value as String?;
+  final step = r('state')?.value as String?;
+  final byTemp = r('mode')?.value == 'Temperature';
+  final level = _n(v, 'level');
+  final target = _n(v, 'target');
+  final temp = _fmt(_n(v, 'temperature'), 0);
+  final range = RegExp(r'^(-?\d+) to (-?\d+)')
+      .firstMatch(v.info['target range'] ?? '');
+  final CardStepper? stepper = !on
+      ? null
+      : byTemp
+      ? (target == null || range == null
+            ? null
+            : CardStepper(
+                setting: HeaterSetting.target,
+                label: 'Target',
+                value: target.round(),
+                min: int.parse(range[1]!),
+                max: int.parse(range[2]!),
+                unit: unit,
+              ))
+      : (level == null
+            ? null
+            : CardStepper(
+                setting: HeaterSetting.level,
+                label: 'Level',
+                value: level.round(),
+                min: heaterMinLevel,
+                max: heaterMaxLevel,
+              ));
+  // Running, the big number is what the buttons change (the level or the
+  // target) and the room temperature rides in the chip; off, the
+  // temperature is the number and the chip says so.
+  final levelFirst = on && !byTemp && level != null;
+  final targetFirst = on && byTemp && target != null;
+  // While it is starting up or shutting down the chip says so; once it
+  // is running, the room temperature takes the chip.
+  final state = switch (step) {
+    _ when fault != null => fault,
+    'Running' when levelFirst || targetFirst => '$temp $unit',
+    'Standby' when !on => 'Off',
+    final st => st,
+  };
+  return CardModel(
+    title: name,
+    subtitle: v.model,
+    icon: Icons.local_fire_department_outlined,
+    tone: Tone.heat,
+    headline: levelFirst
+        ? Metric('Level', _fmt(level, 0))
+        : targetFirst
+        ? Metric('Target', _fmt(target, 0), unit)
+        : Metric('Temperature', temp, unit),
+    state: state,
+    details: [
+      if (levelFirst || targetFirst)
+        Metric('State', step ?? '–')
+      else
+        Metric('Level', _fmt(level, 0)),
+      if (_n(v, 'heater temperature') case final h?)
+        Metric('Heater', _fmt(h, 0), unit),
+      if (_n(v, 'supply voltage') case final b?)
+        Metric('Supply', _fmt(b, 1), 'V', null, true),
+      // Still a reading of its own, for cards built around it.
+      if (levelFirst || targetFirst)
+        Metric('Temperature', temp, unit, null, true),
+    ],
+    pillLabel: fault != null
+        ? 'fault'
+        : !on
+        ? 'off'
+        : levelFirst
+        ? '$temp $unit'
+        : 'to ${_fmt(target, 0)} $unit',
+    action: ('power', !on),
+    controls: CardControls(id: d.id, power: on, stepper: stepper),
     series: s.history?.of(History.key(d.id, 'temperature')),
   );
 }

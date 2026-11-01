@@ -54,6 +54,51 @@ class HourCell {
 /// Everything a card shows, independent of size. One renderer draws every
 /// card from this at any of the four sizes, so a new device only needs a
 /// builder, never a new widget. This is the seed of the card design system.
+/// A whole number on a card that can be stepped between [min] and [max].
+class CardStepper {
+  final String setting;
+  final String label;
+  final int value;
+  final int min;
+  final int max;
+  final String unit;
+
+  const CardStepper({
+    required this.setting,
+    required this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    this.unit = '',
+  });
+}
+
+/// What a card can change on its device: a power switch, a number to
+/// step, or both. Controls come before readings: a card too small for
+/// everything drops its graph and numbers first.
+class CardControls {
+  final String id;
+
+  /// On or off, when the device has a power switch.
+  final bool? power;
+
+  /// The setting that [power] changes.
+  final String powerSetting;
+
+  /// Draw the power control as a switch rather than a round button: for
+  /// a plug or a light, where on and off is all there is.
+  final bool toggle;
+  final CardStepper? stepper;
+
+  const CardControls({
+    required this.id,
+    this.power,
+    this.powerSetting = 'power',
+    this.toggle = false,
+    this.stepper,
+  });
+}
+
 class CardModel {
   final String title;
   final String subtitle;
@@ -105,6 +150,8 @@ class CardModel {
   /// setting and the value to send ('on', false for a plug that is on).
   final (String, Object)? action;
 
+  final CardControls? controls;
+
   const CardModel({
     required this.title,
     this.subtitle = '',
@@ -123,6 +170,7 @@ class CardModel {
     this.quiet,
     this.setup,
     this.action,
+    this.controls,
     String? pillLabel,
   }) : pillLabel = pillLabel ?? title;
 
@@ -145,6 +193,7 @@ class CardModel {
     quiet: quiet,
     setup: setup,
     action: action,
+    controls: controls,
     pillLabel: pillLabel == this.title ? null : pillLabel,
   );
 }

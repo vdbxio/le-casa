@@ -98,6 +98,8 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
     super.initState();
     _custom = spec.template != null;
     _t = spec.template?.copy() ?? defaultTemplate(_model);
+    // The graph switch is the card's, custom arrangement or not.
+    if (spec.template == null) _t.backdrop = spec.backdrop;
     _title = TextEditingController(text: spec.title ?? '');
     _icon = spec.icon;
     _clock = spec.clock ?? const ClockStyle();
@@ -125,6 +127,7 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
           title: t.isEmpty || t == _model.title ? null : t,
           icon: _icon,
           template: _custom ? _t.copy() : null,
+          backdrop: _t.backdrop,
         );
   }
 
@@ -134,7 +137,7 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
   });
 
   void _reset() => setState(() {
-    _t = defaultTemplate(_model);
+    _t = defaultTemplate(_model)..backdrop = false;
     _custom = false;
     _sel = null;
     _title.clear();
@@ -390,10 +393,10 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
                     contentPadding: const EdgeInsets.symmetric(horizontal: 4),
                     title: const Text('Graph behind the card'),
                     subtitle: const Text(
-                      'Faintly, when no box on the card shows the graph',
+                      'Faintly behind the numbers, at every size',
                     ),
                     value: _t.backdrop,
-                    onChanged: (v) => _edit(() => _t.backdrop = v),
+                    onChanged: (v) => setState(() => _t.backdrop = v),
                   ),
                 ],
               ],

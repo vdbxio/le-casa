@@ -50,16 +50,26 @@ class LiveScriptedDriver extends ScriptedDriver implements LiveDriver {
 class _Aside implements RemoteLinks {
   String? why;
   bool locked = false;
+  Object? controlError;
   final sent = <DeviceCommand>[];
   @override
   bool lockedElsewhere(String id) => locked;
   @override
   RemoteOwner? ownerOf(String id) => null;
   @override
-  Future<void> control(String id, DeviceCommand command) async =>
-      sent.add(command);
+  Future<void> control(String id, DeviceCommand command) async {
+    sent.add(command);
+    if (controlError != null) throw controlError!;
+  }
+
   @override
   String? standAside(String id) => why;
+  final claimed = <String>[];
+  final released = <String>[];
+  @override
+  Future<void> claim(String id) async => claimed.add(id);
+  @override
+  Future<void> release(String id) async => released.add(id);
 }
 
 class ControlDriver extends ScriptedDriver implements ControllableDriver {
@@ -73,6 +83,45 @@ class ControlDriver extends ScriptedDriver implements ControllableDriver {
   ) async {
     commands.add(command);
     return const Decoded(protocol: 'test', model: 'Controlled');
+  }
+}
+
+/// Heater-ish: "on" claims the device for this screen; off is idle.
+class ClaimDriver extends ControlDriver
+    implements ClaimingDriver, IdlingDriver {
+  bool on = false;
+
+  @override
+  bool claims(DeviceCommand c) => c.setting == 'power' && c.value == true;
+
+  @override
+  bool idle(Decoded d) =>
+      d.readings.where((r) => r.label == 'power').firstOrNull?.value == false;
+
+  @override
+  Duration get idleInterval => const Duration(minutes: 5);
+
+  Decoded get _state => Decoded(
+    protocol: 'test',
+    model: 'Heater',
+    readings: [Reading('power', on)],
+  );
+
+  @override
+  Future<Decoded> read(GattSession s, RawAdvertisement adv) async {
+    reads++;
+    return _state;
+  }
+
+  @override
+  Future<Decoded> control(
+    GattSession s,
+    RawAdvertisement adv,
+    DeviceCommand command,
+  ) async {
+    commands.add(command);
+    if (command.setting == 'power') on = command.value as bool;
+    return _state;
   }
 }
 
@@ -412,6 +461,75 @@ void main() {
     m.dispose();
   });
 
+  test('turning a claiming device on is done here and claims it', () async {
+    final driver = ClaimDriver();
+    final aside = _Aside()..locked = true;
+    final m = manager(driver)..remote = aside;
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.control(testAdv.id, const DeviceCommand('power', true));
+    expect(aside.sent, isEmpty, reason: 'not routed to the other screen');
+    expect(driver.commands.single.value, true);
+    expect(aside.claimed, [testAdv.id]);
+    // Other settings still go to the screen that holds it.
+    await m.control(testAdv.id, const DeviceCommand('level', 3));
+    expect(aside.sent.single.setting, 'level');
+    m.dispose();
+  });
+
+  test('a command the holding screen cannot deliver is done here', () async {
+    final driver = ClaimDriver()..on = true;
+    final aside = _Aside()
+      ..locked = true
+      ..controlError = StateError('Could not connect');
+    final m = manager(driver)..remote = aside;
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.control(testAdv.id, const DeviceCommand('level', 3));
+    expect(aside.sent.single.setting, 'level', reason: 'tried there first');
+    expect(driver.commands.single.setting, 'level');
+    expect(aside.claimed, [testAdv.id], reason: 'this screen took it over');
+    m.dispose();
+  });
+
+  test('three failed reads let a claimed device go', () async {
+    final driver = ScriptedDriver(error: StateError('status: 8'));
+    final aside = _Aside();
+    final m = manager(driver)..remote = aside;
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    for (var i = 0; i < 3; i++) {
+      // Due again now, as the clock would make it; readNow would reset
+      // the count.
+      m[testAdv.id]!.nextDue = DateTime.now();
+      await m.pump();
+    }
+    expect(m[testAdv.id]!.failures, 3);
+    expect(aside.released, [testAdv.id]);
+    m.dispose();
+  });
+
+  test('an idle device is let go and read rarely', () async {
+    final driver = ClaimDriver();
+    final aside = _Aside();
+    final m = manager(driver)..remote = aside;
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.pump();
+    expect(aside.released, [testAdv.id]);
+    final l = m[testAdv.id]!;
+    expect(
+      l.nextDue.difference(DateTime.now()).inMinutes,
+      greaterThanOrEqualTo(4),
+    );
+    // Turned off from here: read back idle, so let go again.
+    driver.on = true;
+    await m.control(testAdv.id, const DeviceCommand('power', false));
+    expect(aside.released.length, 2);
+    expect(aside.claimed, isEmpty);
+    m.dispose();
+  });
+
   test('read-only drivers cannot be controlled', () async {
     final m = manager(ScriptedDriver());
     tracker.onAdvertisement(testAdv);
@@ -421,6 +539,18 @@ void main() {
       () => m.control(testAdv.id, const DeviceCommand('power', true)),
       throwsStateError,
     );
+    m.dispose();
+  });
+
+  test('status 257 says the app must be restarted', () async {
+    final driver = ScriptedDriver(
+      error: StateError('Connect failed with status: 257'),
+    );
+    final m = manager(driver);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.pump();
+    expect(m[testAdv.id]!.error, contains('run out of connections'));
     m.dispose();
   });
 

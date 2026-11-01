@@ -119,6 +119,12 @@ abstract interface class RemoteLinks {
 
   /// Whether the person locked [id] to another screen ("Read by").
   bool lockedElsewhere(String id);
+
+  /// This screen just woke [id] up: it reads it from now on.
+  Future<void> claim(String id);
+
+  /// [id] is idle: if this screen had claimed it, let it go.
+  Future<void> release(String id);
 }
 
 /// Opens a connected, service-discovered session to a device id, or throws.
@@ -536,12 +542,24 @@ class ConnectionManager extends ChangeNotifier {
     // to defer to: whoever is asked connects just for the command.
     // A device locked to another screen still goes there.
     final broadcasts = tracker[id]?.decoded?.isReadable ?? false;
+    final mine = _links[id]?.driver;
+    final claims = mine is ClaimingDriver && mine.claims(command);
+    // Done here after the holding screen could not: this screen then
+    // takes the device over, so the next command goes straight out.
+    var takeOver = false;
     if (!here &&
+        !claims &&
         r != null &&
         (r.lockedElsewhere(id) ||
             !broadcasts &&
                 (heldElsewhere(id) != null || r.standAside(id) != null))) {
-      return r.control(id, command);
+      try {
+        return await r.control(id, command);
+      } catch (e) {
+        if (mine is! ControllableDriver || !_enabled) rethrow;
+        debugPrint('control: $id failed on the other screen ($e); here');
+        takeOver = true;
+      }
     }
     final l = _links[id];
     final driver = l?.driver;
@@ -609,7 +627,12 @@ class ConnectionManager extends ChangeNotifier {
         ..failures = 0
         ..drops = 0
         ..lastOk = DateTime.now()
-        ..nextDue = DateTime.now().add(driver.interval);
+        ..nextDue = DateTime.now().add(_next(driver, look));
+      if ((claims || takeOver) && !_idle(driver, look)) {
+        unawaited(r?.claim(id));
+      } else {
+        _letGoIfIdle(driver, id, look);
+      }
     } catch (e) {
       debugPrint('control: $id failed: $e');
       l
@@ -618,6 +641,7 @@ class ConnectionManager extends ChangeNotifier {
         ..nextDue = DateTime.now().add(driver.interval);
       // Status 133 straight away usually means the device already has a
       // connection (most take one), from another screen or its own app.
+      if ('$e'.contains('status: 257')) throw StateError(outOfGattClients);
       if ('$e'.contains('status: 133')) {
         throw StateError(
           'Could not connect. Another screen or app may be connected to '
@@ -870,8 +894,11 @@ class ConnectionManager extends ChangeNotifier {
         ..failures = 0
         ..drops = 0
         ..lastOk = DateTime.now()
-        ..nextDue = DateTime.now().add(l.driver.interval);
-      if (turn == _turn && _hold(l, link)) link = null;
+        ..nextDue = DateTime.now().add(_next(l.driver, decoded));
+      _letGoIfIdle(l.driver, l.id, decoded);
+      if (turn == _turn && !_idle(l.driver, decoded) && _hold(l, link)) {
+        link = null;
+      }
     } on UnsupportedDeviceException catch (e) {
       debugPrint('poll: ${l.id} unsupported: ${e.message}');
       l
@@ -885,12 +912,29 @@ class ConnectionManager extends ChangeNotifier {
       if (dropped) l.drops++;
       if (turn == _turn) {
         _fail(l, dropped ? 'The device dropped the connection' : _describe(e));
+        // A screen that keeps failing to reach a device it claimed lets
+        // it go, so another screen's radio can take it.
+        if (l.failures >= 3) unawaited(remote?.release(l.id));
       }
     } finally {
       await link?.close();
       _giveBack(turn);
       notifyListeners();
     }
+  }
+
+  static bool _idle(GattDriver driver, Decoded d) =>
+      driver is IdlingDriver && driver.idle(d);
+
+  static Duration _next(GattDriver driver, Decoded d) =>
+      driver is IdlingDriver && driver.idle(d)
+      ? driver.idleInterval
+      : driver.interval;
+
+  /// A device found idle belongs to no screen: whoever wakes it next
+  /// claims it.
+  void _letGoIfIdle(GattDriver driver, String id, Decoded d) {
+    if (_idle(driver, d)) unawaited(remote?.release(id));
   }
 
   /// Whether [e] came from the link going down under us. Android fails the
@@ -922,11 +966,18 @@ class ConnectionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Android refuses every connect with status 257 once an app holds 32
+  /// GATT clients; only restarting the app frees them.
+  static const outOfGattClients =
+      'This screen\'s Bluetooth has run out of connections. Close '
+      'Le\'Casa fully and open it again.';
+
   static String _describe(Object e) {
     if (e is TimeoutException) {
       return e.message ?? 'Timed out';
     }
     final s = e.toString();
+    if (s.contains('status: 257')) return outOfGattClients;
     // Platform exceptions read like "PlatformException(code, message, ...)".
     final m = RegExp(r'PlatformException\([^,]*, ([^,]*)').firstMatch(s);
     return m?.group(1) ?? s;

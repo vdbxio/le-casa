@@ -8,6 +8,7 @@ import '../decoders/raw_advertisement.dart';
 import 'alpicool_driver.dart';
 import 'bms_driver.dart';
 import 'daly_driver.dart';
+import 'heater_driver.dart';
 import 'ideal_led.dart';
 import 'switchbot_driver.dart';
 import 'xiaomi_driver.dart';
@@ -61,6 +62,23 @@ abstract interface class ControllableDriver implements GattDriver {
   );
 }
 
+/// A device that spends most of its time doing nothing (a heater that is
+/// off): while [idle], it is read every [idleInterval] instead of every
+/// [interval], and the link is never held, so any screen is free to wake
+/// it.
+abstract interface class IdlingDriver implements GattDriver {
+  bool idle(Decoded d);
+  Duration get idleInterval;
+}
+
+/// A device whose "on" command decides which screen runs it from then on:
+/// the screen that sends a claiming command does so itself, even when
+/// another screen last read the device, and the device is then locked to
+/// it until it is found idle again.
+abstract interface class ClaimingDriver implements ControllableDriver {
+  bool claims(DeviceCommand command);
+}
+
 /// A device people adjust in quick runs (a light's brightness and speed):
 /// the link stays open for [linger] after a command, so the next one goes
 /// out at once instead of reconnecting (which the iDeal strips also greet
@@ -84,6 +102,7 @@ class GattDriverRegistry {
         const DalyDriver(),
         const XiaomiStockGattDriver(),
         const AlpicoolDriver(),
+        const HeaterDriver(),
         const SwitchBotPlugDriver(),
         const IdealLedDriver(),
         BmsDriver(secretFor: secretFor),

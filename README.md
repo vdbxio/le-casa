@@ -106,8 +106,8 @@ On top of that the app has
   ([docs/sync.md](docs/sync.md)); each device can be read by the screen
   with the best radio for it ([docs/tablets.md](docs/tablets.md)).
 
-Not yet: Hcalory heater control, the phone companion relaying weather and
-the internet, automations and voice. See the roadmap below.
+New and still being tested: Hcalory diesel heater reading and control
+([docs/heater.md](docs/heater.md)). Not yet: the phone companion relaying weather and the internet, automations and voice. See the roadmap below.
 
 ## Try it on the Android tablet
 
@@ -230,7 +230,7 @@ packet. That is the seed of the zero-setup "device found, tap to add" flow.
 | 0 | Bluetooth spike: hear and decode Xiaomi, Victron, Le'Fob | done |
 | 0.5 | Connect and read: Daly BMS, every aiobmsble BMS, stock Xiaomi over GATT | done |
 | 1 | Dashboard with the entity model | **first pass done** |
-| 2 | Two-way devices: Alpicool fridge, Hcalory heater, Daly BMS control | **Alpicool done** |
+| 2 | Two-way devices: Alpicool fridge, Hcalory heater, Daly BMS control | **Alpicool done**, heater written |
 | 3 | Phone companion relaying weather and the internet over BLE | |
 | 4 | Multiple tablets syncing over BLE; ESPHome over BLE | **sync done** |
 | 5 | Automations, Le'Configurator, offline voice ("Hey, Gary") | |

@@ -8,7 +8,6 @@ import 'package:flutter/material.dart' hide Split;
 import 'package:flutter/services.dart';
 
 import '../app.dart';
-import '../drivers/driver.dart' show DeviceCommand;
 import '../ui/dashed_outline.dart';
 import '../ui/palette.dart';
 import '../platform/form_factor.dart';
@@ -572,42 +571,10 @@ class _SlotView extends StatelessWidget {
     if (!editing) {
       if (content == null) return const SizedBox.shrink();
       final scoped = CardSetupScope(onSetup: onOptions, child: content);
-      final id = card!.device;
-      final action = card.type == 'device' ? sources.model(card).action : null;
-      final connections = AppServices.of(context).connections;
-      if (id == null || action == null || !connections.canControl(id)) {
-        return scoped;
-      }
-      // A tap on a plug's card switches it.
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () async {
-          HapticFeedback.selectionClick();
-          final messenger = ScaffoldMessenger.of(context);
-          // The radio may be busy with another device for a few seconds:
-          // say the tap landed.
-          final title = sources.model(card).title;
-          final what = action.$2 == true
-              ? 'on'
-              : action.$2 == false
-              ? 'off'
-              : '';
-          messenger.showSnackBar(
-            SnackBar(
-              content: Text('Switching $title $what…'),
-              duration: const Duration(seconds: 3),
-            ),
-          );
-          try {
-            await connections.control(id, DeviceCommand(action.$1, action.$2));
-          } catch (e) {
-            messenger.showSnackBar(
-              SnackBar(content: Text('Could not switch $title $what: $e')),
-            );
-          }
-        },
-        child: scoped,
-      );
+      // A card is not a button: what it can change, it changes through
+      // its own buttons. (A tap on the body will open more about the
+      // device, later.)
+      return scoped;
     }
 
     // Hold a card and drag it onto another slot to swap the two, or onto
@@ -734,11 +701,11 @@ class _SlotView extends StatelessWidget {
       );
     default:
       final m = sources.model(spec);
-      final s = spec.pinned ?? fitSize(m, space);
+      final s = spec.pinned ?? fitSize(m, space, backdrop: spec.backdrop);
       if (spec.template case final t? when s != CardSize.pill) {
         return (TemplateCard(m, t), s);
       }
-      return (DashCard(m, s), s);
+      return (DashCard(m, s, backdrop: spec.backdrop), s);
   }
 }
 

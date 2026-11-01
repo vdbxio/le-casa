@@ -753,6 +753,8 @@ CardModel _heater(TrackedDevice d, Decoded v, String name, CardSources s) {
         Metric('Heater', _fmt(h, 0), unit),
       if (_n(v, 'supply voltage') case final b?)
         Metric('Supply', _fmt(b, 1), 'V', null, true),
+      // Still a reading of its own, for cards built around it.
+      if (levelFirst) Metric('Temperature', temp, unit, null, true),
     ],
     pillLabel: fault != null
         ? 'fault'

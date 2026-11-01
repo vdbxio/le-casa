@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../../ui/dashed_outline.dart';
 import '../../ui/palette.dart';
 import '../layout.dart';
+import 'card_controls.dart';
 import 'card_model.dart';
 import 'card_view.dart';
 import 'template.dart';
@@ -285,6 +286,30 @@ class TemplateCard extends StatelessWidget {
                   ),
                 if (edit != null)
                   for (final s in plan.seams) _handle(c, s, edit),
+                // A card the person laid out keeps its device's buttons:
+                // they ride over the bottom right corner.
+                if (edit == null && !model.stale && model.controls != null)
+                  Positioned(
+                    right: 10,
+                    bottom: 8,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: c.card.withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: CardControlsView(
+                          model.controls!,
+                          model.tone,
+                          key: ValueKey(
+                            '${model.controls!.id} '
+                            '${model.controls!.stepper?.setting}',
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 // Cards built without a message box still say why they
                 // are faded.
                 if (edit == null &&

@@ -59,7 +59,7 @@ Decoded heaterToDecoded(HeaterStatus s, {String? module}) {
   );
 }
 
-class HeaterDriver implements ControllableDriver {
+class HeaterDriver implements ClaimingDriver, IdlingDriver {
   const HeaterDriver();
 
   @override
@@ -70,6 +70,22 @@ class HeaterDriver implements ControllableDriver {
 
   @override
   Duration get timeout => const Duration(seconds: 30);
+
+  /// Off, and not cooling down either: nothing changes until someone
+  /// turns it on, so a look every few minutes is plenty.
+  @override
+  bool idle(Decoded d) {
+    Object? r(String l) =>
+        d.readings.where((x) => x.label == l).firstOrNull?.value;
+    return r(HeaterSetting.power) == false && r('state') != 'Cooling down';
+  }
+
+  @override
+  Duration get idleInterval => const Duration(minutes: 5);
+
+  @override
+  bool claims(DeviceCommand c) =>
+      c.setting == HeaterSetting.power && c.value == true;
 
   @override
   bool matches(RawAdvertisement adv) => const HcaloryDecoder().matches(adv);

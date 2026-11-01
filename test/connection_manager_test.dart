@@ -60,6 +60,12 @@ class _Aside implements RemoteLinks {
       sent.add(command);
   @override
   String? standAside(String id) => why;
+  final claimed = <String>[];
+  final released = <String>[];
+  @override
+  Future<void> claim(String id) async => claimed.add(id);
+  @override
+  Future<void> release(String id) async => released.add(id);
 }
 
 class ControlDriver extends ScriptedDriver implements ControllableDriver {
@@ -73,6 +79,45 @@ class ControlDriver extends ScriptedDriver implements ControllableDriver {
   ) async {
     commands.add(command);
     return const Decoded(protocol: 'test', model: 'Controlled');
+  }
+}
+
+/// Heater-ish: "on" claims the device for this screen; off is idle.
+class ClaimDriver extends ControlDriver
+    implements ClaimingDriver, IdlingDriver {
+  bool on = false;
+
+  @override
+  bool claims(DeviceCommand c) => c.setting == 'power' && c.value == true;
+
+  @override
+  bool idle(Decoded d) =>
+      d.readings.where((r) => r.label == 'power').firstOrNull?.value == false;
+
+  @override
+  Duration get idleInterval => const Duration(minutes: 5);
+
+  Decoded get _state => Decoded(
+    protocol: 'test',
+    model: 'Heater',
+    readings: [Reading('power', on)],
+  );
+
+  @override
+  Future<Decoded> read(GattSession s, RawAdvertisement adv) async {
+    reads++;
+    return _state;
+  }
+
+  @override
+  Future<Decoded> control(
+    GattSession s,
+    RawAdvertisement adv,
+    DeviceCommand command,
+  ) async {
+    commands.add(command);
+    if (command.setting == 'power') on = command.value as bool;
+    return _state;
   }
 }
 
@@ -409,6 +454,43 @@ void main() {
     await m.control(testAdv.id, const DeviceCommand('power', true));
     expect(aside.sent.single.setting, 'power');
     expect(driver.commands, isEmpty);
+    m.dispose();
+  });
+
+  test('turning a claiming device on is done here and claims it', () async {
+    final driver = ClaimDriver();
+    final aside = _Aside()..locked = true;
+    final m = manager(driver)..remote = aside;
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.control(testAdv.id, const DeviceCommand('power', true));
+    expect(aside.sent, isEmpty, reason: 'not routed to the other screen');
+    expect(driver.commands.single.value, true);
+    expect(aside.claimed, [testAdv.id]);
+    // Other settings still go to the screen that holds it.
+    await m.control(testAdv.id, const DeviceCommand('level', 3));
+    expect(aside.sent.single.setting, 'level');
+    m.dispose();
+  });
+
+  test('an idle device is let go and read rarely', () async {
+    final driver = ClaimDriver();
+    final aside = _Aside();
+    final m = manager(driver)..remote = aside;
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.pump();
+    expect(aside.released, [testAdv.id]);
+    final l = m[testAdv.id]!;
+    expect(
+      l.nextDue.difference(DateTime.now()).inMinutes,
+      greaterThanOrEqualTo(4),
+    );
+    // Turned off from here: read back idle, so let go again.
+    driver.on = true;
+    await m.control(testAdv.id, const DeviceCommand('power', false));
+    expect(aside.released.length, 2);
+    expect(aside.claimed, isEmpty);
     m.dispose();
   });
 

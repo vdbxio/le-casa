@@ -16,7 +16,6 @@ import '../ui/devices_page.dart';
 import '../voice/voice_bar.dart';
 import 'auto_layout.dart';
 import 'card_picker.dart';
-import 'cards/card_stepper.dart';
 import 'cards/card_view.dart';
 import 'cards/clock.dart';
 import 'cards/fit.dart';
@@ -577,33 +576,12 @@ class _SlotView extends StatelessWidget {
       final model = card.type == 'device' ? sources.model(card) : null;
       final action = model?.action;
       final connections = AppServices.of(context).connections;
-      final stepper = model?.stepper;
-      // A card with room for them gets its device's minus and plus.
-      if (id != null &&
-          stepper != null &&
-          !model!.stale &&
-          size != CardSize.pill &&
-          box.rect.width >= 240 &&
-          box.rect.height >= 120 &&
-          connections.canControl(id)) {
-        return Stack(
-          children: [
-            scoped,
-            Positioned(
-              right: CardMetrics.pad + 2,
-              top: CardMetrics.pad + CardMetrics.header + 6,
-              child: CardStepperView(
-                key: ValueKey('$id ${stepper.setting}'),
-                id: id,
-                stepper: stepper,
-                tone: model.tone,
-                connections: connections,
-              ),
-            ),
-          ],
-        );
-      }
-      if (id == null || action == null || !connections.canControl(id)) {
+      // A card with its own buttons is not itself a button, except as a
+      // pill, which has room for nothing else.
+      if (id == null ||
+          action == null ||
+          (model!.controls != null && size != CardSize.pill) ||
+          !connections.canControl(id)) {
         return scoped;
       }
       // A tap on a plug's card switches it.

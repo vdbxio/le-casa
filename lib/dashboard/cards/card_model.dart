@@ -73,6 +73,19 @@ class CardStepper {
   });
 }
 
+/// What a card can change on its device: a power switch, a number to
+/// step, or both. Controls come before readings: a card too small for
+/// everything drops its graph and numbers first.
+class CardControls {
+  final String id;
+
+  /// On or off, when the device has a power switch.
+  final bool? power;
+  final CardStepper? stepper;
+
+  const CardControls({required this.id, this.power, this.stepper});
+}
+
 class CardModel {
   final String title;
   final String subtitle;
@@ -124,8 +137,7 @@ class CardModel {
   /// setting and the value to send ('on', false for a plug that is on).
   final (String, Object)? action;
 
-  /// Minus and plus for a number the card can change on its device.
-  final CardStepper? stepper;
+  final CardControls? controls;
 
   const CardModel({
     required this.title,
@@ -145,7 +157,7 @@ class CardModel {
     this.quiet,
     this.setup,
     this.action,
-    this.stepper,
+    this.controls,
     String? pillLabel,
   }) : pillLabel = pillLabel ?? title;
 
@@ -168,7 +180,7 @@ class CardModel {
     quiet: quiet,
     setup: setup,
     action: action,
-    stepper: stepper,
+    controls: controls,
     pillLabel: pillLabel == this.title ? null : pillLabel,
   );
 }

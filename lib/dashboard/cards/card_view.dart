@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import '../../ui/palette.dart';
 import '../layout.dart';
+import 'card_controls.dart';
 import 'card_model.dart';
 import 'fit.dart';
 
@@ -244,6 +245,17 @@ class DashCard extends StatelessWidget {
     style: TextStyle(fontSize: size, color: c.muted),
   );
 
+  /// The card's buttons, when it has any.
+  Widget? get _controls => model.controls == null || model.stale
+      ? null
+      : CardControlsView(
+          model.controls!,
+          model.tone,
+          key: ValueKey(
+            '${model.controls!.id} ${model.controls!.stepper?.setting}',
+          ),
+        );
+
   Widget _noteOrNothing(LeColors c) =>
       model.note == null ? const SizedBox.shrink() : _line(c, model.note!);
 
@@ -308,6 +320,49 @@ class DashCard extends StatelessWidget {
   );
 
   Widget _small(BuildContext context, LeColors c, bool inline) {
+    final controls = _controls;
+    if (controls != null) {
+      // Buttons first; the number only where there is room left for it.
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _header(context, c),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, box) {
+                final numberRoom =
+                    box.maxHeight -
+                    CardMetrics.gap -
+                    CardControlsView.height -
+                    CardMetrics.gap;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (numberRoom >= 30)
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.bottomLeft,
+                          child: _headline(
+                            c,
+                            math.min(
+                              CardMetrics.headlineSize(CardSize.small),
+                              numberRoom * 0.9,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      const Spacer(),
+                    const SizedBox(height: CardMetrics.gap),
+                    controls,
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      );
+    }
     final second = model.note ?? _major.firstOrNull?.summary;
     final numbers = [
       if (model.headline != null)
@@ -393,6 +448,7 @@ class DashCard extends StatelessWidget {
       const SizedBox(height: CardMetrics.gap),
       _headline(c, CardMetrics.headlineSize(CardSize.medium)),
     ];
+    final controls = _controls;
     if (inline) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -400,7 +456,10 @@ class DashCard extends StatelessWidget {
           ...top,
           const SizedBox(height: CardMetrics.gap),
           Expanded(child: _chart(c)),
-          if (footer != null) ...[
+          if (controls != null) ...[
+            const SizedBox(height: CardMetrics.gap),
+            controls,
+          ] else if (footer != null) ...[
             const SizedBox(height: CardMetrics.gap),
             footer,
           ],
@@ -414,7 +473,8 @@ class DashCard extends StatelessWidget {
         box.height -
         CardMetrics.header -
         CardMetrics.gap * 2 -
-        CardMetrics.headlineSize(CardSize.medium) * 1.15;
+        CardMetrics.headlineSize(CardSize.medium) * 1.15 -
+        CardMetrics.controlsOf(model);
     final rows = !fillable
         ? 0
         : math.max(
@@ -433,9 +493,13 @@ class DashCard extends StatelessWidget {
         if (shown.isNotEmpty) ...[
           const SizedBox(height: CardMetrics.gap),
           _detailGrid(c, shown, w),
-        ] else if (footer != null) ...[
+        ] else if (controls == null && footer != null) ...[
           const SizedBox(height: CardMetrics.gap),
           footer,
+        ],
+        if (controls != null) ...[
+          const SizedBox(height: CardMetrics.gap),
+          controls,
         ],
       ],
     );
@@ -532,6 +596,10 @@ class DashCard extends StatelessWidget {
         if (model.note != null) ...[
           const SizedBox(height: 6),
           _line(c, model.note!),
+        ],
+        if (_controls case final controls?) ...[
+          const SizedBox(height: CardMetrics.gap),
+          controls,
         ],
       ],
     );

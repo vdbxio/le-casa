@@ -22,6 +22,11 @@ abstract final class CardMetrics {
   static const ringLarge = 132.0;
   static const ringMedium = 96.0;
   static const pillHeight = 52.0;
+  static const controls = 44.0;
+
+  /// The row of buttons, when the card has one.
+  static double controlsOf(CardModel m) =>
+      m.controls == null ? 0 : controls + gap;
 
   static double headlineSize(CardSize s) => switch (s) {
     CardSize.large => 68,
@@ -48,6 +53,12 @@ double minHeight(CardModel m, CardSize size, double w) {
     case CardSize.pill:
       return 0;
     case CardSize.small:
+      // With buttons the number is optional: it goes when there is no room.
+      if (m.controls != null) {
+        return CardMetrics.padSmall * 2 +
+            CardMetrics.header +
+            CardMetrics.controlsOf(m);
+      }
       return CardMetrics.padSmall * 2 + CardMetrics.header + 34 + 22 + 8;
     case CardSize.medium:
       if (m.ring != null && w - p - 4 >= ringMediumMinWidth) {
@@ -62,7 +73,8 @@ double minHeight(CardModel m, CardSize size, double w) {
           46 +
           CardMetrics.gap +
           22 +
-          (m.shares.isNotEmpty ? 18 : 0);
+          (m.shares.isNotEmpty ? 18 : 0) +
+          CardMetrics.controlsOf(m);
     case CardSize.large:
       final cw = w - p - 4;
       if (m.ring != null && cw >= ringLargeMinWidth) {
@@ -87,13 +99,15 @@ double minHeight(CardModel m, CardSize size, double w) {
           (m.shares.isEmpty ? 0 : 18 + m.shares.length * CardMetrics.shareRow) +
           rows * CardMetrics.detailHeight +
           math.max(0, rows - 1) * CardMetrics.detailGap +
-          (m.note == null ? 0 : 20);
+          (m.note == null ? 0 : 20) +
+          CardMetrics.controlsOf(m);
   }
 }
 
 double minWidth(CardModel m, CardSize size) => switch (size) {
   CardSize.pill => 0,
-  CardSize.small => 136,
+  // Four round buttons and a number between them.
+  CardSize.small => m.controls?.stepper != null ? 236 : 136,
   CardSize.medium => 210,
   CardSize.large => 290,
 };
@@ -134,6 +148,7 @@ double chartMinHeight(CardModel m) => m.hours.isNotEmpty ? 34 : 28;
 /// readings) on the right, instead of stacking them.
 bool sideBySide(CardModel m, CardSize size, Size slot) =>
     (size == CardSize.small || size == CardSize.medium) &&
+    m.controls == null &&
     slot.width >= 380 &&
     slot.width >= slot.height * 2 &&
     (hasChart(m) || m.details.length > 1);

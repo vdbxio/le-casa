@@ -119,6 +119,12 @@ abstract interface class RemoteLinks {
 
   /// Whether the person locked [id] to another screen ("Read by").
   bool lockedElsewhere(String id);
+
+  /// This screen just woke [id] up: it reads it from now on.
+  Future<void> claim(String id);
+
+  /// [id] is idle: if this screen had claimed it, let it go.
+  Future<void> release(String id);
 }
 
 /// Opens a connected, service-discovered session to a device id, or throws.
@@ -536,7 +542,10 @@ class ConnectionManager extends ChangeNotifier {
     // to defer to: whoever is asked connects just for the command.
     // A device locked to another screen still goes there.
     final broadcasts = tracker[id]?.decoded?.isReadable ?? false;
+    final mine = _links[id]?.driver;
+    final claims = mine is ClaimingDriver && mine.claims(command);
     if (!here &&
+        !claims &&
         r != null &&
         (r.lockedElsewhere(id) ||
             !broadcasts &&
@@ -609,7 +618,12 @@ class ConnectionManager extends ChangeNotifier {
         ..failures = 0
         ..drops = 0
         ..lastOk = DateTime.now()
-        ..nextDue = DateTime.now().add(driver.interval);
+        ..nextDue = DateTime.now().add(_next(driver, look));
+      if (claims && !_idle(driver, look)) {
+        unawaited(r?.claim(id));
+      } else {
+        _letGoIfIdle(driver, id, look);
+      }
     } catch (e) {
       debugPrint('control: $id failed: $e');
       l
@@ -870,8 +884,11 @@ class ConnectionManager extends ChangeNotifier {
         ..failures = 0
         ..drops = 0
         ..lastOk = DateTime.now()
-        ..nextDue = DateTime.now().add(l.driver.interval);
-      if (turn == _turn && _hold(l, link)) link = null;
+        ..nextDue = DateTime.now().add(_next(l.driver, decoded));
+      _letGoIfIdle(l.driver, l.id, decoded);
+      if (turn == _turn && !_idle(l.driver, decoded) && _hold(l, link)) {
+        link = null;
+      }
     } on UnsupportedDeviceException catch (e) {
       debugPrint('poll: ${l.id} unsupported: ${e.message}');
       l
@@ -891,6 +908,20 @@ class ConnectionManager extends ChangeNotifier {
       _giveBack(turn);
       notifyListeners();
     }
+  }
+
+  static bool _idle(GattDriver driver, Decoded d) =>
+      driver is IdlingDriver && driver.idle(d);
+
+  static Duration _next(GattDriver driver, Decoded d) =>
+      driver is IdlingDriver && driver.idle(d)
+      ? driver.idleInterval
+      : driver.interval;
+
+  /// A device found idle belongs to no screen: whoever wakes it next
+  /// claims it.
+  void _letGoIfIdle(GattDriver driver, String id, Decoded d) {
+    if (_idle(driver, d)) unawaited(remote?.release(id));
   }
 
   /// Whether [e] came from the link going down under us. Android fails the

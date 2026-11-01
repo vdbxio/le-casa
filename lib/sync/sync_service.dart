@@ -510,6 +510,20 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
   }
 
   @override
+  Future<void> claim(String id) async {
+    if (!home.inHome) return;
+    if (readBy.lockOf(id)?.screen == home.me.id) return;
+    await lock(id, home.me);
+  }
+
+  @override
+  Future<void> release(String id) async {
+    if (!home.inHome) return;
+    if (readBy.lockOf(id)?.screen != home.me.id) return;
+    await lock(id, null);
+  }
+
+  @override
   bool lockedElsewhere(String id) {
     final lock = readBy.lockOf(id);
     return home.inHome && lock != null && lock.screen != home.me.id;

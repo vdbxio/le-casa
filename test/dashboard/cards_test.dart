@@ -5,6 +5,9 @@ import 'package:lecasa/dashboard/auto_layout.dart';
 import 'package:lecasa/dashboard/cards/fit.dart';
 import 'package:lecasa/dashboard/catalog.dart';
 import 'package:lecasa/dashboard/layout.dart';
+import 'package:lecasa/decoders/raw_advertisement.dart';
+import 'package:lecasa/drivers/hcalory_protocol.dart';
+import 'package:lecasa/drivers/heater_driver.dart';
 import 'package:lecasa/settings/dimmer.dart';
 
 import 'fake_devices.dart';
@@ -50,6 +53,32 @@ void main() {
     final m = modelFor(const CardSpec.device('heater'), sources);
     expect(m.headline, isNull);
     expect(m.note, contains('connection'));
+  });
+
+  test('a running heater puts its level first and the room in the chip', () {
+    final t = chloesGear();
+    t.setPolled(
+      'heater',
+      heaterToDecoded(
+        parseHcaloryStatus(
+          fromHex(
+            '00010001000100230300001effff01f4000000008502020201040008fc0000d2'
+            '008cf90001000100000001',
+          ),
+        )!,
+      ),
+    );
+    final s = CardSources(tracker: t);
+    final m = modelFor(const CardSpec.device('heater'), s);
+    expect(m.headline!.inline, '2');
+    expect(m.state, '21 °C');
+    expect(m.controls!.power, isTrue);
+    expect(m.controls!.stepper!.setting, 'level');
+    expect(m.details.first.inline, 'Running');
+    // Small needs room for four buttons; the tiniest slot is a pill.
+    expect(minWidth(m, CardSize.small), 236);
+    expect(fitSize(m, const Size(250, 110)), CardSize.small);
+    expect(fitSize(m, const Size(250, 80)), CardSize.pill);
   });
 
   test('a placed device not heard since restart shows its saved name', () {

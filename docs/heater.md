@@ -11,8 +11,20 @@ module:
   tested on a real heater.
 
 Le'Casa connects, reads the status, and closes the link again every 30
-seconds; a change is sent and then read back, so the card shows what the
-heater accepted. Both protocols are re-implemented from
+seconds while the heater runs, and every 5 minutes while it is off; a
+change is sent and then read back, so the card shows what the heater
+accepted.
+
+## Which screen runs it
+
+A heater takes one Bluetooth connection, so the screens in a home share
+it like this: while the heater is off, nobody holds it. Whichever screen
+turns it on does so itself and is locked to it ("Read by" on the device
+page) until the heater is found off again, when the lock is dropped. Any
+other screen's commands, including power off, go to the locked screen
+over sync. The dashboard card has a power button and minus and plus for
+the level or the thermostat target; a card too small for everything
+keeps its buttons and drops the graph and numbers first. Both protocols are re-implemented from
 [diesel-heater-ble](https://github.com/Spettacolo83/diesel-heater-ble) and
 [homeassistant-diesel-heater](https://github.com/Spettacolo83/homeassistant-diesel-heater)
 (both MIT), with button values cross-checked against

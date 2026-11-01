@@ -329,7 +329,7 @@ CardModel _device(String id, CardSources s, String? savedName) {
     quiet: _quiet(heard, now),
     pillLabel: m.pillLabel,
     action: m.action,
-    stepper: m.stepper,
+    controls: m.controls,
   );
 }
 
@@ -697,6 +697,7 @@ CardModel _heater(TrackedDevice d, Decoded v, String name, CardSources s) {
   final byTemp = r('mode')?.value == 'Temperature';
   final level = _n(v, 'level');
   final target = _n(v, 'target');
+  final temp = _fmt(_n(v, 'temperature'), 0);
   final range = RegExp(r'^(-?\d+) to (-?\d+)')
       .firstMatch(v.info['target range'] ?? '');
   final CardStepper? stepper = !on
@@ -721,10 +722,14 @@ CardModel _heater(TrackedDevice d, Decoded v, String name, CardSources s) {
                 min: heaterMinLevel,
                 max: heaterMaxLevel,
               ));
+  // Running on a level, the level is the big number and the temperature
+  // rides in the chip; on the thermostat, the temperature is the number
+  // and the chip says what it is heating to.
+  final levelFirst = on && !byTemp && level != null;
   final state = switch (step) {
     _ when fault != null => fault,
+    _ when levelFirst => '$temp $unit',
     'Running' when byTemp => 'Heating to ${_fmt(target, 0)} $unit',
-    'Running' => 'Running at level ${_fmt(level, 0)}',
     'Standby' when !on => 'Off',
     final st => st,
   };
@@ -733,10 +738,14 @@ CardModel _heater(TrackedDevice d, Decoded v, String name, CardSources s) {
     subtitle: v.model,
     icon: Icons.local_fire_department_outlined,
     tone: Tone.heat,
-    headline: Metric('Temperature', _fmt(_n(v, 'temperature'), 0), unit),
+    headline: levelFirst
+        ? Metric('Level', _fmt(level, 0))
+        : Metric('Temperature', temp, unit),
     state: state,
     details: [
-      if (byTemp)
+      if (levelFirst)
+        Metric('State', step ?? '–')
+      else if (on && byTemp)
         Metric('Target', _fmt(target, 0), unit)
       else
         Metric('Level', _fmt(level, 0)),
@@ -745,9 +754,16 @@ CardModel _heater(TrackedDevice d, Decoded v, String name, CardSources s) {
       if (_n(v, 'supply voltage') case final b?)
         Metric('Supply', _fmt(b, 1), 'V', null, true),
     ],
-    pillLabel: fault != null ? 'fault' : (on ? 'on' : 'off'),
+    pillLabel: fault != null
+        ? 'fault'
+        : !on
+        ? 'off'
+        : levelFirst
+        ? '$temp $unit'
+        : 'to ${_fmt(target, 0)} $unit',
+    action: ('power', !on),
+    controls: CardControls(id: d.id, power: on, stepper: stepper),
     series: s.history?.of(History.key(d.id, 'temperature')),
-    stepper: stepper,
   );
 }
 

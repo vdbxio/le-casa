@@ -302,6 +302,7 @@ class TemplateCard extends StatelessWidget {
                         child: CardControlsView(
                           model.controls!,
                           model.tone,
+                          compact: true,
                           key: ValueKey(
                             '${model.controls!.id} '
                             '${model.controls!.stepper?.setting}',

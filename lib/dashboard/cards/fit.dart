@@ -24,9 +24,9 @@ abstract final class CardMetrics {
   static const pillHeight = 52.0;
   static const controls = 44.0;
 
-  /// The row of buttons, when the card has one.
-  static double controlsOf(CardModel m) =>
-      m.controls == null ? 0 : controls + gap;
+  /// Extra height for the buttons: none, as they share the headline's
+  /// row, which is taller than they are at every size but small.
+  static double controlsOf(CardModel m) => 0;
 
   static double headlineSize(CardSize s) => switch (s) {
     CardSize.large => 68,
@@ -53,11 +53,12 @@ double minHeight(CardModel m, CardSize size, double w) {
     case CardSize.pill:
       return 0;
     case CardSize.small:
-      // With buttons the number is optional: it goes when there is no room.
+      // The buttons' row stands in for the number and its line.
       if (m.controls != null) {
         return CardMetrics.padSmall * 2 +
             CardMetrics.header +
-            CardMetrics.controlsOf(m);
+            CardMetrics.gap +
+            CardMetrics.controls;
       }
       return CardMetrics.padSmall * 2 + CardMetrics.header + 34 + 22 + 8;
     case CardSize.medium:

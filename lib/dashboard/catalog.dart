@@ -722,14 +722,14 @@ CardModel _heater(TrackedDevice d, Decoded v, String name, CardSources s) {
                 min: heaterMinLevel,
                 max: heaterMaxLevel,
               ));
-  // Running on a level, the level is the big number and the temperature
-  // rides in the chip; on the thermostat, the temperature is the number
-  // and the chip says what it is heating to.
+  // Running, the big number is what the buttons change (the level or the
+  // target) and the room temperature rides in the chip; off, the
+  // temperature is the number and the chip says so.
   final levelFirst = on && !byTemp && level != null;
+  final targetFirst = on && byTemp && target != null;
   final state = switch (step) {
     _ when fault != null => fault,
-    _ when levelFirst => '$temp $unit',
-    'Running' when byTemp => 'Heating to ${_fmt(target, 0)} $unit',
+    _ when levelFirst || targetFirst => '$temp $unit',
     'Standby' when !on => 'Off',
     final st => st,
   };
@@ -740,13 +740,13 @@ CardModel _heater(TrackedDevice d, Decoded v, String name, CardSources s) {
     tone: Tone.heat,
     headline: levelFirst
         ? Metric('Level', _fmt(level, 0))
+        : targetFirst
+        ? Metric('Target', _fmt(target, 0), unit)
         : Metric('Temperature', temp, unit),
     state: state,
     details: [
-      if (levelFirst)
+      if (levelFirst || targetFirst)
         Metric('State', step ?? '–')
-      else if (on && byTemp)
-        Metric('Target', _fmt(target, 0), unit)
       else
         Metric('Level', _fmt(level, 0)),
       if (_n(v, 'heater temperature') case final h?)
@@ -754,7 +754,8 @@ CardModel _heater(TrackedDevice d, Decoded v, String name, CardSources s) {
       if (_n(v, 'supply voltage') case final b?)
         Metric('Supply', _fmt(b, 1), 'V', null, true),
       // Still a reading of its own, for cards built around it.
-      if (levelFirst) Metric('Temperature', temp, unit, null, true),
+      if (levelFirst || targetFirst)
+        Metric('Temperature', temp, unit, null, true),
     ],
     pillLabel: fault != null
         ? 'fault'

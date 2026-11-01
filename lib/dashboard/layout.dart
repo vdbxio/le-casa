@@ -68,6 +68,10 @@ class CardSpec {
   /// The clock's choices, for [type] `clock`; null for the defaults.
   final ClockStyle? clock;
 
+  /// Draw the card's graph faintly behind its numbers at every size,
+  /// instead of giving it its own space where there is room.
+  final bool backdrop;
+
   const CardSpec(
     this.type, {
     this.device,
@@ -78,6 +82,7 @@ class CardSpec {
     this.title,
     this.icon,
     this.clock,
+    this.backdrop = false,
   });
   const CardSpec.device(String id, {String? name})
     : this('device', device: id, name: name);
@@ -97,6 +102,7 @@ class CardSpec {
     String? icon,
     bool clearLabel = false,
     ClockStyle? clock,
+    bool? backdrop,
   }) => CardSpec(
     type,
     device: device,
@@ -107,6 +113,7 @@ class CardSpec {
     title: clearLabel ? null : (title ?? this.title),
     icon: clearLabel ? null : (icon ?? this.icon),
     clock: clock == null ? this.clock : (clock.isDefault ? null : clock),
+    backdrop: backdrop ?? this.backdrop,
   );
 
   Map<String, Object?> toJson() => {
@@ -119,6 +126,7 @@ class CardSpec {
     if (title != null) 'ti': title,
     if (icon != null) 'ic': icon,
     if (clock != null) 'ck': clock!.toJson(),
+    if (backdrop) 'bg': true,
   };
 
   static CardSpec fromJson(Map<String, Object?> j) => CardSpec(
@@ -138,6 +146,7 @@ class CardSpec {
     clock: j['ck'] == null
         ? null
         : ClockStyle.fromJson((j['ck'] as Map).cast<String, Object?>()),
+    backdrop: j['bg'] == true,
   );
 
   @override
@@ -150,6 +159,7 @@ class CardSpec {
       other.title == title &&
       other.icon == icon &&
       other.clock == clock &&
+      other.backdrop == backdrop &&
       other.items.length == items.length &&
       [for (var i = 0; i < items.length; i++) other.items[i] == items[i]]
           .every((x) => x);

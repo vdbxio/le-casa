@@ -740,11 +740,11 @@ class _SlotView extends StatelessWidget {
       );
     default:
       final m = sources.model(spec);
-      final s = spec.pinned ?? fitSize(m, space);
+      final s = spec.pinned ?? fitSize(m, space, backdrop: spec.backdrop);
       if (spec.template case final t? when s != CardSize.pill) {
         return (TemplateCard(m, t), s);
       }
-      return (DashCard(m, s), s);
+      return (DashCard(m, s, backdrop: spec.backdrop), s);
   }
 }
 

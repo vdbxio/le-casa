@@ -97,7 +97,10 @@ class BigNumber extends StatelessWidget {
 class DashCard extends StatelessWidget {
   final CardModel model;
   final CardSize size;
-  const DashCard(this.model, this.size, {super.key});
+
+  /// The graph always behind the numbers, never in its own space.
+  final bool backdrop;
+  const DashCard(this.model, this.size, {super.key, this.backdrop = false});
 
   @override
   Widget build(BuildContext context) {
@@ -113,8 +116,8 @@ class DashCard extends StatelessWidget {
         child: LayoutBuilder(
           builder: (context, outer) {
             final slot = outer.biggest;
-            final side = sideBySide(model, size, slot);
-            final inline = chartInline(model, size, slot);
+            final side = !backdrop && sideBySide(model, size, slot);
+            final inline = !backdrop && chartInline(model, size, slot);
             return Stack(
               children: [
                 // A graph that has no room of its own sits behind the

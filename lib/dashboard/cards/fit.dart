@@ -115,7 +115,7 @@ double minWidth(CardModel m, CardSize size) => switch (size) {
 
 /// The largest size whose content fits [space]. A card never clips: if a
 /// size does not fit, it steps down to the next.
-CardSize fitSize(CardModel m, Size space) {
+CardSize fitSize(CardModel m, Size space, {bool backdrop = false}) {
   if (space.height < 84 || space.width < 136) return CardSize.pill;
   bool fits(CardSize s) =>
       space.width >= minWidth(m, s) &&
@@ -126,6 +126,7 @@ CardSize fitSize(CardModel m, Size space) {
     // Keep the graph in view: when a large card would push it behind the
     // numbers but a medium one has room for it, go medium.
     if (s == CardSize.large &&
+        !backdrop &&
         hasChart(m) &&
         !chartInline(m, s, space) &&
         fits(CardSize.medium) &&

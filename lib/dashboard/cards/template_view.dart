@@ -460,7 +460,9 @@ class TemplateCard extends StatelessWidget {
           ),
         );
       case PartKind.big:
-        final m = p?.metric ?? _missing(part.point);
+        // A saved arrangement can name a headline the card no longer has
+        // (the Le'Fob's "Last seen" became "Presence"): show today's.
+        final m = p?.metric ?? model.headline ?? _missing(part.point);
         return LayoutBuilder(
           builder: (context, box) {
             final size = math.min(110.0, math.max(20.0, box.maxHeight * 0.86));

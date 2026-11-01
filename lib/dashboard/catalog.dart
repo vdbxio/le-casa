@@ -821,7 +821,8 @@ CardModel _buttons(TrackedDevice d, Decoded v, String name, CardSources s) {
   );
   return CardModel(
     title: name,
-    subtitle: v.model,
+    // "Le'Fob · A421" already says what it is.
+    subtitle: name.startsWith(v.model) ? '' : v.model,
     icon: Icons.settings_remote_outlined,
     tone: tone,
     headline: presence == null

@@ -54,6 +54,25 @@ class HourCell {
 /// Everything a card shows, independent of size. One renderer draws every
 /// card from this at any of the four sizes, so a new device only needs a
 /// builder, never a new widget. This is the seed of the card design system.
+/// A whole number on a card that can be stepped between [min] and [max].
+class CardStepper {
+  final String setting;
+  final String label;
+  final int value;
+  final int min;
+  final int max;
+  final String unit;
+
+  const CardStepper({
+    required this.setting,
+    required this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    this.unit = '',
+  });
+}
+
 class CardModel {
   final String title;
   final String subtitle;
@@ -105,6 +124,9 @@ class CardModel {
   /// setting and the value to send ('on', false for a plug that is on).
   final (String, Object)? action;
 
+  /// Minus and plus for a number the card can change on its device.
+  final CardStepper? stepper;
+
   const CardModel({
     required this.title,
     this.subtitle = '',
@@ -123,6 +145,7 @@ class CardModel {
     this.quiet,
     this.setup,
     this.action,
+    this.stepper,
     String? pillLabel,
   }) : pillLabel = pillLabel ?? title;
 
@@ -145,6 +168,7 @@ class CardModel {
     quiet: quiet,
     setup: setup,
     action: action,
+    stepper: stepper,
     pillLabel: pillLabel == this.title ? null : pillLabel,
   );
 }

@@ -188,6 +188,24 @@ void main() {
         ]);
       });
 
+      test('sends the PIN again when its reply is lost', () async {
+        var pins = 0;
+        final session = FakeSession(
+          characteristics: const [
+            GattChar(hcaloryWrite, canWriteWithoutResponse: true),
+            GattChar(hcaloryNotify, canNotify: true),
+          ],
+          onWrite: (c, data) {
+            if (data[8] == 0x0C) {
+              return ++pins == 1 ? const [] : [_pinAccepted];
+            }
+            return [state];
+          },
+        );
+        await const HeaterDriver().read(session, a);
+        expect(pins, 2);
+      });
+
       test('sets a level and reads it back', () async {
         final d = await const HeaterDriver().control(
           heater(),

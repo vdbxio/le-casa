@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 
 import '../ble/device_tracker.dart';
 import '../decoders/decoded.dart';
+import '../drivers/heater_driver.dart';
+import '../drivers/heater_protocol.dart';
 import '../platform/tablet.dart';
 import '../ui/format.dart';
 import '../ui/palette.dart';
@@ -327,6 +329,7 @@ CardModel _device(String id, CardSources s, String? savedName) {
     quiet: _quiet(heard, now),
     pillLabel: m.pillLabel,
     action: m.action,
+    stepper: m.stepper,
   );
 }
 
@@ -694,6 +697,30 @@ CardModel _heater(TrackedDevice d, Decoded v, String name, CardSources s) {
   final byTemp = r('mode')?.value == 'Temperature';
   final level = _n(v, 'level');
   final target = _n(v, 'target');
+  final range = RegExp(r'^(-?\d+) to (-?\d+)')
+      .firstMatch(v.info['target range'] ?? '');
+  final CardStepper? stepper = !on
+      ? null
+      : byTemp
+      ? (target == null || range == null
+            ? null
+            : CardStepper(
+                setting: HeaterSetting.target,
+                label: 'Target',
+                value: target.round(),
+                min: int.parse(range[1]!),
+                max: int.parse(range[2]!),
+                unit: unit,
+              ))
+      : (level == null
+            ? null
+            : CardStepper(
+                setting: HeaterSetting.level,
+                label: 'Level',
+                value: level.round(),
+                min: heaterMinLevel,
+                max: heaterMaxLevel,
+              ));
   final state = switch (step) {
     _ when fault != null => fault,
     'Running' when byTemp => 'Heating to ${_fmt(target, 0)} $unit',
@@ -720,6 +747,7 @@ CardModel _heater(TrackedDevice d, Decoded v, String name, CardSources s) {
     ],
     pillLabel: fault != null ? 'fault' : (on ? 'on' : 'off'),
     series: s.history?.of(History.key(d.id, 'temperature')),
+    stepper: stepper,
   );
 }
 

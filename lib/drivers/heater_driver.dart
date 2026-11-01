@@ -69,7 +69,7 @@ class HeaterDriver implements ControllableDriver {
   Duration get interval => const Duration(seconds: 30);
 
   @override
-  Duration get timeout => const Duration(seconds: 20);
+  Duration get timeout => const Duration(seconds: 30);
 
   @override
   bool matches(RawAdvertisement adv) => const HcaloryDecoder().matches(adv);
@@ -219,23 +219,37 @@ class _HcaloryLink extends _HeaterLink {
 
   Future<void> _send(Uint8List f) => s.write(tx, f, withResponse: false);
 
-  /// Sends the PIN; nothing else is answered until it is accepted.
+  /// Sends the PIN; nothing else is answered until it is accepted. A
+  /// PIN that got no answer goes out again before the next is tried, so
+  /// a lost reply is not reported as a refusal.
   Future<void> unlock() async {
+    var answered = false;
     for (final pin in hcaloryPins) {
-      final reply = frames
-          .map(hcaloryPinAccepted)
-          .where((ok) => ok != null)
-          .first
-          .timeout(const Duration(seconds: 3));
-      await _send(hcaloryPin(pin));
-      try {
-        if (await reply == true) return;
-      } on TimeoutException {
-        // try the next one
+      for (var attempt = 1; attempt <= 2; attempt++) {
+        final reply = frames
+            .map(hcaloryPinAccepted)
+            .where((ok) => ok != null)
+            .first
+            .timeout(const Duration(seconds: 3));
+        try {
+          await _send(hcaloryPin(pin));
+        } catch (_) {
+          reply.ignore();
+          rethrow;
+        }
+        try {
+          if (await reply == true) return;
+          answered = true;
+          break;
+        } on TimeoutException {
+          // send it once more
+        }
       }
     }
     throw StateError(
-      'The heater refused its PIN (tried ${hcaloryPins.join(' and ')})',
+      answered
+          ? 'The heater refused its PIN (tried ${hcaloryPins.join(' and ')})'
+          : 'The heater did not answer its PIN',
     );
   }
 

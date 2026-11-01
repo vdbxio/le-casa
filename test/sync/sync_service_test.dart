@@ -440,29 +440,24 @@ void main() {
     await settle();
     expect(m10.tracker[m10Fridge]!.polled!.readings.single.value, 46);
   });
-  test('a failed control comes back as an error', () async {
+  test('a control the other screen refuses is done here instead', () async {
     ipad.hear(ipadFridge, 'AK1-AAFE13156431');
     m10.hear(m10Fridge, 'AK1-AAFE13156431');
     await ipad.connections.readNow(ipadFridge);
     await ipad.sync.tick();
     await settle();
     await ipad.connections.setDeviceEnabled(ipadFridge, false);
+    // The iPad holds the fridge but will not connect; the M10 asks it
+    // first, then does it itself and takes the fridge over.
     final done = m10.connections.control(
       m10Fridge,
       const DeviceCommand('target', 40),
     );
-    final check = expectLater(
-      done,
-      throwsA(
-        isA<StateError>().having(
-          (e) => e.message,
-          'message',
-          contains('Connect to this device'),
-        ),
-      ),
-    );
     await settle();
-    await check;
+    await done;
+    expect(m10.tracker[m10Fridge]!.polled!.readings.single.value, 40);
+    expect(m10.connections.allows(m10Fridge), isTrue);
+    expect(m10.sync.readBy.lockOf(m10Fridge)?.screen, m10.home.me.id);
   });
 
   test('turning a device on or off on one screen does it on all', () async {

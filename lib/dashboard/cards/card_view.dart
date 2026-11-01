@@ -342,11 +342,13 @@ class DashCard extends StatelessWidget {
                       Expanded(
                         child: Align(
                           alignment: Alignment.bottomLeft,
+                          // Grows into the spare height, as on a card
+                          // without buttons.
                           child: _headline(
                             c,
                             math.min(
-                              CardMetrics.headlineSize(CardSize.small),
-                              numberRoom * 0.9,
+                              CardMetrics.headlineSize(CardSize.small) * 2,
+                              numberRoom * 0.85,
                             ),
                           ),
                         ),

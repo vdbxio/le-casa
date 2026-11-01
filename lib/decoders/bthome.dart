@@ -192,7 +192,12 @@ class BtHomeDecoder implements Decoder {
       }
     }
 
-    final model = _guessModel(adv, readings, events: events);
+    final model = _guessModel(
+      adv,
+      readings,
+      events: events,
+      buttons: seen['button'] ?? 0,
+    );
     return Decoded(
       protocol: encrypted ? 'BTHome (encrypted)' : 'BTHome',
       model: model,
@@ -208,6 +213,7 @@ class BtHomeDecoder implements Decoder {
     RawAdvertisement adv,
     List<Reading> readings, {
     List<DeviceEvent> events = const [],
+    int buttons = 0,
   }) {
     final n = (adv.name ?? '').toLowerCase();
     if (n.contains('fob')) return "Le'Fob";
@@ -216,6 +222,17 @@ class BtHomeDecoder implements Decoder {
       return 'Xiaomi LYWSD03MMC (pvvx)';
     }
     final labels = readings.map((r) => r.label).toSet();
+    // Le'Fob status chirps carry no name: the charger flags and a status
+    // line are its signature (and WCH's MAC prefix where the radio shows
+    // it). Its presses carry four button objects.
+    final mac = adv.macString?.toUpperCase();
+    final wch = mac != null && mac.startsWith('84:C2:E4');
+    if (labels.contains('battery charging') &&
+        labels.contains('battery low') &&
+        (labels.contains('text') || wch)) {
+      return "Le'Fob";
+    }
+    if (wch && buttons == 4) return "Le'Fob";
     if (events.isNotEmpty) return 'BTHome button device';
     if (labels.contains('temperature') && labels.contains('humidity')) {
       return 'Temperature/Humidity sensor';

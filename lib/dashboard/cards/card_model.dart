@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 
 import '../../ui/palette.dart';
+import '../fob_log.dart';
 
 /// One labelled value: "Voltage 26.62 V".
 class Metric {
@@ -49,6 +50,27 @@ class HourCell {
   /// The number behind [value], for the bar height.
   final double amount;
   const HourCell(this.icon, this.value, this.amount);
+}
+
+/// A remote's buttons over time, drawn like magnetic tape: one track per
+/// button, a square where a button was pressed, coloured by how (press,
+/// double, long, hold). The tape itself shows where the remote was home;
+/// it thins to a line while it was away and is blank where this screen
+/// was not listening. Now is the right edge.
+class ButtonTape {
+  final int tracks;
+  final List<Press> presses;
+  final List<Span> away;
+  final List<Span> listening;
+  final DateTime now;
+
+  const ButtonTape({
+    required this.tracks,
+    required this.presses,
+    required this.away,
+    required this.listening,
+    required this.now,
+  });
 }
 
 /// Everything a card shows, independent of size. One renderer draws every
@@ -126,6 +148,9 @@ class CardModel {
   /// Forecast bars (weather).
   final List<HourCell> hours;
 
+  /// Button history (remotes).
+  final ButtonTape? tape;
+
   /// What [hours] covers, shown once above the bars: "Next 6 hours".
   final String? hoursLabel;
 
@@ -164,6 +189,7 @@ class CardModel {
     this.ring,
     this.series,
     this.hours = const [],
+    this.tape,
     this.hoursLabel,
     this.note,
     this.stale = false,
@@ -187,6 +213,7 @@ class CardModel {
     ring: ring,
     series: series,
     hours: hours,
+    tape: tape,
     hoursLabel: hoursLabel,
     note: note,
     stale: stale,

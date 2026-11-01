@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lecasa/dashboard/cards/template.dart';
 import 'package:lecasa/dashboard/catalog.dart';
 import 'package:lecasa/dashboard/dashboard_page.dart';
+import 'package:lecasa/dashboard/fob_log.dart';
 import 'package:lecasa/dashboard/history.dart';
 import 'package:lecasa/dashboard/layout.dart';
 import 'package:lecasa/platform/tablet.dart';
@@ -23,7 +24,11 @@ import 'test_fonts.dart';
 
 /// Every series is a day-shaped wave, so graphs have something to draw.
 class _WavyHistory extends History {
-  _WavyHistory() : super(chloesGear());
+  _WavyHistory() : super(chloesGear()) {
+    seedFob('fob', fobDay(_now), [
+      Span(_now.subtract(const Duration(hours: 9)), _now),
+    ]);
+  }
 
   @override
   List<double>? of(String k) => [
@@ -61,6 +66,8 @@ WeatherService _weather() {
   return w;
 }
 
+final _now = DateTime(2026, 10, 24, 13, 12);
+
 const widths = [150.0, 210.0, 280.0, 360.0, 460.0, 600.0];
 const heights = [96.0, 130.0, 170.0, 220.0, 290.0, 380.0];
 
@@ -75,7 +82,7 @@ void main() {
       ..batteryPercent = 64
       ..charging = true,
     weather: _weather(),
-    now: () => DateTime(2026, 10, 24, 13, 12),
+    now: () => _now,
   );
   final specs = <String, CardSpec>{
     for (final e in catalog(sources)) e.spec.key: e.spec,

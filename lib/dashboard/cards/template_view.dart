@@ -11,6 +11,7 @@ import '../../ui/palette.dart';
 import '../layout.dart';
 import 'card_controls.dart';
 import 'card_model.dart';
+import 'tape.dart';
 import 'card_view.dart';
 import 'template.dart';
 
@@ -568,6 +569,7 @@ class TemplateCard extends StatelessWidget {
           ),
         );
       case PartKind.graph:
+        if (model.tape case final t?) return TapeStrip(t, c, faint: faint);
         final s = model.series;
         if (s == null) return _empty(c, 'No history yet');
         return CustomPaint(

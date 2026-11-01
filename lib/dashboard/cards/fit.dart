@@ -140,11 +140,13 @@ CardSize fitSize(CardModel m, Size space, {bool backdrop = false}) {
 
 /// Whether the card has a graph: a history line or forecast bars. A graph
 /// takes whatever height is spare; it is never the reason a size is chosen.
-bool hasChart(CardModel m) => m.series != null || m.hours.isNotEmpty;
+bool hasChart(CardModel m) =>
+    m.series != null || m.hours.isNotEmpty || m.tape != null;
 
 /// The least height a graph is drawn in. Below this it goes behind the
 /// card's numbers instead.
-double chartMinHeight(CardModel m) => m.hours.isNotEmpty ? 34 : 28;
+double chartMinHeight(CardModel m) =>
+    m.hours.isNotEmpty ? 34 : (m.tape != null ? 30 : 28);
 
 /// Wide, short slots put the numbers on the left and the graph (or more
 /// readings) on the right, instead of stacking them.

@@ -340,11 +340,13 @@ List<DataPoint> dataPoints(CardModel m) {
       ], preview: m.state!),
     );
   }
-  if (m.series != null) {
+  if (m.series != null || m.tape != null) {
     add(
       DataPoint(
         'graph',
-        m.headline == null || m.headline!.label.isEmpty
+        m.tape != null
+            ? 'Button history'
+            : m.headline == null || m.headline!.label.isEmpty
             ? 'History'
             : '${m.headline!.label}, last 6 hours',
         const [PartKind.graph],
@@ -463,7 +465,7 @@ CardTemplate defaultTemplate(CardModel m) {
     rows.add(big);
     weights.add(1.6);
   }
-  if (m.series != null && !ring) {
+  if ((m.series != null || m.tape != null) && !ring) {
     rows.add(BoxPart(PartKind.graph, 'graph'));
     weights.add(2);
   } else if (m.hours.isNotEmpty) {

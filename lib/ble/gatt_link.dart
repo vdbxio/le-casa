@@ -67,8 +67,12 @@ class GattLink implements ClosableSession {
   @override
   bool get droppedByDevice => _disconnected.isCompleted;
 
+  /// The least connect timeout on Android: just past the system's own.
+  static const androidConnectLimit = Duration(seconds: 32);
+
   /// Connects and discovers services. Throws on failure or after
-  /// [timeout]; the caller does not need to disconnect in that case.
+  /// [timeout] (on Android never under [androidConnectLimit]); the caller
+  /// does not need to disconnect in that case.
   static Future<GattLink> open(
     CentralManager central,
     Peripheral peripheral, {
@@ -76,9 +80,20 @@ class GattLink implements ClosableSession {
     // box has been seen to take 22 s, so do not cut it shorter than that.
     Duration timeout = const Duration(seconds: 32),
   }) async {
+    // On Android a connect cut short from here leaks a GATT client: the
+    // plugin only closes a client on a disconnect callback, and a
+    // cancelled pending connect never gets one. After 32 such leaks the
+    // tablet's Bluetooth refuses every connection (status 257) until the
+    // app restarts. So on Android wait for Android's own 30 s limit,
+    // which does come with a callback.
+    final limit =
+        defaultTargetPlatform == TargetPlatform.android &&
+            timeout < androidConnectLimit
+        ? androidConnectLimit
+        : timeout;
     debugPrint('gatt: connecting ${peripheral.uuid}');
     try {
-      await central.connect(peripheral).timeout(timeout);
+      await central.connect(peripheral).timeout(limit);
     } on TimeoutException {
       // iOS never gives up on a connect by itself; cancel it, or it stays
       // pending and the next connect to this device is never answered.

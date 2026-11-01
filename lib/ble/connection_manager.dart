@@ -632,6 +632,7 @@ class ConnectionManager extends ChangeNotifier {
         ..nextDue = DateTime.now().add(driver.interval);
       // Status 133 straight away usually means the device already has a
       // connection (most take one), from another screen or its own app.
+      if ('$e'.contains('status: 257')) throw StateError(outOfGattClients);
       if ('$e'.contains('status: 133')) {
         throw StateError(
           'Could not connect. Another screen or app may be connected to '
@@ -953,11 +954,18 @@ class ConnectionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Android refuses every connect with status 257 once an app holds 32
+  /// GATT clients; only restarting the app frees them.
+  static const outOfGattClients =
+      'This screen\'s Bluetooth has run out of connections. Close '
+      'Le\'Casa fully and open it again.';
+
   static String _describe(Object e) {
     if (e is TimeoutException) {
       return e.message ?? 'Timed out';
     }
     final s = e.toString();
+    if (s.contains('status: 257')) return outOfGattClients;
     // Platform exceptions read like "PlatformException(code, message, ...)".
     final m = RegExp(r'PlatformException\([^,]*, ([^,]*)').firstMatch(s);
     return m?.group(1) ?? s;

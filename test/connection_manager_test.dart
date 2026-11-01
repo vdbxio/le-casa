@@ -506,6 +506,18 @@ void main() {
     m.dispose();
   });
 
+  test('status 257 says the app must be restarted', () async {
+    final driver = ScriptedDriver(
+      error: StateError('Connect failed with status: 257'),
+    );
+    final m = manager(driver);
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.pump();
+    expect(m[testAdv.id]!.error, contains('run out of connections'));
+    m.dispose();
+  });
+
   test('unsupported devices are parked, not retried', () async {
     final driver = ScriptedDriver(
       error: const UnsupportedDeviceException('no such characteristic'),

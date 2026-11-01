@@ -81,9 +81,22 @@ class CardControls {
 
   /// On or off, when the device has a power switch.
   final bool? power;
+
+  /// The setting that [power] changes.
+  final String powerSetting;
+
+  /// Draw the power control as a switch rather than a round button: for
+  /// a plug or a light, where on and off is all there is.
+  final bool toggle;
   final CardStepper? stepper;
 
-  const CardControls({required this.id, this.power, this.stepper});
+  const CardControls({
+    required this.id,
+    this.power,
+    this.powerSetting = 'power',
+    this.toggle = false,
+    this.stepper,
+  });
 }
 
 class CardModel {

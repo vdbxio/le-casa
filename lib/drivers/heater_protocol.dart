@@ -45,6 +45,7 @@ const heaterSteps = {
   3: 'Running',
   4: 'Cooling down',
   6: 'Ventilating',
+  7: 'Fan starting',
 };
 
 /// Fault codes the AA 55 / AA 66 heaters report.

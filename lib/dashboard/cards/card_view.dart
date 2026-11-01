@@ -1203,11 +1203,12 @@ class Pill extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = LeColors.of(context);
     final h = model.headline;
+    final controls = model.controls;
     return Opacity(
       opacity: model.stale ? 0.55 : 1,
       child: Container(
         height: height,
-        padding: const EdgeInsets.only(left: 14, right: 16),
+        padding: EdgeInsets.only(left: 14, right: controls == null ? 16 : 6),
         decoration: BoxDecoration(
           color: c.card,
           borderRadius: BorderRadius.circular(999),
@@ -1237,6 +1238,16 @@ class Pill extends StatelessWidget {
                 style: TextStyle(fontSize: 12, color: c.muted),
               ),
             ),
+            // Its buttons, sized to the pill; the number is already shown.
+            if (controls != null && !model.stale)
+              CardControlsView(
+                controls,
+                model.tone,
+                compact: true,
+                bare: true,
+                size: height - 8,
+                key: ValueKey('${controls.id} ${controls.stepper?.setting}'),
+              ),
           ],
         ),
       ),

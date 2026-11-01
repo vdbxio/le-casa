@@ -22,7 +22,7 @@ abstract final class CardMetrics {
   static const ringLarge = 132.0;
   static const ringMedium = 96.0;
   static const pillHeight = 52.0;
-  static const controls = 44.0;
+  static const controls = 56.0;
 
   /// Extra height for the buttons: none, as they share the headline's
   /// row, which is taller than they are at every size but small.
@@ -108,7 +108,7 @@ double minHeight(CardModel m, CardSize size, double w) {
 double minWidth(CardModel m, CardSize size) => switch (size) {
   CardSize.pill => 0,
   // Four round buttons and a number between them.
-  CardSize.small => m.controls?.stepper != null ? 236 : 136,
+  CardSize.small => m.controls?.stepper != null ? 272 : 136,
   CardSize.medium => 210,
   CardSize.large => 290,
 };

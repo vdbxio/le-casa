@@ -29,6 +29,12 @@ class CardControlsView extends StatefulWidget {
   final double bigSize;
   final bool compact;
 
+  /// The buttons' diameter; a pill uses smaller ones.
+  final double size;
+
+  /// Compact without the stepped number, for a pill that shows it itself.
+  final bool bare;
+
   const CardControlsView(
     this.controls,
     this.tone, {
@@ -36,9 +42,13 @@ class CardControlsView extends StatefulWidget {
     this.headline,
     this.bigSize = 46,
     this.compact = false,
+    this.size = height,
+    this.bare = false,
   });
 
-  static const height = 44.0;
+  /// Buttons are the first thing on a card people reach for, so they are
+  /// bigger than Material's 40.
+  static const height = 56.0;
 
   @override
   State<CardControlsView> createState() => _CardControlsViewState();
@@ -105,7 +115,10 @@ class _CardControlsViewState extends State<CardControlsView> {
       _wantPower = on;
     });
     try {
-      await connections.control(widget.controls.id, DeviceCommand('power', on));
+      await connections.control(
+        widget.controls.id,
+        DeviceCommand(widget.controls.powerSetting, on),
+      );
     } catch (e) {
       messenger.showSnackBar(
         SnackBar(content: Text('Could not turn it ${on ? 'on' : 'off'}: $e')),
@@ -127,15 +140,16 @@ class _CardControlsViewState extends State<CardControlsView> {
     final power = widget.controls.power;
     final on = _wantPower ?? power;
     final s = _stepper;
+    final d = widget.size;
     Widget round(IconData icon, VoidCallback? onTap, {bool filled = false}) =>
         IconButton(
           onPressed: onTap,
-          icon: Icon(icon, size: 20),
+          icon: Icon(icon, size: d * 0.5),
           color: filled ? c.card : tone,
           style: IconButton.styleFrom(
             backgroundColor: filled ? tone : tone.withValues(alpha: 0.14),
-            minimumSize: const Size.square(CardControlsView.height),
-            maximumSize: const Size.square(CardControlsView.height),
+            minimumSize: Size.square(d),
+            maximumSize: Size.square(d),
             padding: EdgeInsets.zero,
           ),
         );
@@ -143,12 +157,21 @@ class _CardControlsViewState extends State<CardControlsView> {
         ? null
         : _switching
         ? SizedBox.square(
-            dimension: CardControlsView.height,
+            dimension: d,
             child: Center(
               child: SizedBox.square(
-                dimension: 20,
+                dimension: d * 0.45,
                 child: CircularProgressIndicator(strokeWidth: 2, color: tone),
               ),
+            ),
+          )
+        : widget.controls.toggle
+        ? Transform.scale(
+            scale: (d / 40).clamp(1.0, 1.4),
+            child: Switch(
+              value: on == true,
+              activeTrackColor: tone,
+              onChanged: (_) => _togglePower(),
             ),
           )
         : round(Icons.power_settings_new, _togglePower, filled: on == true);
@@ -160,39 +183,42 @@ class _CardControlsViewState extends State<CardControlsView> {
         : round(Icons.add, _shown < s.max ? () => _step(1) : null);
     if (widget.compact) {
       return SizedBox(
-        height: CardControlsView.height,
+        height: d,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (powerButton != null) ...[
-              powerButton,
-              if (s != null) const SizedBox(width: 10),
-            ],
             if (s != null) ...[
               minus!,
-              SizedBox(
-                width: 60,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      '$_shown${s.unit.isEmpty ? '' : ' ${s.unit}'}',
-                      maxLines: 1,
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        color: c.ink,
+              if (widget.bare)
+                const SizedBox(width: 4)
+              else
+                SizedBox(
+                  width: 60,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        '$_shown${s.unit.isEmpty ? '' : ' ${s.unit}'}',
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                          color: c.ink,
+                        ),
                       ),
-                    ),
-                    Text(
-                      _sending ? 'Sending…' : s.label,
-                      maxLines: 1,
-                      style: TextStyle(fontSize: 11, color: c.muted),
-                    ),
-                  ],
+                      Text(
+                        _sending ? 'Sending…' : s.label,
+                        maxLines: 1,
+                        style: TextStyle(fontSize: 11, color: c.muted),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
               plus!,
+            ],
+            if (powerButton != null) ...[
+              if (s != null) const SizedBox(width: 10),
+              powerButton,
             ],
           ],
         ),

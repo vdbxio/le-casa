@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -73,12 +74,24 @@ void main() {
     expect(m.headline!.inline, '2');
     expect(m.state, '21 °C');
     expect(m.controls!.power, isTrue);
+    // Starting up, the chip says what it is doing.
+    final igniting = Uint8List.fromList(
+      fromHex(
+        '00010001000100230300001effff01f4000000008502020201040008fc0000d2'
+        '008cf90001000100000001',
+      ),
+    )..[20] = 0x83;
+    igniting[igniting.length - 1] =
+        igniting.sublist(8, igniting.length - 1).fold<int>(0, (a, b) => a + b) &
+        0xFF;
+    t.setPolled('heater', heaterToDecoded(parseHcaloryStatus(igniting)!));
+    expect(modelFor(const CardSpec.device('heater'), s).state, 'Igniting');
     expect(m.controls!.stepper!.setting, 'level');
     expect(m.details.first.inline, 'Running');
     // Small needs room for four buttons; the tiniest slot is a pill.
-    expect(minWidth(m, CardSize.small), 236);
-    expect(fitSize(m, const Size(250, 110)), CardSize.small);
-    expect(fitSize(m, const Size(250, 80)), CardSize.pill);
+    expect(minWidth(m, CardSize.small), 272);
+    expect(fitSize(m, const Size(300, 120)), CardSize.small);
+    expect(fitSize(m, const Size(300, 80)), CardSize.pill);
   });
 
   test('a placed device not heard since restart shows its saved name', () {

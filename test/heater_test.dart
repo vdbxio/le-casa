@@ -123,6 +123,10 @@ void main() {
       expect((off.on, off.stepName, off.level), (false, 'Standby', null));
       final stopping = parseHcaloryStatus(withState(0x45))!;
       expect((stopping.on, stopping.stepName), (false, 'Cooling down'));
+      final starting = parseHcaloryStatus(withState(0x81))!;
+      expect((starting.on, starting.stepName), (true, 'Fan starting'));
+      expect(parseHcaloryStatus(withState(0x83))!.stepName, 'Igniting');
+      expect(parseHcaloryStatus(withState(0xC1))!.stepName, 'Ventilating');
       final fault = parseHcaloryStatus(withState(0xF0, 7))!;
       expect(fault.errorName, 'E07 low voltage');
     });

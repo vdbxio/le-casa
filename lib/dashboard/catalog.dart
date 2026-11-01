@@ -308,7 +308,7 @@ CardModel _device(String id, CardSources s, String? savedName) {
     DeviceKind.buttons || DeviceKind.leDevice => _buttons(d, v, name, s),
     DeviceKind.switches => _switch(d, v, name, s),
     DeviceKind.covers => _cover(d, v, name, s),
-    DeviceKind.lights => _light(v, name),
+    DeviceKind.lights => _light(d, v, name),
     DeviceKind.security => _security(d, v, name, s),
     _ => _generic(d, v, name, s),
   };
@@ -537,13 +537,16 @@ CardModel _switch(TrackedDevice d, Decoded v, String name, CardSources s) {
     ],
     pillLabel: onText?.toLowerCase() ?? 'switch',
     action: on is bool ? ('on', !on) : null,
+    controls: on is bool
+        ? CardControls(id: d.id, power: on, powerSetting: 'on', toggle: true)
+        : null,
     series: w == null ? null : s.history?.of(History.key(d.id, 'power')),
   );
 }
 
 /// A light whose state is what this screen last set; tapping toggles it,
 /// and turns it on when nothing has been set yet.
-CardModel _light(Decoded v, String name) {
+CardModel _light(TrackedDevice d, Decoded v, String name) {
   final on = _r(v, 'on')?.value;
   final onText = on == null ? null : (on == true ? 'On' : 'Off');
   return CardModel(
@@ -564,6 +567,12 @@ CardModel _light(Decoded v, String name) {
     ],
     pillLabel: onText?.toLowerCase() ?? 'light',
     action: ('on', on != true),
+    controls: CardControls(
+      id: d.id,
+      power: on == true,
+      powerSetting: 'on',
+      toggle: true,
+    ),
   );
 }
 
@@ -727,9 +736,11 @@ CardModel _heater(TrackedDevice d, Decoded v, String name, CardSources s) {
   // temperature is the number and the chip says so.
   final levelFirst = on && !byTemp && level != null;
   final targetFirst = on && byTemp && target != null;
+  // While it is starting up or shutting down the chip says so; once it
+  // is running, the room temperature takes the chip.
   final state = switch (step) {
     _ when fault != null => fault,
-    _ when levelFirst || targetFirst => '$temp $unit',
+    'Running' when levelFirst || targetFirst => '$temp $unit',
     'Standby' when !on => 'Off',
     final st => st,
   };

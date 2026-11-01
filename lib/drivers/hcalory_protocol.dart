@@ -102,9 +102,11 @@ HeaterStatus? parseHcaloryStatus(List<int> f) {
     return null;
   }
   final status = f[20] >> 4; // 0 off, 4 stopping, 8 heating, C fan, F fault
+  // The fan runs first (1), then the glow plug (3), then the burner (5);
+  // on the fan-only setting (status C) the fan is all there is.
   final step = switch (f[20] & 0x0F) {
     _ when status == 0x4 => 4,
-    1 => 6,
+    1 => status == 0xC ? 6 : 7,
     3 => 2,
     5 => 3,
     _ => 0,

@@ -246,17 +246,35 @@ class TemplateCard extends StatelessWidget {
                   (p) => p.kind == PartKind.graph || p.kind == PartKind.bars,
                 )
                 .firstOrNull;
-            // A graph with no room goes behind the rest; so does the
-            // card's graph when the card asks for it as a backdrop.
-            final behind =
-                dropped ??
-                (template.backdrop &&
-                        !shown.contains(PartKind.graph) &&
-                        !shown.contains(PartKind.bars)
-                    ? BoxPart(
-                        model.hours.isNotEmpty ? PartKind.bars : PartKind.graph,
-                      )
-                    : null);
+            // With the graph asked for as a backdrop it goes behind at
+            // every size, and its own box (if any) draws nothing while
+            // the card is in use; otherwise a graph with no room goes
+            // behind the rest.
+            final backdrop = template.backdrop && edit == null;
+            final behind = backdrop
+                ? BoxPart(
+                    model.hours.isNotEmpty ? PartKind.bars : PartKind.graph,
+                  )
+                : dropped ??
+                      (template.backdrop &&
+                              !shown.contains(PartKind.graph) &&
+                              !shown.contains(PartKind.bars)
+                          ? BoxPart(
+                              model.hours.isNotEmpty
+                                  ? PartKind.bars
+                                  : PartKind.graph,
+                            )
+                          : null);
+            bool skip(BoxPart p) =>
+                backdrop &&
+                (p.kind == PartKind.graph || p.kind == PartKind.bars);
+            // The buttons ride in the big number's box; a card without
+            // one gets them as a strip over its bottom right corner.
+            final strip =
+                edit == null &&
+                !model.stale &&
+                model.controls != null &&
+                !shown.contains(PartKind.big);
             return Stack(
               children: [
                 if (behind != null)
@@ -270,25 +288,26 @@ class TemplateCard extends StatelessWidget {
                     ),
                   ),
                 for (final p in plan.parts)
-                  Positioned.fromRect(
-                    rect: p.rect,
-                    child: edit == null
-                        ? _part(context, c, p.part, points)
-                        : _EditableBox(
-                            path: p.path,
-                            label: p.part.kind?.label ?? 'Empty box',
-                            selected: _same(edit.selected, p.path),
-                            empty: p.part.isEmpty,
-                            onTap: () => edit.onSelect(p.path),
-                            onDrop: (from) => edit.onMove(from, p.path),
-                            child: _part(context, c, p.part, points),
-                          ),
-                  ),
+                  if (!skip(p.part))
+                    Positioned.fromRect(
+                      rect: p.rect,
+                      child: edit == null
+                          ? _part(context, c, p.part, points)
+                          : _EditableBox(
+                              path: p.path,
+                              label: p.part.kind?.label ?? 'Empty box',
+                              selected: _same(edit.selected, p.path),
+                              empty: p.part.isEmpty,
+                              onTap: () => edit.onSelect(p.path),
+                              onDrop: (from) => edit.onMove(from, p.path),
+                              child: _part(context, c, p.part, points),
+                            ),
+                    ),
                 if (edit != null)
                   for (final s in plan.seams) _handle(c, s, edit),
                 // A card the person laid out keeps its device's buttons:
                 // they ride over the bottom right corner.
-                if (edit == null && !model.stale && model.controls != null)
+                if (strip)
                   Positioned(
                     right: 10,
                     bottom: 8,
@@ -444,6 +463,22 @@ class TemplateCard extends StatelessWidget {
         return LayoutBuilder(
           builder: (context, box) {
             final size = math.min(110.0, math.max(20.0, box.maxHeight * 0.86));
+            if (model.controls != null && !model.stale && editing == null) {
+              // The number with its buttons either side and the power
+              // switch at the box's right edge, as on a stock card.
+              return Align(
+                alignment: _align(align, y: 0.4),
+                child: CardControlsView(
+                  model.controls!,
+                  model.tone,
+                  headline: m,
+                  bigSize: math.min(size, (box.maxHeight - 18) * 0.86),
+                  key: ValueKey(
+                    '${model.controls!.id} ${model.controls!.stepper?.setting}',
+                  ),
+                ),
+              );
+            }
             return Align(
               alignment: _align(align, y: 0.4),
               child: BigNumber(

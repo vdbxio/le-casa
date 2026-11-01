@@ -544,13 +544,22 @@ class ConnectionManager extends ChangeNotifier {
     final broadcasts = tracker[id]?.decoded?.isReadable ?? false;
     final mine = _links[id]?.driver;
     final claims = mine is ClaimingDriver && mine.claims(command);
+    // Done here after the holding screen could not: this screen then
+    // takes the device over, so the next command goes straight out.
+    var takeOver = false;
     if (!here &&
         !claims &&
         r != null &&
         (r.lockedElsewhere(id) ||
             !broadcasts &&
                 (heldElsewhere(id) != null || r.standAside(id) != null))) {
-      return r.control(id, command);
+      try {
+        return await r.control(id, command);
+      } catch (e) {
+        if (mine is! ControllableDriver || !_enabled) rethrow;
+        debugPrint('control: $id failed on the other screen ($e); here');
+        takeOver = true;
+      }
     }
     final l = _links[id];
     final driver = l?.driver;
@@ -619,7 +628,7 @@ class ConnectionManager extends ChangeNotifier {
         ..drops = 0
         ..lastOk = DateTime.now()
         ..nextDue = DateTime.now().add(_next(driver, look));
-      if (claims && !_idle(driver, look)) {
+      if ((claims || takeOver) && !_idle(driver, look)) {
         unawaited(r?.claim(id));
       } else {
         _letGoIfIdle(driver, id, look);
@@ -903,6 +912,9 @@ class ConnectionManager extends ChangeNotifier {
       if (dropped) l.drops++;
       if (turn == _turn) {
         _fail(l, dropped ? 'The device dropped the connection' : _describe(e));
+        // A screen that keeps failing to reach a device it claimed lets
+        // it go, so another screen's radio can take it.
+        if (l.failures >= 3) unawaited(remote?.release(l.id));
       }
     } finally {
       await link?.close();

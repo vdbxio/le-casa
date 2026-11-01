@@ -50,14 +50,18 @@ class LiveScriptedDriver extends ScriptedDriver implements LiveDriver {
 class _Aside implements RemoteLinks {
   String? why;
   bool locked = false;
+  Object? controlError;
   final sent = <DeviceCommand>[];
   @override
   bool lockedElsewhere(String id) => locked;
   @override
   RemoteOwner? ownerOf(String id) => null;
   @override
-  Future<void> control(String id, DeviceCommand command) async =>
-      sent.add(command);
+  Future<void> control(String id, DeviceCommand command) async {
+    sent.add(command);
+    if (controlError != null) throw controlError!;
+  }
+
   @override
   String? standAside(String id) => why;
   final claimed = <String>[];
@@ -470,6 +474,38 @@ void main() {
     // Other settings still go to the screen that holds it.
     await m.control(testAdv.id, const DeviceCommand('level', 3));
     expect(aside.sent.single.setting, 'level');
+    m.dispose();
+  });
+
+  test('a command the holding screen cannot deliver is done here', () async {
+    final driver = ClaimDriver()..on = true;
+    final aside = _Aside()
+      ..locked = true
+      ..controlError = StateError('Could not connect');
+    final m = manager(driver)..remote = aside;
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    await m.control(testAdv.id, const DeviceCommand('level', 3));
+    expect(aside.sent.single.setting, 'level', reason: 'tried there first');
+    expect(driver.commands.single.setting, 'level');
+    expect(aside.claimed, [testAdv.id], reason: 'this screen took it over');
+    m.dispose();
+  });
+
+  test('three failed reads let a claimed device go', () async {
+    final driver = ScriptedDriver(error: StateError('status: 8'));
+    final aside = _Aside();
+    final m = manager(driver)..remote = aside;
+    tracker.onAdvertisement(testAdv);
+    m.onAdvertisement(testAdv);
+    for (var i = 0; i < 3; i++) {
+      // Due again now, as the clock would make it; readNow would reset
+      // the count.
+      m[testAdv.id]!.nextDue = DateTime.now();
+      await m.pump();
+    }
+    expect(m[testAdv.id]!.failures, 3);
+    expect(aside.released, [testAdv.id]);
     m.dispose();
   });
 

@@ -252,7 +252,12 @@ class _CardOptionsPageState extends State<CardOptionsPage> {
   Widget _preview(CardModel model) {
     if (!_arrangeable) {
       return IgnorePointer(
-        child: cardContent(_edited, widget.slotSize, _sources).$1,
+        child: cardContent(
+          _edited,
+          widget.slotSize,
+          _sources,
+          extraPadding: CardStyle.of(context).extraPadding,
+        ).$1,
       );
     }
     return TemplateCard(

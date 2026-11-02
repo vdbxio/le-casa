@@ -23,6 +23,8 @@ import 'package:lecasa/dashboard/dashboard_page.dart';
 import 'package:lecasa/dashboard/history.dart';
 import 'package:lecasa/keys/key_store.dart';
 import 'package:lecasa/platform/tablet.dart';
+import 'package:lecasa/settings/design_store.dart';
+import 'package:lecasa/settings/people.dart';
 import 'package:lecasa/settings/settings_store.dart';
 import 'package:lecasa/ui/palette.dart';
 import 'package:lecasa/weather/weather.dart';
@@ -110,6 +112,8 @@ void main() {
                   connections: connections,
                   radio: BleSyncRadio(scanner),
                 ),
+                people: PeopleStore(),
+                design: DesignStore(),
                 liveData: tracker,
                 child: MaterialApp(
                   debugShowCheckedModeBanner: false,

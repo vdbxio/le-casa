@@ -269,13 +269,17 @@ class _ClockCardState extends State<ClockCard> {
     final date = widget.size == CardSize.small
         ? ''
         : style.dateLine(now, roomy: widget.size == CardSize.large);
+    final look = CardStyle.of(context);
+    final more = look.extraPadding;
     return DecoratedBox(
-      decoration: BoxDecoration(
-        color: c.card,
-        borderRadius: const BorderRadius.all(Radius.circular(20)),
-      ),
+      decoration: look.decoration(c),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+        padding: EdgeInsets.fromLTRB(
+          18 + more,
+          14 + more,
+          18 + more,
+          16 + more,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

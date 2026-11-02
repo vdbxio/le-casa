@@ -11,7 +11,7 @@ import '../app.dart';
 import '../ui/dashed_outline.dart';
 import '../ui/palette.dart';
 import '../platform/form_factor.dart';
-import '../ui/devices_page.dart';
+import '../settings/sidebar.dart';
 import '../voice/voice_bar.dart';
 import 'auto_layout.dart';
 import 'card_picker.dart';
@@ -34,8 +34,8 @@ class DashboardPage extends StatefulWidget {
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
+/// Where the edit and placing tools sit from the screen's edge.
 const _screenPad = 14.0;
-const _gap = 12.0;
 
 /// How long the first launch listens before laying out the dashboard.
 const firstRunListen = Duration(seconds: 12);
@@ -62,16 +62,6 @@ class _DashboardPageState extends State<DashboardPage> {
             DeviceOrientation.landscapeRight,
           ],
   );
-
-  Future<void> _open(Widget page) async {
-    final dash = AppServices.of(context).dashboard;
-    dash.setEditing(false);
-    await SystemChrome.setPreferredOrientations(const []);
-    if (!mounted) return;
-    await Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (_) => page));
-    _lockOrientation();
-  }
 
   CardSources? _cached;
   Listenable? _live;
@@ -158,7 +148,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 size: box.biggest,
                 dash: dash,
                 sources: _sources(s),
-                onOpenSettings: () => _open(const DevicesPage()),
+                onOpenSettings: () => openSettings(context),
               ),
             ),
           );
@@ -223,14 +213,17 @@ class _Board extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = LeColors.of(context);
+    final look = CardStyle.of(context);
+    final edge = look.edge;
     final area = Rect.fromLTWH(
-      _screenPad,
-      _screenPad,
-      size.width - 2 * _screenPad,
-      size.height - 2 * _screenPad,
+      edge,
+      edge,
+      size.width - 2 * edge,
+      size.height - 2 * edge,
     );
-    final g = computeGeometry(page.root, area, gap: _gap);
-    final editing = dash.editing;
+    final g = computeGeometry(page.root, area, gap: look.gap);
+    final placing = dash.placing;
+    final editing = dash.editing && placing == null;
     final selected = dash.selected;
     final selBox = selected == null
         ? null
@@ -252,8 +245,10 @@ class _Board extends StatelessWidget {
                   key: ValueKey(b.path.join('.')),
                   box: b,
                   editing: editing,
+                  placing: placing != null,
                   selected: selBox == b,
                   sources: sources,
+                  onPlace: () => dash.place(b.path),
                   onSelect: () => dash.select(b.path),
                   onPick: () => _pick(context, b),
                   onRemove: () {
@@ -273,7 +268,27 @@ class _Board extends StatelessWidget {
                 ),
               ),
             ),
-          if (editing) ...[
+          if (placing != null) ...[
+            for (final gap in g.gaps)
+              _plus(
+                c,
+                gap.rect.center,
+                'Put it here',
+                () => dash.placeNew(gap.split, gap.index + 1),
+              ),
+            ..._rootCaps(c, area, place: true),
+            Positioned(
+              left: _screenPad,
+              right: _screenPad,
+              bottom: _screenPad + 8,
+              child: Center(
+                child: _PlacingBar(
+                  title: sources.model(placing).title,
+                  onCancel: dash.stopPlacing,
+                ),
+              ),
+            ),
+          ] else if (editing) ...[
             for (final gap in g.gaps) ..._gapTools(c, gap),
             ..._rootCaps(c, area),
             if (selBox != null) ..._edgeButtons(c, selBox),
@@ -424,7 +439,7 @@ class _Board extends StatelessWidget {
   }
 
   /// + at the two screen edges: a new column (or row) at either end.
-  List<Widget> _rootCaps(LeColors c, Rect area) {
+  List<Widget> _rootCaps(LeColors c, Rect area, {bool place = false}) {
     final cols = page.root.axis == SplitAxis.horizontal;
     final what = cols ? 'column' : 'row';
     final start = cols
@@ -434,6 +449,7 @@ class _Board extends StatelessWidget {
         ? Offset(area.right, area.center.dy)
         : Offset(area.center.dx, area.bottom);
     void add(int at) {
+      if (place) return dash.placeNew(const [], at);
       final p = page.insertSlot(const [], at);
       dash.selected = p;
       dash.changed();
@@ -542,8 +558,11 @@ class _Board extends StatelessWidget {
 class _SlotView extends StatelessWidget {
   final SlotBox box;
   final bool editing, selected;
+
+  /// A card is waiting to be put somewhere: empty slots show a +.
+  final bool placing;
   final CardSources sources;
-  final VoidCallback onSelect, onPick, onOptions, onRemove;
+  final VoidCallback onSelect, onPick, onOptions, onRemove, onPlace;
 
   /// The card of the slot at the given path was dropped here.
   final ValueChanged<NodePath> onDropCard;
@@ -552,8 +571,10 @@ class _SlotView extends StatelessWidget {
     super.key,
     required this.box,
     required this.editing,
+    required this.placing,
     required this.selected,
     required this.sources,
+    required this.onPlace,
     required this.onSelect,
     required this.onPick,
     required this.onOptions,
@@ -567,7 +588,21 @@ class _SlotView extends StatelessWidget {
     final card = box.slot.card;
     final (content, size) = card == null
         ? (null, null)
-        : cardContent(card, box.rect.size, sources);
+        : cardContent(
+            card,
+            box.rect.size,
+            sources,
+            extraPadding: CardStyle.of(context).extraPadding,
+          );
+    if (placing && card == null) {
+      return Center(
+        child: _BigPlus(
+          color: c.accent,
+          label: box.rect.height > 120 ? 'Put it here' : null,
+          onTap: onPlace,
+        ),
+      );
+    }
     if (!editing) {
       if (content == null) return const SizedBox.shrink();
       final scoped = CardSetupScope(onSetup: onOptions, child: content);
@@ -629,32 +664,10 @@ class _SlotView extends StatelessWidget {
               Positioned.fill(child: IgnorePointer(child: content)),
             if (card == null)
               Center(
-                child: TextButton(
-                  onPressed: onPick,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 60,
-                        height: 60,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: c.accent, width: 2.5),
-                        ),
-                        child: Icon(Icons.add, size: 30, color: c.accent),
-                      ),
-                      if (box.rect.height > 120) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          'Add card',
-                          style: TextStyle(
-                            color: c.accent,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
+                child: _BigPlus(
+                  color: c.accent,
+                  label: box.rect.height > 120 ? 'Add card' : null,
+                  onTap: onPick,
                 ),
               ),
             if (card != null || selected)
@@ -689,7 +702,14 @@ class _SlotView extends StatelessWidget {
 }
 
 /// The widget for a card spec at a slot size, and the size it chose.
-(Widget, CardSize) cardContent(CardSpec spec, Size space, CardSources sources) {
+/// [extraPadding] is how much more padding than standard the cards have
+/// (Settings › Design), which leaves less room for their content.
+(Widget, CardSize) cardContent(
+  CardSpec spec,
+  Size space,
+  CardSources sources, {
+  double extraPadding = 0,
+}) {
   switch (spec.type) {
     case 'clock':
       final s = spec.pinned ?? _clockSize(space);
@@ -701,7 +721,11 @@ class _SlotView extends StatelessWidget {
       );
     default:
       final m = sources.model(spec);
-      final s = spec.pinned ?? fitSize(m, space, backdrop: spec.backdrop);
+      final inner = Size(
+        (space.width - 2 * extraPadding).clamp(0, double.infinity),
+        (space.height - 2 * extraPadding).clamp(0, double.infinity),
+      );
+      final s = spec.pinned ?? fitSize(m, inner, backdrop: spec.backdrop);
       if (spec.template case final t? when s != CardSize.pill) {
         return (TemplateCard(m, t), s);
       }
@@ -714,6 +738,81 @@ CardSize _clockSize(Size s) {
   if (s.height < 150) return CardSize.small;
   if (s.height < 260 || s.width < 300) return CardSize.medium;
   return CardSize.large;
+}
+
+/// The round + in an empty slot.
+class _BigPlus extends StatelessWidget {
+  final Color color;
+  final String? label;
+  final VoidCallback onTap;
+  const _BigPlus({required this.color, this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => TextButton(
+    onPressed: onTap,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 60,
+          height: 60,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: color, width: 2.5),
+          ),
+          child: Icon(Icons.add, size: 30, color: color),
+        ),
+        if (label case final l?) ...[
+          const SizedBox(height: 6),
+          Text(
+            l,
+            style: TextStyle(color: color, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
+/// Shown while a card from Settings › Devices waits for a place.
+class _PlacingBar extends StatelessWidget {
+  final String title;
+  final VoidCallback onCancel;
+  const _PlacingBar({required this.title, required this.onCancel});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = LeColors.of(context);
+    return Material(
+      color: c.ink,
+      elevation: 8,
+      shape: const StadiumBorder(),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 6, 6, 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.add_circle_outline, color: c.screen, size: 20),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(
+                'Tap a + to put $title there',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: c.screen, fontWeight: FontWeight.w500),
+              ),
+            ),
+            const SizedBox(width: 10),
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: c.screen),
+              onPressed: onCancel,
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _ToolButton extends StatelessWidget {

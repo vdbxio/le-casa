@@ -18,14 +18,15 @@ import 'decoders/registry.dart';
 import 'drivers/driver.dart';
 import 'keys/key_store.dart';
 import 'platform/tablet.dart';
+import 'settings/design_store.dart';
 import 'settings/dimmer.dart';
+import 'settings/people.dart';
 import 'settings/settings_store.dart';
 import 'sync/ble_radio.dart';
 import 'sync/home.dart';
 import 'sync/sync_service.dart';
 import 'sync/wire.dart';
 import 'ui/bluetooth_gate.dart';
-import 'ui/palette.dart';
 import 'voice/voice_controller.dart';
 import 'weather/weather.dart';
 
@@ -45,6 +46,8 @@ class AppServices extends InheritedWidget {
   final HomeStore home;
   final SyncService sync;
   final VoiceController voice;
+  final PeopleStore people;
+  final DesignStore design;
 
   /// Fires when anything a card shows has changed, at most once a second.
   final Listenable liveData;
@@ -64,6 +67,8 @@ class AppServices extends InheritedWidget {
     required this.home,
     required this.sync,
     required this.voice,
+    required this.people,
+    required this.design,
     required this.liveData,
     required super.child,
   });
@@ -158,6 +163,8 @@ class _LeCasaAppState extends State<LeCasaApp> {
     settings: settings,
     share: sync,
   );
+  late final PeopleStore people = PeopleStore();
+  late final DesignStore design = DesignStore();
   late final Throttled liveData = Throttled(
     Listenable.merge([tracker, tablet, weather]),
     const Duration(seconds: 1),
@@ -185,6 +192,8 @@ class _LeCasaAppState extends State<LeCasaApp> {
         .then((_) => sync.start());
     connections.load();
     dashboard.load();
+    people.load();
+    design.load();
     keys.addListener(tracker.redecodeAll);
     scanner.advertisements.listen((adv) {
       tracker.onAdvertisement(adv);
@@ -212,6 +221,8 @@ class _LeCasaAppState extends State<LeCasaApp> {
     _dimmer?.dispose();
     liveData.dispose();
     voice.dispose();
+    design.dispose();
+    people.dispose();
     weather.dispose();
     sync.dispose();
     tablet.dispose();
@@ -239,15 +250,17 @@ class _LeCasaAppState extends State<LeCasaApp> {
       home: home,
       sync: sync,
       voice: voice,
+      people: people,
+      design: design,
       liveData: liveData,
       child: ListenableBuilder(
-        listenable: settings,
+        listenable: Listenable.merge([settings, design]),
         builder: (context, _) => MaterialApp(
           title: "Le'Casa",
           debugShowCheckedModeBanner: false,
           themeMode: settings.themeMode,
-          theme: leCasaTheme(Brightness.light),
-          darkTheme: leCasaTheme(Brightness.dark),
+          theme: design.theme(Brightness.light),
+          darkTheme: design.theme(Brightness.dark),
           builder: (context, child) =>
               BluetoothGate(child: child ?? const SizedBox()),
           home: const DashboardPage(),

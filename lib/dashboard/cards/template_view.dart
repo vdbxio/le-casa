@@ -226,20 +226,20 @@ class TemplateCard extends StatelessWidget {
   final TemplateEditing? editing;
   const TemplateCard(this.model, this.template, {super.key, this.editing});
 
-  static const _radius = BorderRadius.all(Radius.circular(20));
-
   @override
   Widget build(BuildContext context) {
     final c = LeColors.of(context);
     final points = dataPoints(model);
     final edit = editing;
+    final look = CardStyle.of(context);
     final card = DecoratedBox(
-      decoration: BoxDecoration(color: c.card, borderRadius: _radius),
+      decoration: look.decoration(c),
       child: ClipRRect(
-        borderRadius: _radius,
+        borderRadius: look.borderRadius,
         child: LayoutBuilder(
           builder: (context, box) {
-            final area = templatePadding.deflateRect(Offset.zero & box.biggest);
+            final area = (templatePadding + EdgeInsets.all(look.extraPadding))
+                .deflateRect(Offset.zero & box.biggest);
             final plan = planTemplate(template, area, keepAll: edit != null);
             final shown = {for (final p in plan.parts) p.part.kind};
             final dropped = plan.hidden

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lecasa/ble/connection_manager.dart';
 import 'package:lecasa/ble/device_tracker.dart';
 import 'package:lecasa/ble/gatt_session.dart';
+import 'package:lecasa/decoders/bthome.dart';
 import 'package:lecasa/decoders/decoded.dart';
 import 'package:lecasa/decoders/raw_advertisement.dart';
 import 'package:lecasa/decoders/registry.dart';
@@ -131,8 +132,20 @@ class FridgeDriver implements ControllableDriver {
 
 class Screen {
   final HomeStore home;
-  final DeviceTracker tracker = DeviceTracker(DecoderRegistry([]));
   final KeyStore keys = KeyStore();
+  // Wired to the keys as the app does, so encrypted BTHome can be tried.
+  late final DeviceTracker tracker = DeviceTracker(
+    DecoderRegistry([
+      BtHomeDecoder(
+        keyFor: keys.keyFor,
+        macFor: keys.macFor,
+        candidates: () => keys.candidates,
+        onMatch: (id, c, mac) => scheduleMicrotask(
+          () => keys.bind(id, c.key, hex(mac, sep: ':').toUpperCase()),
+        ),
+      ),
+    ]),
+  );
   final FridgeDriver driver = FridgeDriver();
   late final ConnectionManager connections;
   late final SyncService sync;
@@ -165,6 +178,7 @@ class Screen {
           ..settleTime = Duration.zero
           ..shareEvery = Duration.zero
           ..start();
+    keys.addListener(tracker.redecodeAll);
     keys.label = (id) => (
       name: tracker[id]?.latest.name,
       mac: tracker[id]?.latest.macString,
@@ -489,6 +503,70 @@ void main() {
       expect(m10.keys.has(m10Shunt), isFalse);
     },
   );
+
+  group('encrypted Le\'Fob (no MAC in its broadcasts)', () {
+    // bthome.io's encrypted example, without the MAC in the payload.
+    const fobMac = '54:48:E6:8F:80:A5';
+    const ipadFob = '3C1F6E42-0000-4000-8000-00000000F0B0';
+    const fobKey = '231d39c1d7cc1ab1aee224cd096db932';
+    final payload = fromHex('41 a4 72 66 c9 5f 73 00 11 22 33 78 23 72 14');
+
+    void hearFob(Screen s, String id, {Uint8List? mac}) {
+      final adv = RawAdvertisement(
+        id: id,
+        rssi: -60,
+        seenAt: DateTime.now(),
+        mac: mac,
+        serviceData: {0xFCD2: payload},
+      );
+      s.tracker.onAdvertisement(adv);
+    }
+
+    Future<void> hearBoth() async {
+      hearFob(ipad, ipadFob);
+      hearFob(m10, fobMac, mac: parseMac(fobMac));
+      await settle();
+    }
+
+    bool reads(Screen s, String id) =>
+        s.tracker[id]?.decoded?.isReadable ?? false;
+
+    test('a key typed on iOS without a MAC works on both once Android '
+        'finds the MAC', () async {
+      await hearBoth();
+      expect(ipad.tracker[ipadFob]?.decoded?.needs, contains('key'));
+      await ipad.keys.set(ipadFob, fobKey);
+      await hearBoth();
+      // Android: the key came under the iPad's id; the MIC says whose it is.
+      expect(reads(m10, fobMac), isTrue);
+      expect(m10.keys.has(fobMac), isTrue);
+      expect(m10.keys.recordFor(SecretKind.key, fobMac)?.mac, fobMac);
+      // The filed copy came back with the MAC, so iOS can use its key.
+      await hearBoth();
+      expect(reads(ipad, ipadFob), isTrue);
+      expect(ipad.tracker[ipadFob]?.mac, fobMac);
+      expect(ipad.keys.macFor(ipadFob), isNotNull);
+    });
+
+    test('a key typed on iOS with the MAC works there at once', () async {
+      await hearBoth();
+      await ipad.keys.set(ipadFob, fobKey, mac: fobMac.toLowerCase());
+      hearFob(ipad, ipadFob);
+      expect(reads(ipad, ipadFob), isTrue);
+      await settle();
+      // And Android files it under its own id, by MAC.
+      hearFob(m10, fobMac, mac: parseMac(fobMac));
+      await settle();
+      expect(m10.keys.has(fobMac), isTrue);
+      expect(reads(m10, fobMac), isTrue);
+    });
+
+    test('iOS without a MAC says what it needs', () async {
+      await ipad.keys.set(ipadFob, fobKey);
+      hearFob(ipad, ipadFob);
+      expect(ipad.tracker[ipadFob]?.decoded?.needs, contains('MAC'));
+    });
+  });
 
   test(
     'a key for a device the other screen has not heard yet waits for it',

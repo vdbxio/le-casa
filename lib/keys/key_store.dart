@@ -100,6 +100,7 @@ class KeyStore extends ChangeNotifier {
       if (k.startsWith(_prefix)) {
         final v = _prefs!.getString(k);
         if (v != null) _keys[k.substring(_prefix.length)] = fromHex(v);
+        _candidates = null;
       } else if (k.startsWith(_secretPrefix)) {
         final v = _prefs!.getString(k);
         if (v != null) _secrets[k.substring(_secretPrefix.length)] = v;
@@ -117,14 +118,71 @@ class KeyStore extends ChangeNotifier {
 
   Uint8List? keyFor(String id) => _keys[id];
 
+  /// The MAC a key was saved with, for a device whose radio hides it (iOS)
+  /// and whose broadcasts leave it out (Le'Fob).
+  Uint8List? macFor(String id) =>
+      parseMac(_meta[_slot(SecretKind.key, id)]?.mac);
+
+  List<({String id, Uint8List key, Uint8List? mac})>? _candidates;
+
+  /// Every stored key with the id and MAC it was saved under, for trying
+  /// on a device that has no key of its own. The same list until a key
+  /// changes.
+  List<({String id, Uint8List key, Uint8List? mac})> get candidates =>
+      _candidates ??= List.unmodifiable([
+        for (final e in _keys.entries)
+          (id: e.key, key: e.value, mac: macFor(e.key)),
+      ]);
+
+  /// Files a key that decrypted device [id] (with [mac]) under that id,
+  /// with its MAC, as a fresh change so it reaches the other screens. Both
+  /// ways this matters: an Android screen files a key that came from iOS
+  /// under its own id and adds the MAC, and the record it sends back lets
+  /// iOS use the key on its own id for the device.
+  Future<void> bind(String id, Uint8List key, String mac) async {
+    final mine = recordFor(SecretKind.key, id);
+    final v = hex(key, sep: '');
+    if (mine?.value == v && mine?.mac == mac) return;
+    final r = _withLabel(
+      KeyRecord(SecretKind.key, id, value: v, mac: mac, at: _stamp()),
+    );
+    await _put(r);
+  }
+
   bool has(String id) => _keys.containsKey(id);
 
-  Future<void> set(String id, String hexKey) async {
+  /// Saves a 16-byte key. [mac] is for a device whose MAC this screen
+  /// cannot see (iOS) and whose broadcasts leave it out, but which the
+  /// decryption needs.
+  Future<void> set(String id, String hexKey, {String? mac}) async {
     final bytes = fromHex(hexKey);
     if (bytes.length != 16) {
       throw const FormatException('Key must be 16 bytes (32 hex characters)');
     }
-    await _put(_local(SecretKind.key, id, hex(bytes, sep: '')));
+    String? m;
+    if (mac != null && mac.trim().isNotEmpty) {
+      final parsed = parseMac(mac.trim());
+      if (parsed == null) {
+        throw const FormatException(
+          'MAC must be 6 bytes, like 84:C2:E4:01:02:03',
+        );
+      }
+      m = hex(parsed, sep: ':').toUpperCase();
+    }
+    final r = _local(SecretKind.key, id, hex(bytes, sep: ''));
+    await _put(
+      m == null
+          ? r
+          : KeyRecord(
+              r.kind,
+              r.id,
+              name: r.name,
+              mac: m,
+              fp: r.fp,
+              value: r.value,
+              at: r.at,
+            ),
+    );
   }
 
   Future<void> remove(String id) => _put(_local(SecretKind.key, id, null));
@@ -144,6 +202,7 @@ class KeyStore extends ChangeNotifier {
   /// Forgets an entry on this screen only, leaving no removal behind for
   /// other screens to copy: for one filed under the wrong device.
   Future<void> drop(SecretKind kind, String id) async {
+    _candidates = null;
     switch (kind) {
       case SecretKind.key:
         _keys.remove(id);
@@ -253,6 +312,7 @@ class KeyStore extends ChangeNotifier {
   }
 
   Future<void> _put(KeyRecord r) async {
+    _candidates = null;
     final v = r.value;
     switch (r.kind) {
       case SecretKind.key:

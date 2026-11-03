@@ -1,12 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lecasa/decoders/bthome.dart';
 import 'package:lecasa/decoders/decoded.dart';
+import 'package:lecasa/decoders/raw_advertisement.dart';
 
 import 'helpers.dart';
 
 // Vectors from bthome-ble tests/test_parser_v2.py (MIT).
 void main() {
-  const d = BtHomeDecoder();
+  final d = BtHomeDecoder();
 
   Map<String, Object?> values(Decoded out) => {
     for (final r in out.readings) r.label: r.value,
@@ -133,6 +134,94 @@ void main() {
       ),
     )!;
     expect(out.needs, contains('MAC'));
+  });
+
+  group('trying stored keys', () {
+    const key = '231d39c1d7cc1ab1aee224cd096db932';
+    const frame = '41 a4 72 66 c9 5f 73 00 11 22 33 78 23 72 14';
+
+    test('iOS decrypts with a key saved with its MAC', () {
+      final dec = BtHomeDecoder(
+        keyFor: keyFor('ios-uuid', key),
+        macFor: (id) => id == 'ios-uuid' ? parseMac('54:48:E6:8F:80:A5') : null,
+      );
+      final out = dec.decode(
+        adv(id: 'ios-uuid', mac: null, serviceData: {0xFCD2: frame}),
+      )!;
+      expect(values(out), {'temperature': 25.06, 'humidity': 50.55});
+      expect(out.info['mac'], '54:48:E6:8F:80:A5');
+    });
+
+    test('a key saved under another id is found by its MIC', () {
+      final matches = <(String, String, String)>[];
+      final list = [
+        (
+          id: 'other',
+          key: fromHex('00' * 16),
+          mac: parseMac('11:22:33:44:55:66'),
+        ),
+        (id: 'm10-id', key: fromHex(key), mac: parseMac('54:48:E6:8F:80:A5')),
+      ];
+      final dec = BtHomeDecoder(
+        candidates: () => list,
+        onMatch: (id, c, mac) =>
+            matches.add((id, c.id, hex(mac, sep: ':').toUpperCase())),
+      );
+      final out = dec.decode(
+        adv(id: 'ios-uuid', mac: null, serviceData: {0xFCD2: frame}),
+      )!;
+      expect(out.isReadable, isTrue);
+      expect(matches, [('ios-uuid', 'm10-id', '54:48:E6:8F:80:A5')]);
+      // The next packet uses what was found without asking again.
+      expect(
+        dec
+            .decode(
+              adv(id: 'ios-uuid', mac: null, serviceData: {0xFCD2: frame}),
+            )!
+            .isReadable,
+        isTrue,
+      );
+      expect(matches, hasLength(1));
+    });
+
+    test('Android tries a key from iOS with its own MAC', () {
+      final matches = <String>[];
+      final list = [(id: 'ios-uuid', key: fromHex(key), mac: null)];
+      final dec = BtHomeDecoder(
+        candidates: () => list,
+        onMatch: (id, c, mac) => matches.add(id),
+      );
+      final out = dec.decode(
+        adv(
+          id: '54:48:E6:8F:80:A5',
+          mac: '54:48:E6:8F:80:A5',
+          serviceData: {0xFCD2: frame},
+        ),
+      )!;
+      expect(out.isReadable, isTrue);
+      expect(matches, ['54:48:E6:8F:80:A5']);
+    });
+
+    test('keys that do not fit are not tried again until they change', () {
+      var calls = 0;
+      final list = [
+        (id: 'x', key: fromHex('00' * 16), mac: parseMac('54:48:E6:8F:80:A5')),
+      ];
+      final dec = BtHomeDecoder(
+        candidates: () {
+          calls++;
+          return list;
+        },
+      );
+      for (var i = 0; i < 3; i++) {
+        final out = dec.decode(
+          adv(id: 'ios-uuid', mac: null, serviceData: {0xFCD2: frame}),
+        )!;
+        expect(out.isReadable, isFalse);
+        expect(out.needs, contains('key'));
+      }
+      expect(calls, 3); // looked up, but the same list is not retried
+    });
   });
 
   test('unknown object id stops parsing but keeps what came before', () {

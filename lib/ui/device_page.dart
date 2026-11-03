@@ -35,6 +35,7 @@ class DevicePage extends StatefulWidget {
 class _DevicePageState extends State<DevicePage> {
   Timer? _tick;
   final _keyCtl = TextEditingController();
+  final _macCtl = TextEditingController();
   final _pinCtl = TextEditingController();
   String? _keyError;
 
@@ -48,6 +49,7 @@ class _DevicePageState extends State<DevicePage> {
   void dispose() {
     _tick?.cancel();
     _keyCtl.dispose();
+    _macCtl.dispose();
     _pinCtl.dispose();
     super.dispose();
   }
@@ -56,9 +58,15 @@ class _DevicePageState extends State<DevicePage> {
     final services = AppServices.of(context);
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await services.keys.set(widget.id, _keyCtl.text);
+      // A MAC alone, for a key already saved.
+      final stored = services.keys.keyFor(widget.id);
+      final text = _keyCtl.text.trim().isEmpty && stored != null
+          ? hex(stored, sep: '')
+          : _keyCtl.text;
+      await services.keys.set(widget.id, text, mac: _macCtl.text);
       setState(() => _keyError = null);
       _keyCtl.clear();
+      _macCtl.clear();
       messenger.showSnackBar(
         SnackBar(
           content: Text(
@@ -114,6 +122,15 @@ class _DevicePageState extends State<DevicePage> {
             dev.polled?.protocol == 'Xiaomi (connected)' ||
             hasKey;
         final hasPin = services.keys.secretFor(widget.id) != null;
+        // Encrypted BTHome needs the MAC, which iOS hides and Le'Fob
+        // leaves out of its broadcasts.
+        final savedMac = services.keys.macFor(widget.id);
+        final askMac =
+            (d?.protocol == 'BTHome (encrypted)' ||
+                (hasKey &&
+                    dev.decoded?.protocol.startsWith('BTHome') == true)) &&
+            a.mac == null &&
+            dev.decoded?.info['mac'] == null;
         // iOS knows devices by its own id, not a MAC: show it beside the
         // name where there is room, else with the other details.
         final platformId = parseMac(a.id) == null;
@@ -279,6 +296,29 @@ class _DevicePageState extends State<DevicePage> {
                   autocorrect: false,
                   enableSuggestions: false,
                 ),
+                if (askMac) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    savedMac != null
+                        ? 'Saved with MAC ${hex(savedMac, sep: ':').toUpperCase()}, '
+                              'but it does not decrypt with it. Check both.'
+                        : 'This screen cannot see the MAC address, and the '
+                              'key only works with it. Type it in (an Android '
+                              'screen shows it), or leave it empty and an '
+                              'Android screen in your home will find it.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _macCtl,
+                    decoration: const InputDecoration(
+                      labelText: 'MAC address, like 84:C2:E4:01:02:03',
+                      border: OutlineInputBorder(),
+                    ),
+                    autocorrect: false,
+                    enableSuggestions: false,
+                  ),
+                ],
                 const SizedBox(height: 8),
                 Row(
                   children: [

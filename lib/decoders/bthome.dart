@@ -18,10 +18,55 @@ import 'raw_advertisement.dart';
 
 const int bthomeServiceUuid = 0xFCD2;
 
+/// A stored key with the id it was saved under and the MAC it was saved
+/// with, when known.
+typedef KeyCandidate = ({String id, Uint8List key, Uint8List? mac});
+
+/// Every stored key worth trying on a device that has none of its own.
+/// Returns the same list instance until the keys change, so a device that
+/// matched none is not tried again for every packet.
+typedef KeyCandidates = List<KeyCandidate> Function();
+
+/// The MAC a device id was saved or learnt with (iOS hides it).
+typedef MacProvider = Uint8List? Function(String deviceId);
+
+/// Told when a stored key decrypted a device it was not saved under, or
+/// with a MAC it was not saved with, so the app can file it there.
+typedef KeyMatched = void Function(
+  String deviceId,
+  KeyCandidate key,
+  Uint8List mac,
+);
+
+List<KeyCandidate> _noCandidates() => const [];
+Uint8List? _noMac(String _) => null;
+
 class BtHomeDecoder implements Decoder {
   final KeyProvider keyFor;
 
-  const BtHomeDecoder({this.keyFor = noKeys});
+  /// MAC for an encrypted device whose radio hides it and whose payload
+  /// leaves it out (Le'Fob, most BTHome firmware on iOS).
+  final MacProvider macFor;
+
+  /// Keys to try when a device has no key of its own, or no MAC to use it
+  /// with. The 4-byte MIC tells whether one fits. This is how an iOS
+  /// screen uses a key saved with the device's MAC, and how a key that came
+  /// from another screen under that screen's id finds its device.
+  final KeyCandidates candidates;
+  final KeyMatched? onMatch;
+
+  /// Key and MAC that decrypted each device id, by trial.
+  final Map<String, (Uint8List, Uint8List)> _found = {};
+
+  /// The candidate list each device id was last tried against in vain.
+  final Map<String, List<KeyCandidate>> _missed = {};
+
+  BtHomeDecoder({
+    this.keyFor = noKeys,
+    this.macFor = _noMac,
+    this.candidates = _noCandidates,
+    this.onMatch,
+  });
 
   @override
   String get name => 'BTHome';
@@ -65,27 +110,6 @@ class BtHomeDecoder implements Decoder {
 
     Uint8List payload;
     if (encrypted) {
-      final key = keyFor(adv.id);
-      if (key == null) {
-        return Decoded(
-          protocol: 'BTHome (encrypted)',
-          kind: DeviceKind.needsSetup,
-          model: _guessModel(adv, const []),
-          needs: 'Needs the 16-byte BTHome encryption key',
-          info: extra,
-        );
-      }
-      if (mac == null) {
-        return Decoded(
-          protocol: 'BTHome (encrypted)',
-          kind: DeviceKind.needsSetup,
-          model: _guessModel(adv, const []),
-          needs:
-              'Cannot decrypt without the MAC address (iOS hides it). '
-              'Ask the device to include its MAC in the payload.',
-          info: extra,
-        );
-      }
       if (data.length < offset + 8 + 1) {
         return Decoded(
           protocol: 'BTHome (encrypted)',
@@ -98,16 +122,56 @@ class BtHomeDecoder implements Decoder {
       final counter = data.sublist(data.length - 8, data.length - 4);
       final mic = data.sublist(data.length - 4);
       final cipherText = data.sublist(offset, data.length - 8);
-      final nonce = Uint8List.fromList([...mac, 0xD2, 0xFC, info, ...counter]);
-      final plain = decryptCcm(key, nonce, cipherText, mic);
+      Uint8List? tryWith(Uint8List key, Uint8List m) => decryptCcm(
+        key,
+        Uint8List.fromList([...m, 0xD2, 0xFC, info, ...counter]),
+        cipherText,
+        mic,
+      );
+
+      final key = keyFor(adv.id);
+      final useMac = mac ?? macFor(adv.id);
+      Uint8List? plain;
+      if (key != null && useMac != null) {
+        plain = tryWith(key, useMac);
+        if (plain != null) mac = useMac;
+      }
       if (plain == null) {
+        final found = _found[adv.id];
+        if (found != null &&
+            (key == null || _same(found.$1, key)) &&
+            (mac == null || _same(found.$2, mac))) {
+          plain = tryWith(found.$1, found.$2);
+          if (plain != null) {
+            mac = found.$2;
+          } else {
+            _found.remove(adv.id);
+          }
+        }
+      }
+      if (plain == null && (key == null || useMac == null)) {
+        final hit = _trial(adv.id, key, mac, tryWith);
+        if (hit != null) {
+          plain = hit.$1;
+          mac = hit.$2;
+        }
+      }
+      if (mac != null) extra['mac'] = hex(mac, sep: ':').toUpperCase();
+      if (plain == null) {
+        final needs = key == null
+            ? 'Needs the 16-byte BTHome encryption key'
+            : useMac == null
+            ? 'Needs the MAC address to decrypt: this screen cannot see it. '
+                  'Type it in below, or let an Android screen in your home '
+                  'read the device once.'
+            : 'Decryption failed: wrong key?';
         return Decoded(
           protocol: 'BTHome (encrypted)',
           kind: DeviceKind.needsSetup,
           model: _guessModel(adv, const []),
-          needs: 'Decryption failed: wrong key?',
+          needs: needs,
           info: extra,
-          keyCheck: KeyCheck.wrong,
+          keyCheck: key != null && useMac != null ? KeyCheck.wrong : null,
         );
       }
       extra['counter'] = ByteData.sublistView(counter)
@@ -207,6 +271,42 @@ class BtHomeDecoder implements Decoder {
       info: extra,
       keyCheck: encrypted ? KeyCheck.works : null,
     );
+  }
+
+  /// Tries the stored keys that could belong to [id]. With [key] set, only
+  /// that key (its MAC is what is missing); with [mac] set, only that MAC.
+  (Uint8List, Uint8List)? _trial(
+    String id,
+    Uint8List? key,
+    Uint8List? mac,
+    Uint8List? Function(Uint8List key, Uint8List mac) tryWith,
+  ) {
+    final all = candidates();
+    if (identical(_missed[id], all)) return null;
+    for (final c in all) {
+      final m = mac ?? c.mac;
+      if (m == null) continue;
+      if (key != null && !_same(c.key, key)) continue;
+      final plain = tryWith(c.key, m);
+      if (plain == null) continue;
+      _found[id] = (c.key, m);
+      _missed.remove(id);
+      final cb = onMatch;
+      if (cb != null && (c.id != id || c.mac == null || !_same(c.mac!, m))) {
+        cb(id, c, m);
+      }
+      return (plain, m);
+    }
+    _missed[id] = all;
+    return null;
+  }
+
+  static bool _same(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   static String _guessModel(

@@ -14,6 +14,7 @@ import 'ble/scan_autostart.dart';
 import 'dashboard/dashboard_controller.dart';
 import 'dashboard/dashboard_page.dart';
 import 'dashboard/history.dart';
+import 'decoders/raw_advertisement.dart';
 import 'decoders/registry.dart';
 import 'drivers/driver.dart';
 import 'keys/key_store.dart';
@@ -125,7 +126,15 @@ class LeCasaApp extends StatefulWidget {
 class _LeCasaAppState extends State<LeCasaApp> {
   late final KeyStore keys = KeyStore();
   late final DeviceTracker tracker = DeviceTracker(
-    DecoderRegistry.standard(keyFor: keys.keyFor),
+    DecoderRegistry.standard(
+      keyFor: keys.keyFor,
+      macFor: (id) => keys.macFor(id) ?? parseMac(tracker[id]?.learnedMac),
+      keyCandidates: () => keys.candidates,
+      // Decoding runs inside the scan callback; file the key after it.
+      onKeyMatch: (id, c, mac) => scheduleMicrotask(
+        () => keys.bind(id, c.key, hex(mac, sep: ':').toUpperCase()),
+      ),
+    ),
   );
   late final BleScanner scanner = BleScanner();
   late final ScanAutostart autostart = ScanAutostart(scanner);

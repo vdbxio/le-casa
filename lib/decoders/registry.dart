@@ -26,24 +26,33 @@ class DecoderRegistry {
 
   DecoderRegistry(this.decoders);
 
-  factory DecoderRegistry.standard({KeyProvider keyFor = noKeys}) =>
-      DecoderRegistry([
-        BtHomeDecoder(keyFor: keyFor),
-        VictronDecoder(keyFor: keyFor),
-        XiaomiStockDecoder(keyFor: keyFor),
-        const PvvxCustomDecoder(),
-        SwitchBotDecoder(),
-        GoveeDecoder(),
-        const ImprovDecoder(),
-        const DalyDecoder(),
-        const HcaloryDecoder(),
-        const AlpicoolDecoder(),
-        const IdealLedDecoder(),
-        // after the appliances: some BMS name patterns are broad
-        const BmsDecoder(),
-        const AppleDecoder(),
-        const LeCasaScreenDecoder(),
-      ]);
+  factory DecoderRegistry.standard({
+    KeyProvider keyFor = noKeys,
+    MacProvider? macFor,
+    KeyCandidates? keyCandidates,
+    KeyMatched? onKeyMatch,
+  }) => DecoderRegistry([
+    BtHomeDecoder(
+      keyFor: keyFor,
+      macFor: macFor ?? (_) => null,
+      candidates: keyCandidates ?? () => const [],
+      onMatch: onKeyMatch,
+    ),
+    VictronDecoder(keyFor: keyFor),
+    XiaomiStockDecoder(keyFor: keyFor),
+    const PvvxCustomDecoder(),
+    SwitchBotDecoder(),
+    GoveeDecoder(),
+    const ImprovDecoder(),
+    const DalyDecoder(),
+    const HcaloryDecoder(),
+    const AlpicoolDecoder(),
+    const IdealLedDecoder(),
+    // after the appliances: some BMS name patterns are broad
+    const BmsDecoder(),
+    const AppleDecoder(),
+    const LeCasaScreenDecoder(),
+  ]);
 
   Decoded? decode(RawAdvertisement adv) {
     for (final d in decoders) {

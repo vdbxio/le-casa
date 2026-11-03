@@ -1,5 +1,5 @@
-// The settings and devices page: a split view on tablets, a list that
-// opens deeper pages on phones. Set PREVIEW_DIR to save PNGs.
+// Settings: a panel down the right over the dimmed dashboard, with General,
+// Home, Devices and Design. Set PREVIEW_DIR to save PNGs.
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -16,6 +16,8 @@ import 'package:lecasa/dashboard/dashboard_controller.dart';
 import 'package:lecasa/dashboard/history.dart';
 import 'package:lecasa/keys/key_store.dart';
 import 'package:lecasa/platform/tablet.dart';
+import 'package:lecasa/settings/design_store.dart';
+import 'package:lecasa/settings/people.dart';
 import 'package:lecasa/settings/settings_store.dart';
 import 'package:lecasa/sync/ble_radio.dart';
 import 'package:lecasa/sync/home.dart';
@@ -23,8 +25,11 @@ import 'package:lecasa/sync/sync_service.dart';
 import 'package:lecasa/sync/read_by.dart';
 import 'package:lecasa/ui/bluetooth_gate.dart';
 import 'package:lecasa/ui/device_page.dart';
-import 'package:lecasa/ui/devices_page.dart';
-import 'package:lecasa/ui/palette.dart';
+import 'package:lecasa/dashboard/auto_layout.dart';
+import 'package:lecasa/dashboard/catalog.dart';
+import 'package:lecasa/dashboard/dashboard_page.dart';
+import 'package:lecasa/settings/device_stage.dart';
+import 'package:lecasa/settings/design_page.dart';
 import 'package:lecasa/weather/weather.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -41,7 +46,11 @@ class _FakeCentral implements CentralManager {
       i.isGetter ? const Stream<Never>.empty() : Future.value();
 }
 
-/// Pumps the page and returns what to call at the end of the test.
+late DashboardController _dash;
+late DesignStore _design;
+late PeopleStore _people;
+
+/// Pumps the dashboard and returns what to call at the end of the test.
 Future<Future<void> Function()> _pump(
   WidgetTester t,
   Size size, {
@@ -57,6 +66,17 @@ Future<Future<void> Function()> _pump(
   final settings = SettingsStore();
   final keys = KeyStore();
   final home = HomeStore.memory('test', 'Test screen');
+  final dash = DashboardController();
+  await dash.load();
+  final weather = WeatherService(settings);
+  dash.setLayout(
+    autoLayout(
+      catalog(CardSources(tracker: tracker, weather: weather)),
+      upright: size.height > size.width,
+    ),
+  );
+  final design = DesignStore();
+  final people = PeopleStore();
   final sync = SyncService(
     home: home,
     tracker: tracker,
@@ -73,11 +93,11 @@ Future<Future<void> Function()> _pump(
         keys: keys,
         tracker: tracker,
         connections: connections,
-        dashboard: DashboardController(),
+        dashboard: dash,
         history: History(tracker),
         tablet: TabletSensors(),
         settings: settings,
-        weather: WeatherService(settings),
+        weather: weather,
         home: home,
         voice: VoiceController(
           tracker: tracker,
@@ -85,17 +105,28 @@ Future<Future<void> Function()> _pump(
           settings: settings,
         ),
         sync: sync,
+        people: people,
+        design: design,
         liveData: tracker,
-        child: MaterialApp(
-          theme: leCasaTheme(Brightness.light),
-          builder: (context, child) => BluetoothGate(child: child!),
-          home: const DevicesPage(),
+        child: ListenableBuilder(
+          listenable: design,
+          builder: (context, _) => MaterialApp(
+            debugShowCheckedModeBanner: false,
+            theme: design.theme(Brightness.light),
+            builder: (context, child) => BluetoothGate(child: child!),
+            home: const DashboardPage(),
+          ),
         ),
       ),
     ),
   );
   await t.pump();
+  _dash = dash;
+  _design = design;
+  _people = people;
   return () async {
+    // Let the debounced saves run.
+    await t.pump(const Duration(seconds: 1));
     sync.dispose();
     connections.dispose();
     await t.pumpWidget(const SizedBox());
@@ -117,57 +148,103 @@ Future<void> _shot(WidgetTester t, String name) async {
     ..writeAsBytesSync(bytes!.buffer.asUint8List());
 }
 
+Future<void> _openSettings(WidgetTester t) async {
+  await t.tap(find.byTooltip('Settings').first);
+  await t.pumpAndSettle();
+}
+
+Future<void> _go(WidgetTester t, String section) async {
+  await t.tap(find.text(section).first);
+  await _settle(t);
+}
+
+/// Lets page transitions finish. Device pages tick every second, so
+/// pumpAndSettle never settles on them.
+Future<void> _settle(WidgetTester t) async {
+  for (var i = 0; i < 8; i++) {
+    await t.pump(const Duration(milliseconds: 100));
+  }
+}
+
 void main() {
   setUpAll(loadTestFonts);
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  testWidgets('tablet: list on the left, general settings on the right', (
+  testWidgets('the gear opens the panel: four sections and the stats', (
     t,
   ) async {
     final done = await _pump(t, const Size(1280, 800));
+    await _openSettings(t);
     expect(t.takeException(), isNull);
-    // Groups are sections of the list, not tiles to open.
-    expect(find.textContaining('Solar · 2'), findsOneWidget);
-    expect(find.text('Luna 50'), findsOneWidget);
-    // General settings show beside the list from the start.
-    expect(find.text('Theme'), findsOneWidget);
-    await _shot(t, 'settings-tablet-general');
+    for (final s in ['General', 'Home', 'Devices', 'Design']) {
+      expect(find.text(s), findsWidgets);
+    }
+    expect(find.text('At a glance'), findsOneWidget);
+    expect(find.text('On the dashboard'), findsOneWidget);
+    await _shot(t, 'sidebar-menu');
 
-    await t.tap(find.text('Luna 50'));
-    await t.pump();
-    expect(find.byType(DevicePage), findsOneWidget);
-    expect(find.text('Theme'), findsNothing);
-    await _shot(t, 'settings-tablet-device');
-    // Still one page: nothing was pushed.
-    expect(find.text('Luna 50'), findsWidgets);
-
-    await t.tap(find.text('General'));
-    await t.pump();
+    await _go(t, 'General');
     expect(find.text('Theme'), findsOneWidget);
+    expect(find.text('Listen for devices'), findsOneWidget);
+    await _shot(t, 'sidebar-general');
+
+    // Back to the menu inside the panel, then a tap on the dim closes it.
+    await t.tap(find.byType(BackButton));
+    await _settle(t);
+    expect(find.text('At a glance'), findsOneWidget);
+    await t.tapAt(const Offset(200, 400));
+    await _settle(t);
+    expect(find.text('At a glance'), findsNothing);
     await done();
   });
 
-  testWidgets('phone: the list alone, a device opens as its own page', (
-    t,
-  ) async {
-    final done = await _pump(t, const Size(390, 844));
+  testWidgets('a device shows its card on the dimmed dashboard', (t) async {
+    final done = await _pump(t, const Size(1280, 800));
+    await _openSettings(t);
+    await _go(t, 'Devices');
+    expect(find.textContaining('Solar · 2'), findsOneWidget);
+    await _shot(t, 'sidebar-devices');
+    await t.tap(find.text('Luna 50').last);
+    await _settle(t);
     expect(t.takeException(), isNull);
-    expect(find.text('Theme'), findsNothing);
-    expect(find.byType(DevicePage), findsNothing);
-    await _shot(t, 'settings-phone-list');
-
-    await t.tap(find.text('Luna 50'));
-    await t.pumpAndSettle();
     expect(find.byType(DevicePage), findsOneWidget);
-    expect(find.byType(DevicesPage), findsNothing);
-    expect(find.byType(BackButton), findsOneWidget);
-    await _shot(t, 'settings-phone-device');
+    expect(find.byType(DeviceStage), findsOneWidget);
+    expect(find.text('Everything it reports'), findsOneWidget);
+    await _shot(t, 'sidebar-device');
 
-    await t.tap(find.byType(BackButton));
-    await t.pumpAndSettle();
-    await t.tap(find.text('General'));
-    await t.pumpAndSettle();
-    expect(find.text('Theme'), findsOneWidget);
+    // Luna is only in the combined solar card, so it can be added. The
+    // dashboard is full: a + sits between every two slots.
+    await t.tap(find.text('Add to dashboard'));
+    await _settle(t);
+    expect(find.byType(DevicePage), findsNothing);
+    expect(_dash.placing, isNotNull);
+    expect(find.textContaining('Tap a + to put'), findsOneWidget);
+    await _shot(t, 'placing');
+    final before = _dash.page.slots.length;
+    await t.tap(find.byTooltip('Put it here').first);
+    await _settle(t);
+    expect(_dash.page.slots.length, before + 1);
+    expect(_dash.placing, isNull);
+    final luna = _dash.page.cardKeys.firstWhere((k) => k.contains('luna'));
+    await _shot(t, 'placed');
+
+    // Now on the dashboard, it can come off again.
+    await _openSettings(t);
+    await _go(t, 'Devices');
+    await t.tap(find.text('Luna 50').last);
+    await _settle(t);
+    expect(find.text('Move on the dashboard'), findsOneWidget);
+    await t.tap(find.text('Take off the dashboard'));
+    await _settle(t);
+    expect(_dash.page.cardKeys, isNot(contains(luna)));
+    // Adding it back fills the empty slot it left.
+    await t.tap(find.text('Add to dashboard'));
+    await _settle(t);
+    await t.tap(find.text('Put it here').first);
+    await _settle(t);
+    expect(_dash.page.cardKeys, contains(luna));
+    expect(_dash.page.slots.length, before + 1);
+    expect(t.takeException(), isNull);
     await done();
   });
 
@@ -175,38 +252,79 @@ void main() {
     t,
   ) async {
     final done = await _pump(t, const Size(1280, 800));
-    await t.tap(find.text('Luna 50'));
-    await t.pump();
-    // The details sit on one line of chips; iOS-style ids go in the header.
+    await _openSettings(t);
+    await _go(t, 'Devices');
+    await t.tap(find.text('Luna 50').last);
+    await _settle(t);
     expect(find.textContaining('Signal'), findsOneWidget);
-    await _shot(t, 'device-header-tablet');
     await t.tap(find.byTooltip('Rename'));
     await t.pump();
     await t.enterText(find.byType(TextField).first, 'Roof 50');
     await t.testTextInput.receiveAction(TextInputAction.done);
-    await t.pump();
-    // The header and the list both use the new name.
-    expect(find.text('Roof 50'), findsNWidgets(2));
-    // Emptying it goes back to the advertised name.
-    await t.tap(find.byTooltip('Rename'));
-    await t.pump();
-    await t.enterText(find.byType(TextField).first, '');
-    await t.testTextInput.receiveAction(TextInputAction.done);
-    await t.pump();
-    expect(find.text('Roof 50'), findsNothing);
-    expect(find.text('Luna 50'), findsNWidgets(2));
+    await _settle(t);
+    // The header and the card beside the panel use the new name.
+    expect(find.text('Roof 50'), findsWidgets);
+    await t.tap(find.byType(BackButton));
+    await _settle(t);
+    expect(find.text('Roof 50'), findsWidgets);
     await done();
   });
 
-  testWidgets('a phone shows the platform id with the other details', (
-    t,
-  ) async {
-    final done = await _pump(t, const Size(390, 844));
-    await t.tap(find.text('Luna 50'));
-    await t.pumpAndSettle();
-    expect(find.textContaining('Signal'), findsOneWidget);
+  testWidgets('home: add a person and give them a phone or fob', (t) async {
+    final done = await _pump(t, const Size(1280, 800));
+    await _openSettings(t);
+    await _go(t, 'Home');
+    expect(find.text('People'), findsOneWidget);
+    expect(find.text('Screens and phones'), findsOneWidget);
+    await t.tap(find.text('Add a person'));
+    await _settle(t);
+    await t.enterText(find.byType(TextField), 'Chloe');
+    await t.tap(find.text('Save'));
+    await _settle(t);
+    expect(_people.people.single.name, 'Chloe');
+    expect(find.text("Le'Fobs"), findsOneWidget);
     expect(t.takeException(), isNull);
-    await _shot(t, 'device-header-phone');
+    await _shot(t, 'sidebar-person');
+    await t.tap(find.byType(BackButton));
+    await _settle(t);
+    expect(find.text('Chloe'), findsOneWidget);
+    await _shot(t, 'sidebar-home');
+    await done();
+  });
+
+  testWidgets('design: cards at every size beside the controls', (t) async {
+    final done = await _pump(t, const Size(1280, 800));
+    await _openSettings(t);
+    await _go(t, 'Design');
+    expect(find.byType(DesignStage), findsOneWidget);
+    expect(find.textContaining('Large · '), findsWidgets);
+    expect(t.takeException(), isNull);
+    await _shot(t, 'sidebar-design');
+    // Changing the shape changes the dashboard's look.
+    _design.setStyle(_design.style.copyWith(radius: 4, border: 2, gap: 20));
+    await _settle(t);
+    expect(t.takeException(), isNull);
+    await t.tap(find.text('Cards'));
+    await _settle(t);
+    expect(find.text('Hue'), findsOneWidget);
+    await _shot(t, 'sidebar-design-edited');
+    await done();
+  });
+
+  testWidgets('phone: the panel fills the screen', (t) async {
+    final done = await _pump(t, const Size(390, 844));
+    await _openSettings(t);
+    expect(find.text('At a glance'), findsOneWidget);
+    await _go(t, 'Devices');
+    await t.tap(find.text('Luna 50').last);
+    await _settle(t);
+    expect(find.byType(DevicePage), findsOneWidget);
+    expect(find.text('Preview'), findsOneWidget);
+    expect(t.takeException(), isNull);
+    await t.tap(find.text('Preview'));
+    await _settle(t);
+    expect(find.text('Everything it reports'), findsOneWidget);
+    await _shot(t, 'sidebar-phone-preview');
     await done();
   });
 
@@ -218,10 +336,6 @@ void main() {
     );
     expect(find.text('Bluetooth is off'), findsOneWidget);
     await _shot(t, 'bluetooth-off');
-    // Taps do not reach the stale page underneath.
-    await t.tap(find.text('Luna 50'), warnIfMissed: false);
-    await t.pump();
-    expect(find.byType(DevicePage), findsNothing);
     await done();
   });
 }

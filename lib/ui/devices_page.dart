@@ -10,15 +10,14 @@ import 'package:flutter/material.dart';
 import '../app.dart';
 import '../ble/device_tracker.dart';
 import '../decoders/decoded.dart';
-import '../platform/form_factor.dart';
-import '../settings/settings_page.dart';
+import '../settings/device_stage.dart';
+import '../settings/sidebar.dart';
 import 'device_page.dart';
 import 'device_rows.dart';
 
-/// Settings and devices on one page. Devices are the list, grouped by kind,
-/// with general settings at the top. On a tablet the list sits on the left
-/// and whatever is picked shows on the right; on a phone picking something
-/// opens it as its own page.
+/// Settings › Devices: everything heard, grouped by kind. A device opens
+/// its own page in the settings panel, with its card large on the dimmed
+/// dashboard beside it.
 class DevicesPage extends StatefulWidget {
   const DevicesPage({super.key});
 
@@ -29,9 +28,6 @@ class DevicesPage extends StatefulWidget {
 class _DevicesPageState extends State<DevicesPage> {
   Timer? _tick;
   bool _onlyRecognised = false;
-
-  /// The device shown on the right, or null for general settings.
-  String? _selected;
 
   @override
   void initState() {
@@ -56,19 +52,18 @@ class _DevicesPageState extends State<DevicesPage> {
     super.dispose();
   }
 
-  void _open(BuildContext context, String? id, {required bool split}) {
-    if (split) {
-      setState(() => _selected = id);
-      return;
-    }
+  void _open(BuildContext context, String id) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => id == null ? const SettingsPage() : DevicePage(id: id),
+        builder: (_) => SidebarStage(
+          stage: DeviceStage(id: id),
+          child: DevicePage(id: id),
+        ),
       ),
     );
   }
 
-  Widget _list(BuildContext context, {required bool split}) {
+  Widget _list(BuildContext context) {
     final tracker = AppServices.of(context).tracker;
     final theme = Theme.of(context);
     final groups = tracker.groups;
@@ -81,12 +76,12 @@ class _DevicesPageState extends State<DevicesPage> {
     Widget row(TrackedDevice d) => DeviceRow(
       key: ValueKey(d.id),
       device: d,
-      selected: split && _selected == d.id,
+      selected: false,
       connecting:
           connections.enabled &&
           connections[d.id] != null &&
           connections.allows(d.id),
-      onTap: () => _open(context, d.id, split: split),
+      onTap: () => _open(context, d.id),
     );
 
     final nothing =
@@ -97,17 +92,6 @@ class _DevicesPageState extends State<DevicesPage> {
 
     return CustomScrollView(
       slivers: [
-        SliverToBoxAdapter(
-          child: ListTile(
-            selected: split && _selected == null,
-            selectedTileColor: theme.colorScheme.secondaryContainer,
-            leading: const Icon(Icons.settings_outlined),
-            title: const Text('General'),
-            subtitle: const Text('Display, sync and dashboard'),
-            trailing: split ? null : const Icon(Icons.chevron_right),
-            onTap: () => _open(context, null, split: split),
-          ),
-        ),
         if (nothing)
           SliverToBoxAdapter(
             child: Padding(
@@ -193,10 +177,7 @@ class _DevicesPageState extends State<DevicesPage> {
       IconButton(
         tooltip: 'Clear list',
         icon: const Icon(Icons.delete_sweep),
-        onPressed: () {
-          setState(() => _selected = null);
-          services.tracker.clear();
-        },
+        onPressed: services.tracker.clear,
       ),
       IconButton(
         tooltip: paused ? 'Scan' : 'Pause',
@@ -210,12 +191,8 @@ class _DevicesPageState extends State<DevicesPage> {
   Widget build(BuildContext context) {
     final services = AppServices.of(context);
     final autostart = services.autostart;
-    final split = !isPhoneSize(MediaQuery.sizeOf(context));
-    final list = Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
-        actions: _actions(services),
-      ),
+    return Scaffold(
+      appBar: AppBar(title: const Text('Devices'), actions: _actions(services)),
       body: Column(
         children: [
           _StatusBar(
@@ -228,23 +205,8 @@ class _DevicesPageState extends State<DevicesPage> {
           Expanded(
             child: ListenableBuilder(
               listenable: services.tracker,
-              builder: (context, _) => _list(context, split: split),
+              builder: (context, _) => _list(context),
             ),
-          ),
-        ],
-      ),
-    );
-    if (!split) return list;
-    final id = _selected;
-    return Scaffold(
-      body: Row(
-        children: [
-          SizedBox(width: 400, child: list),
-          const VerticalDivider(width: 1),
-          Expanded(
-            child: id == null
-                ? const SettingsPage(embedded: true)
-                : DevicePage(key: ValueKey(id), id: id, embedded: true),
           ),
         ],
       ),

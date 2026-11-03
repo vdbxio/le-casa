@@ -104,7 +104,46 @@ class DashboardController extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// A card on its way onto the dashboard, from Settings › Devices. The
+  /// dashboard shows a + in every empty slot and between slots until one
+  /// is tapped.
+  CardSpec? placing;
+
+  void startPlacing(CardSpec spec) {
+    placing = spec;
+    editing = false;
+    selected = null;
+    notifyListeners();
+  }
+
+  void stopPlacing() {
+    if (placing == null) return;
+    placing = null;
+    notifyListeners();
+  }
+
+  /// Puts the card being placed into the empty slot at [path], taking it
+  /// off wherever else it was.
+  void place(NodePath path) {
+    final spec = placing;
+    if (spec == null || !hasLayout) return;
+    final slot = page.at(path);
+    if (slot is! Slot) return;
+    page.take(spec.key);
+    slot.card = spec;
+    placing = null;
+    changed();
+  }
+
+  /// Makes a new slot before child [index] of the split at [splitPath] and
+  /// puts the card being placed into it.
+  void placeNew(NodePath splitPath, int index) {
+    if (placing == null || !hasLayout) return;
+    place(page.insertSlot(splitPath, index));
+  }
+
   void setEditing(bool on) {
+    placing = null;
     editing = on;
     selected = null;
     notifyListeners();

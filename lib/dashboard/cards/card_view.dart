@@ -13,8 +13,6 @@ import 'card_model.dart';
 import 'fit.dart';
 import 'tape.dart';
 
-const _radius = BorderRadius.all(Radius.circular(20));
-
 /// A big number that keeps its size as its digits change. League Spartan
 /// has no fixed-width figures (a 1 is about half as wide as a 0), so
 /// shrinking whatever number arrives to fit made it grow and shrink with
@@ -109,11 +107,14 @@ class DashCard extends StatelessWidget {
       return Center(child: Pill(model));
     }
     final c = LeColors.of(context);
-    final pad = size == CardSize.small ? CardMetrics.padSmall : CardMetrics.pad;
+    final look = CardStyle.of(context);
+    final pad =
+        (size == CardSize.small ? CardMetrics.padSmall : CardMetrics.pad) +
+        look.extraPadding;
     final card = DecoratedBox(
-      decoration: BoxDecoration(color: c.card, borderRadius: _radius),
+      decoration: look.decoration(c),
       child: ClipRRect(
-        borderRadius: _radius,
+        borderRadius: look.borderRadius,
         child: LayoutBuilder(
           builder: (context, outer) {
             final slot = outer.biggest;
@@ -174,7 +175,11 @@ class DashCard extends StatelessWidget {
       model.title,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: c.ink),
+      style: TextStyle(
+        fontWeight: FontWeight.w600,
+        fontSize: CardStyle.of(context).titleSize,
+        color: c.ink,
+      ),
     );
     return SizedBox(
       height: CardMetrics.header,
@@ -1207,21 +1212,25 @@ class Pill extends StatelessWidget {
     final c = LeColors.of(context);
     final h = model.headline;
     final controls = model.controls;
+    final look = CardStyle.of(context);
     return LayoutBuilder(
-      builder: (context, box) => _pill(c, h, controls, box.maxWidth),
+      builder: (context, box) => _pill(c, look, h, controls, box.maxWidth),
     );
   }
 
-  Widget _pill(LeColors c, Metric? h, CardControls? controls, double width) {
+  Widget _pill(
+    LeColors c,
+    CardStyle look,
+    Metric? h,
+    CardControls? controls,
+    double width,
+  ) {
     return Opacity(
       opacity: model.stale ? 0.55 : 1,
       child: Container(
         height: height,
         padding: EdgeInsets.only(left: 14, right: controls == null ? 16 : 6),
-        decoration: BoxDecoration(
-          color: c.card,
-          borderRadius: BorderRadius.circular(999),
-        ),
+        decoration: look.decoration(c, radius: BorderRadius.circular(999)),
         child: Row(
           children: [
             Icon(model.icon, size: 22, color: c.tone(model.tone)),

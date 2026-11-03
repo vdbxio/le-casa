@@ -5,9 +5,10 @@
 import 'package:flutter/material.dart';
 
 import '../app.dart';
-import '../sync/sync_page.dart';
+import 'sidebar.dart';
 
-/// General settings: the first entry in the devices list.
+/// Settings › General: everything that is not about the home, a device or
+/// the design.
 class SettingsPage extends StatelessWidget {
   /// Shown beside the devices list instead of as its own page.
   final bool embedded;
@@ -85,22 +86,49 @@ class SettingsPage extends StatelessWidget {
               value: st.voiceWake,
               onChanged: (v) => st.update(voiceWake: v),
             ),
-            const _Header('Sync'),
+            const _Header('Bluetooth'),
             ListenableBuilder(
-              listenable: Listenable.merge([s.sync, s.home]),
-              builder: (context, _) => ListTile(
-                title: const Text('Screens and phones'),
-                subtitle: Text(
-                  !s.home.inHome
-                      ? 'Share readings, keys and controls with your other screens over Bluetooth'
-                      : s.sync.inTouch
-                      ? '${s.home.homeName} · linked to ${s.sync.touching.map((p) => p.name).join(', ')}'
-                      : '${s.home.homeName} · looking for your other screens',
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(builder: (_) => const SyncPage()),
+              listenable: Listenable.merge([s.connections, s.tracker]),
+              builder: (context, _) => StatefulBuilder(
+                builder: (context, setState) => Column(
+                  children: [
+                    SwitchListTile(
+                      title: const Text('Listen for devices'),
+                      subtitle: Text(
+                        s.scanner.paused
+                            ? 'Paused. Cards stop updating until it is back on.'
+                            : 'Scanning for broadcasts · '
+                                  '${s.tracker.totalPackets} packets so far',
+                      ),
+                      value: !s.scanner.paused,
+                      onChanged: (on) async {
+                        if (on) {
+                          await s.autostart.startScan();
+                        } else {
+                          await s.scanner.pause();
+                        }
+                        setState(() {});
+                      },
+                    ),
+                    SwitchListTile(
+                      title: const Text('Connect to devices'),
+                      subtitle: const Text(
+                        'Read the batteries, fridges and heaters that need a '
+                        'connection. Off stops all of them at once.',
+                      ),
+                      value: s.connections.enabled,
+                      onChanged: s.connections.setEnabled,
+                    ),
+                    ListTile(
+                      title: const Text('Forget devices heard'),
+                      subtitle: const Text(
+                        'Clears the list in Devices. Keys, names and the '
+                        'dashboard stay.',
+                      ),
+                      trailing: const Icon(Icons.delete_sweep_outlined),
+                      onTap: s.tracker.clear,
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -112,8 +140,8 @@ class SettingsPage extends StatelessWidget {
               ),
               trailing: const Icon(Icons.dashboard_customize_outlined),
               onTap: () {
+                closeSettings(context);
                 s.dashboard.setEditing(true);
-                Navigator.popUntil(context, (r) => r.isFirst);
               },
             ),
             ListTile(
@@ -143,10 +171,8 @@ class SettingsPage extends StatelessWidget {
                   ),
                 );
                 if (ok == true && context.mounted) {
+                  closeSettings(context);
                   await s.dashboard.reset();
-                  if (context.mounted) {
-                    Navigator.popUntil(context, (r) => r.isFirst);
-                  }
                 }
               },
             ),

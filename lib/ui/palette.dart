@@ -78,6 +78,45 @@ class LeColors extends ThemeExtension<LeColors> {
     Tone.neutral => muted,
   };
 
+  /// The colours a person can change in Design, by name.
+  static const editable = ['screen', 'card', 'ink', 'muted', 'line', 'accent'];
+
+  Color named(String name) => switch (name) {
+    'screen' => screen,
+    'card' => card,
+    'card2' => card2,
+    'ink' => ink,
+    'muted' => muted,
+    'line' => line,
+    'accent' => accent,
+    _ => ink,
+  };
+
+  /// These colours with some replaced, by [editable] name.
+  LeColors withOverrides(Map<String, int> o) {
+    if (o.isEmpty) return this;
+    Color pick(String n, Color c) => o[n] == null ? c : Color(o[n]!);
+    final newCard = pick('card', card);
+    return LeColors(
+      screen: pick('screen', screen),
+      card: newCard,
+      // The inset colour follows a changed card colour.
+      card2: o['card'] == null
+          ? card2
+          : Color.lerp(newCard, pick('ink', ink), 0.06)!,
+      ink: pick('ink', ink),
+      muted: pick('muted', muted),
+      line: pick('line', line),
+      accent: pick('accent', accent),
+      solar: solar,
+      solar2: solar2,
+      battery: battery,
+      climate: climate,
+      heat: heat,
+      cold: cold,
+    );
+  }
+
   @override
   LeColors copyWith() => this;
 
@@ -103,6 +142,86 @@ class LeColors extends ThemeExtension<LeColors> {
   }
 }
 
+/// The shape of cards and the space around them, set in Design.
+@immutable
+class CardStyle extends ThemeExtension<CardStyle> {
+  /// Corner radius of a card.
+  final double radius;
+
+  /// Width of the outline round each card, in the line colour. 0 is none.
+  final double border;
+
+  /// Space inside a card, round its content.
+  final double padding;
+
+  /// Space between two cards.
+  final double gap;
+
+  /// Space between the cards and the screen's edge.
+  final double edge;
+
+  /// Size of a card's title.
+  final double titleSize;
+
+  const CardStyle({
+    this.radius = 20,
+    this.border = 0,
+    this.padding = 16,
+    this.gap = 12,
+    this.edge = 14,
+    this.titleSize = 15,
+  });
+
+  static const standard = CardStyle();
+
+  static CardStyle of(BuildContext context) =>
+      Theme.of(context).extension<CardStyle>() ?? standard;
+
+  BorderRadius get borderRadius => BorderRadius.circular(radius);
+
+  /// How much more padding than the standard 16 cards have; cards fit
+  /// their content to the space left inside.
+  double get extraPadding => padding - standard.padding;
+
+  /// A card's background, with its outline if there is one.
+  BoxDecoration decoration(LeColors c, {BorderRadius? radius}) => BoxDecoration(
+    color: c.card,
+    borderRadius: radius ?? borderRadius,
+    border: border <= 0 ? null : Border.all(color: c.line, width: border),
+  );
+
+  @override
+  CardStyle copyWith({
+    double? radius,
+    double? border,
+    double? padding,
+    double? gap,
+    double? edge,
+    double? titleSize,
+  }) => CardStyle(
+    radius: radius ?? this.radius,
+    border: border ?? this.border,
+    padding: padding ?? this.padding,
+    gap: gap ?? this.gap,
+    edge: edge ?? this.edge,
+    titleSize: titleSize ?? this.titleSize,
+  );
+
+  @override
+  CardStyle lerp(CardStyle? other, double t) {
+    if (other == null) return this;
+    double l(double a, double b) => a + (b - a) * t;
+    return CardStyle(
+      radius: l(radius, other.radius),
+      border: l(border, other.border),
+      padding: l(padding, other.padding),
+      gap: l(gap, other.gap),
+      edge: l(edge, other.edge),
+      titleSize: l(titleSize, other.titleSize),
+    );
+  }
+}
+
 /// Big numbers: League Spartan semibold with tabular figures, so values
 /// do not jitter sideways as they change.
 TextStyle numberStyle(double size, Color color) => TextStyle(
@@ -115,8 +234,13 @@ TextStyle numberStyle(double size, Color color) => TextStyle(
   fontFeatures: const [FontFeature.tabularFigures()],
 );
 
-ThemeData leCasaTheme(Brightness b) {
-  final c = b == Brightness.dark ? LeColors.dark : LeColors.light;
+ThemeData leCasaTheme(
+  Brightness b, {
+  Map<String, int> colors = const {},
+  CardStyle style = CardStyle.standard,
+}) {
+  final c = (b == Brightness.dark ? LeColors.dark : LeColors.light)
+      .withOverrides(colors);
   final scheme = ColorScheme.fromSeed(
     seedColor: c.accent,
     brightness: b,
@@ -125,7 +249,7 @@ ThemeData leCasaTheme(Brightness b) {
   final base = ThemeData(colorScheme: scheme, useMaterial3: true);
   return base.copyWith(
     scaffoldBackgroundColor: c.screen,
-    extensions: [c],
+    extensions: [c, style],
     cardTheme: const CardThemeData(
       margin: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
     ),

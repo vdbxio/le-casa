@@ -13,10 +13,17 @@ import 'radio.dart';
 import 'session.dart';
 import 'sync_service.dart';
 
-/// Settings › Screens and phones: start a home, join one, add screens,
-/// compare pairing codes, and see where the other screens are.
+/// Settings › Home: start a home, join one, add screens, compare pairing
+/// codes, and see where the other screens are. [top] goes above all that
+/// (the people of the home).
 class SyncPage extends StatefulWidget {
-  const SyncPage({super.key});
+  final String title;
+  final List<Widget> top;
+  const SyncPage({
+    super.key,
+    this.title = 'Screens and phones',
+    this.top = const [],
+  });
 
   @override
   State<SyncPage> createState() => _SyncPageState();
@@ -82,12 +89,14 @@ class _SyncPageState extends State<SyncPage> {
     final sync = s.sync;
     final home = s.home;
     return Scaffold(
-      appBar: AppBar(title: const Text('Screens and phones')),
+      appBar: AppBar(title: Text(widget.title)),
       body: ListenableBuilder(
         listenable: Listenable.merge([sync, home]),
         builder: (context, _) => ListView(
           padding: const EdgeInsets.symmetric(vertical: 8),
           children: [
+            ...widget.top,
+            if (widget.top.isNotEmpty) const _Header('Screens and phones'),
             ListTile(
               title: const Text('This screen'),
               subtitle: Text(home.me.name),
@@ -134,7 +143,7 @@ class _SyncPageState extends State<SyncPage> {
       if (!sync.nearby.values.any((h) => h.adding))
         const _Note(
           'Looking… On any screen already in the home, phone included, open '
-          'Settings › Screens and phones and tap "Add a screen or phone".',
+          'Settings › Home and tap "Add a screen or phone".',
         ),
       for (final h in _sorted(sync.nearby.values.where((h) => h.adding)))
         ListTile(
@@ -182,8 +191,7 @@ class _SyncPageState extends State<SyncPage> {
                 Expanded(
                   child: Text(
                     'Waiting for a screen to join (${_left(sync.addingUntil!)}). '
-                    'On the new screen, open Settings › Screens and phones '
-                    '› Join a home.',
+                    'On the new screen, open Settings › Home › Join a home.',
                   ),
                 ),
                 TextButton(

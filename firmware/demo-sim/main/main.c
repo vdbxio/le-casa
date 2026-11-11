@@ -297,6 +297,19 @@ void app_main(void)
     };
     gpio_config(&btn);
 
+#ifdef DEMO_BOARD_XIAO_C6
+    // Seeed XIAO ESP32C6: GPIO3 low powers the RF switch and GPIO14 low
+    // picks the on-board ceramic antenna. Without this the radio runs but
+    // nothing reaches the antenna.
+    gpio_reset_pin(GPIO_NUM_3);
+    gpio_set_direction(GPIO_NUM_3, GPIO_MODE_OUTPUT);
+    gpio_set_level(GPIO_NUM_3, 0);
+    gpio_reset_pin(GPIO_NUM_14);
+    gpio_set_direction(GPIO_NUM_14, GPIO_MODE_OUTPUT);
+    gpio_set_level(GPIO_NUM_14, 0);
+    vTaskDelay(pdMS_TO_TICKS(100));
+#endif
+
     sim_lock = xSemaphoreCreateMutex();
     gap_events = xEventGroupCreate();
     sim_defaults(&sim);

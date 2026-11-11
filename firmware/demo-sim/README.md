@@ -45,6 +45,11 @@ cd firmware/demo-sim
 pio run -e esp32-c3 -t upload -t monitor   # or esp32, esp32-s3, esp32-c6
 ```
 
+Seeed XIAO ESP32C6: use `-e xiao-c6`. That board routes the antenna
+through an RF switch that firmware has to turn on (GPIO3 low, GPIO14 low
+for the ceramic antenna); the plain `esp32-c6` build leaves it off and
+nothing is heard. With idf.py, add `-DDEMO_BOARD_XIAO_C6` to the C flags.
+
 ## Set up Le'Casa (once per screen)
 
 The Victron devices are encrypted like the real thing, so each needs its

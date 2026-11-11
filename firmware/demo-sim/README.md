@@ -82,7 +82,10 @@ Press the **BOOT** button to step through scenes:
 | big-load | 1.8 kW induction hob on the MultiPlus                           |
 | shore    | plugged in at a campground: the MultiPlus charges at 40 A       |
 
-Or type on the serial console (115200 baud):
+Or type on the serial console (115200 baud). On the C3, C6 and H2 the
+console is on the chip's own USB port, which is the USB-C socket on most
+small boards; a board that only has a USB-UART chip needs the UART
+console picked in `idf.py menuconfig`.
 
 - `scene night` (any scene name above)
 - `kettle`: 1.5 kW for 20 seconds

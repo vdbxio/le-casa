@@ -1,0 +1,5 @@
+# Most small boards with this chip (XIAO, SuperMini, ...) only wire up the
+# chip's own USB port, so put the console there: status lines and typed
+# commands then work over the USB-C cable. Boards that talk through a
+# USB-UART chip instead need ESP_CONSOLE_UART_DEFAULT in menuconfig.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y

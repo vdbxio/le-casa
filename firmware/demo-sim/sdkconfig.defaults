@@ -1,0 +1,15 @@
+# Bluetooth LE only, Bluedroid host.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_BLUEDROID_ENABLED=y
+CONFIG_BT_CLASSIC_ENABLED=n
+CONFIG_BT_BLE_ENABLED=y
+# The simulator uses the legacy (4.2) advertising calls on every chip, so
+# one build works on the ESP32, C3, S3, C6 and H2. They are off by default
+# on the BLE 5 chips.
+CONFIG_BT_BLE_42_FEATURES_SUPPORTED=y
+CONFIG_BT_BLE_50_FEATURES_SUPPORTED=n
+# No GATT server or client needed: everything is broadcast.
+CONFIG_BT_GATTS_ENABLE=n
+CONFIG_BT_GATTC_ENABLE=n
+CONFIG_BT_BLE_SMP_ENABLE=n
+CONFIG_FREERTOS_HZ=1000

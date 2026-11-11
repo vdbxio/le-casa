@@ -219,6 +219,10 @@ class VictronDecoder implements Decoder {
         readings.addAll(parseBatteryMonitor(plain));
       case VictronRecord.dcDcConverter:
         readings.addAll(parseDcDcConverter(plain));
+      case VictronRecord.inverter:
+        readings.addAll(parseInverter(plain));
+      case VictronRecord.veBus:
+        readings.addAll(parseVeBus(plain));
       default:
         return Decoded(
           protocol: 'Victron',
@@ -340,6 +344,72 @@ class VictronDecoder implements Decoder {
       Reading('input voltage', inV == 0xFFFF ? null : inV / 100, 'V'),
       Reading('output voltage', outV == 0x7FFF ? null : outV / 100, 'V'),
       Reading('off reason', '0x${offReason.toRadixString(16)}'),
+    ];
+  }
+
+  /// Phoenix inverters. The first number is the AC output, so it heads
+  /// the dashboard card.
+  static List<Reading> parseInverter(Uint8List d) {
+    final r = BitReader(_pad(d, 11));
+    final state = r.readUnsigned(8);
+    final alarm = r.readUnsigned(16);
+    final batteryV = r.readSigned(16);
+    final va = r.readUnsigned(16);
+    final acV = r.readUnsigned(15);
+    final acA = r.readUnsigned(11);
+    return [
+      Reading('state', victronOperationMode[state] ?? 'state $state'),
+      Reading('ac power', va == 0xFFFF ? null : va, 'VA'),
+      Reading(
+        'battery voltage',
+        batteryV == 0x7FFF ? null : batteryV / 100,
+        'V',
+      ),
+      Reading('ac voltage', acV == 0x7FFF ? null : acV / 100, 'V'),
+      Reading('ac current', acA == 0x7FF ? null : acA / 10, 'A'),
+      Reading('alarm', victronAlarmReason[alarm] ?? 'alarm $alarm'),
+    ];
+  }
+
+  /// MultiPlus / Quattro over a VE.Bus Smart dongle. AC output first so it
+  /// heads the dashboard card.
+  static List<Reading> parseVeBus(Uint8List d) {
+    final r = BitReader(_pad(d, 13));
+    final state = r.readUnsigned(8);
+    final error = r.readUnsigned(8);
+    final batteryA = r.readSigned(16);
+    final batteryV = r.readUnsigned(14);
+    final acIn = r.readUnsigned(2);
+    final acInW = r.readSigned(19);
+    final acOutW = r.readSigned(19);
+    final alarm = r.readUnsigned(2);
+    final temp = r.readUnsigned(7);
+    final soc = r.readUnsigned(7);
+    return [
+      Reading(
+        'state',
+        state == 0xFF ? null : victronOperationMode[state] ?? 'state $state',
+      ),
+      Reading('ac out power', acOutW == 0x3FFFF ? null : acOutW, 'W'),
+      Reading(
+        'battery voltage',
+        batteryV == 0x3FFF ? null : batteryV / 100,
+        'V',
+      ),
+      Reading(
+        'battery current',
+        batteryA == 0x7FFF ? null : batteryA / 10,
+        'A',
+      ),
+      Reading('ac in power', acInW == 0x3FFFF ? null : acInW, 'W'),
+      Reading('state of charge', soc == 0x7F ? null : soc, '%'),
+      Reading('battery temperature', temp == 0x7F ? null : temp - 40, '°C'),
+      Reading(
+        'ac input',
+        const {0: 'AC in 1', 1: 'AC in 2', 2: 'Not connected'}[acIn],
+      ),
+      Reading('error', error == 0 ? 'none' : 'error $error'),
+      Reading('alarm', const {0: 'none', 1: 'warning', 2: 'alarm'}[alarm]),
     ];
   }
 

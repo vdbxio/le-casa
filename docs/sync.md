@@ -56,6 +56,12 @@ is open.
   name with a serial in it (DL-694201312BA) or the device's advertised
   data. Model names that every unit shares (LYWSD03MMC) never match: such a
   key waits until the screen has heard that sensor's MAC.
+  An encrypted BTHome device with no name or MAC in its broadcasts (Le'Fob)
+  matches none of these. Its key is tried instead: a screen tries every
+  stored key on an encrypted device that has none, and the 4-byte MIC says
+  which one fits. An Android screen files the key under its own id with
+  the MAC and sends it on; an iPad then uses that MAC with the key, since
+  the nonce needs it. A MAC can also be typed in beside the key on iOS.
 - **Where each screen is.** Every screen reports how loudly it hears the
   others. Settings › Screens and phones lists, for each screen, which
   screens hear it and at what signal, so you can tell roughly which room a

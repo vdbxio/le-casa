@@ -128,7 +128,7 @@ void main() {
   });
 
   group('Le\'Fob adverts', () {
-    const d = BtHomeDecoder();
+    final d = BtHomeDecoder();
     // From the 2026-11-01 firmware: packet id, chip temperature, rail
     // voltage, battery low, charging, status text; no name.
     const status =
@@ -147,7 +147,7 @@ void main() {
     });
 
     test('a press keeps the chirp\'s readings, and is logged once', () {
-      final tracker = DeviceTracker(DecoderRegistry([const BtHomeDecoder()]));
+      final tracker = DeviceTracker(DecoderRegistry([BtHomeDecoder()]));
       final h = History(tracker);
       tracker.addListener(h.watch);
       final id = '84:C2:E4:00:00:01';

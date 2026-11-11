@@ -109,4 +109,35 @@ void main() {
       isFalse,
     );
   });
+
+  // victron-ble tests/test_vebus.py (MIT).
+  test('VE.Bus (MultiPlus) end to end', () {
+    const k = 'da3f5fa2860cb1cf86ba7a6d1d16b9dd';
+    Map<String, Object?> v(String frame) {
+      final out = VictronDecoder(keyFor: keyFor('mp', k))
+          .decode(adv(id: 'mp', manufacturerData: {0x02E1: frame}))!;
+      expect(out.model, 'MultiPlus-II 12/3000/120-50 2x120V');
+      expect(out.kind, DeviceKind.power);
+      return {for (final r in out.readings) r.label: r.value};
+    }
+
+    expect(v('100380270c1252dad26f0b8eb39162074d140df410'), {
+      'state': 'Float',
+      'ac out power': 1046,
+      'battery voltage': 14.45,
+      'battery current': 23.2,
+      'ac in power': 1459,
+      'state of charge': null,
+      'battery temperature': 32,
+      'ac input': 'AC in 1',
+      'error': 'none',
+      'alarm': 'none',
+    });
+    final inv = v('100380270ce1b2dabd34912a6ecec963899227a220');
+    expect(inv['state'], 'Inverting');
+    expect(inv['battery current'], -5.9);
+    expect(inv['ac out power'], 45);
+    expect(inv['ac input'], 'Not connected');
+    expect(v('100380270c65b8dad9dd594c7f57d1de9e27a3e2ab')['state'], 'Off');
+  });
 }

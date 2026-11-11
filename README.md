@@ -32,7 +32,8 @@ dashboard and shares it between screens. The app currently
 - decodes **BTHome v2** (plain and AES-CCM encrypted): Xiaomi LYWSD03MMC on
   pvvx firmware, Le'Fob button events, any other BTHome broadcaster;
 - decodes **Victron Instant Readout** (AES-CTR): SmartSolar/BlueSolar MPPT
-  chargers, SmartShunt/BMV battery monitors, Orion DC/DC. Model names come
+  chargers, SmartShunt/BMV battery monitors, Orion DC/DC, Phoenix
+  inverters and MultiPlus/Quattro (VE.Bus Smart dongle). Model names come
   straight from the unencrypted header, so an MPPT is recognised before
   you enter its key;
 - decodes **stock Xiaomi MiBeacon** broadcasts (AES-CCM) once you enter
@@ -217,6 +218,10 @@ docs/
   switchbot-govee.md  supported SwitchBot and Govee models, setup notes
   sync.md        setting up several screens and phones
   tablets.md     what each tested tablet's Bluetooth can do
+firmware/
+  demo-sim/      ESP32 firmware that pretends to be a bus power system
+                 (Victron solar, shunt, MultiPlus, BTHome sensors) for
+                 shop and conference demos
 ```
 
 Decoders are pure functions over `RawAdvertisement` and every one has a

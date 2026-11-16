@@ -16,8 +16,7 @@ WLED="$HERE/.wled"
 if [ ! -d "$WLED/.git" ]; then
   git clone --depth 1 --branch "$WLED_TAG" https://github.com/wled/WLED.git "$WLED"
 fi
-sed "s#@LELED_DIR@#$HERE#" "$HERE/platformio_override.ini.in" > "$WLED/platformio_override.ini"
-
+TC=
 # PlatformIO's ESP32-C3 compiler is x86_64 only on macOS. On Apple Silicon
 # without Rosetta, fetch Espressif's native arm64 build of the same GCC
 # (crosstool-NG esp-2021r2-patch5) into .toolchain/ and point the build at it.
@@ -31,9 +30,14 @@ if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ] &&
       tar xz -C "$TC" --strip-components 1
     echo '{"name":"toolchain-riscv32-esp","version":"8.4.0+2021r2-patch5","system":["darwin_arm64"]}' > "$TC/package.json"
   fi
-  # [env:flip_c3] is the last section of the override, so this lands in it.
-  echo "platform_packages = toolchain-riscv32-esp @ symlink://$TC" >> "$WLED/platformio_override.ini"
 fi
+
+# Write the override; with an arm64 compiler, add it as a continuation of
+# [env:flip_c3]'s platform_packages (PlatformIO refuses a second key).
+awk -v dir="$HERE" -v tc="$TC" '
+  { gsub(/@LELED_DIR@/, dir); print }
+  tc != "" && /^platform_packages = / { print "  toolchain-riscv32-esp @ symlink://" tc }
+' "$HERE/platformio_override.ini.in" > "$WLED/platformio_override.ini"
 
 cd "$WLED"
 case "${1:-build}" in

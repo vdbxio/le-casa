@@ -11,6 +11,7 @@ import 'dart:typed_data';
 
 import 'package:pointycastle/export.dart';
 
+import '../leproto/leled.dart';
 import 'bthome_objects.dart';
 import 'decoded.dart';
 import 'decoder.dart';
@@ -109,6 +110,7 @@ class BtHomeDecoder implements Decoder {
     };
 
     Uint8List payload;
+    Uint8List? usedKey;
     if (encrypted) {
       if (data.length < offset + 8 + 1) {
         return Decoded(
@@ -134,7 +136,10 @@ class BtHomeDecoder implements Decoder {
       Uint8List? plain;
       if (key != null && useMac != null) {
         plain = tryWith(key, useMac);
-        if (plain != null) mac = useMac;
+        if (plain != null) {
+          mac = useMac;
+          usedKey = key;
+        }
       }
       if (plain == null) {
         final found = _found[adv.id];
@@ -144,6 +149,7 @@ class BtHomeDecoder implements Decoder {
           plain = tryWith(found.$1, found.$2);
           if (plain != null) {
             mac = found.$2;
+            usedKey = found.$1;
           } else {
             _found.remove(adv.id);
           }
@@ -154,6 +160,7 @@ class BtHomeDecoder implements Decoder {
         if (hit != null) {
           plain = hit.$1;
           mac = hit.$2;
+          usedKey = _found[adv.id]?.$1;
         }
       }
       if (mac != null) extra['mac'] = hex(mac, sep: ':').toUpperCase();
@@ -254,6 +261,11 @@ class BtHomeDecoder implements Decoder {
           // Sent little-endian: patch, minor, major[, extra]
           extra['firmware'] = bytes.reversed.join('.');
       }
+    }
+
+    if (encrypted && usedKey != null) {
+      final led = leLedDecoded(adv.id, usedKey, readings, extra);
+      if (led != null) return led;
     }
 
     final model = _guessModel(

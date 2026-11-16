@@ -68,7 +68,12 @@ class _CardControlsViewState extends State<CardControlsView> {
 
   void _step(int by) {
     final s = _stepper!;
-    final next = (_shown + by).clamp(s.min, s.max);
+    // A step bigger than one lands on its multiples: 37 goes to 40, not 47.
+    final raw = _shown + by * s.step;
+    final next = (s.step > 1 ? (raw / s.step).round() * s.step : raw).clamp(
+      s.min,
+      s.max,
+    );
     if (next == _shown) return;
     HapticFeedback.selectionClick();
     setState(() => _want = next);

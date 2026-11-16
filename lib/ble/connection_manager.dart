@@ -17,6 +17,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../decoders/decoded.dart';
 import '../decoders/raw_advertisement.dart';
 import '../drivers/driver.dart';
+import '../leproto/sender.dart';
 import 'ble_scanner.dart';
 import 'device_tracker.dart';
 import 'gatt_link.dart';
@@ -199,6 +200,9 @@ class ConnectionManager extends ChangeNotifier {
   final DeviceTracker tracker;
   final GattDriverRegistry drivers;
   final SessionOpener _open;
+
+  /// Sends commands to Le'devices as adverts, with no connection.
+  LeProtoSender? leProto;
   final Map<String, Link> _links = {};
 
   /// Keep links to [LiveDriver] devices open and read them every few
@@ -537,6 +541,9 @@ class ConnectionManager extends ChangeNotifier {
     DeviceCommand command, {
     bool here = false,
   }) async {
+    // A Le'LED takes commands from any screen in range, no connection.
+    final lep = leProto;
+    if (lep != null && lep.handles(id)) return lep.send(id, command);
     final r = remote;
     // A device whose broadcasts carry its state (a plug) has no reader
     // to defer to: whoever is asked connects just for the command.

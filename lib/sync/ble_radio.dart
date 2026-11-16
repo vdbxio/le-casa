@@ -136,8 +136,54 @@ class BleSyncRadio implements SyncRadio {
 
   bool _serving = false;
 
+  /// The sync advert to put back after [borrowAdvert].
+  PeerAdvert? _lastAd;
+  bool _borrowed = false;
+
+  /// Puts [ad] on air instead of the sync advert while [hold] runs, then
+  /// brings the sync advert back. Le'Proto commands go out this way: the
+  /// plugin runs one advert at a time.
+  Future<void> borrowAdvert(
+    Advertisement ad,
+    Future<void> Function() hold,
+  ) async {
+    final pm = _pm;
+    try {
+      await pm.authorize().timeout(const Duration(seconds: 8));
+    } on UnsupportedError {
+      // iOS asks by itself.
+    } on TimeoutException {
+      debugPrint('leproto: no answer to the permission request');
+    }
+    _borrowed = true;
+    try {
+      try {
+        await pm.stopAdvertising();
+      } catch (_) {
+        // Was not advertising.
+      }
+      await pm.startAdvertising(ad).timeout(const Duration(seconds: 5));
+      await hold();
+    } finally {
+      try {
+        await pm.stopAdvertising();
+      } catch (_) {}
+      _borrowed = false;
+      if (_lastAd case final last?) {
+        try {
+          await startServer(last);
+        } catch (e) {
+          debugPrint('sync: advert not restored: $e');
+        }
+      }
+    }
+  }
+
   @override
   Future<void> startServer(PeerAdvert ad) async {
+    _lastAd = ad;
+    // Back on air when the borrowed advert ends.
+    if (_borrowed) return;
     if (!_serving) await _serve(ad.tag);
     _serving = true;
     final pm = _pm;
@@ -354,6 +400,7 @@ class BleSyncRadio implements SyncRadio {
       await l.close();
     }
     _links.clear();
+    _lastAd = null;
     final pm = _pmInstance;
     if (pm == null) return;
     try {

@@ -33,9 +33,10 @@ byte for byte.
 
 ## Build and flash
 
-Needs PlatformIO (`brew install platformio`). On an Apple Silicon Mac it also
-needs Rosetta (`softwareupdate --install-rosetta`), because PlatformIO's
-ESP32-C3 compiler is x86_64 only.
+Needs PlatformIO (`brew install platformio`). PlatformIO's ESP32-C3 compiler
+is Intel-only on macOS, so on an Apple Silicon Mac without Rosetta the script
+fetches Espressif's native arm64 build of the same compiler into `.toolchain/`
+the first time.
 
 ```sh
 cd firmware/le-led

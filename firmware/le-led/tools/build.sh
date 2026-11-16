@@ -18,12 +18,21 @@ if [ ! -d "$WLED/.git" ]; then
 fi
 sed "s#@LELED_DIR@#$HERE#" "$HERE/platformio_override.ini.in" > "$WLED/platformio_override.ini"
 
-# PlatformIO's ESP32-C3 compiler is x86_64 only on macOS, so Apple Silicon
-# needs Rosetta ("Bad CPU type in executable" otherwise).
+# PlatformIO's ESP32-C3 compiler is x86_64 only on macOS. On Apple Silicon
+# without Rosetta, fetch Espressif's native arm64 build of the same GCC
+# (crosstool-NG esp-2021r2-patch5) into .toolchain/ and point the build at it.
 if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ] &&
    ! /usr/bin/arch -x86_64 /usr/bin/true 2>/dev/null; then
-  echo "Apple Silicon without Rosetta: run 'softwareupdate --install-rosetta' first" >&2
-  exit 1
+  TC="$HERE/.toolchain/riscv32-esp-elf-arm64"
+  if [ ! -x "$TC/bin/riscv32-esp-elf-gcc" ]; then
+    echo "Fetching the arm64 ESP32-C3 compiler (~200 MB, once)"
+    mkdir -p "$TC"
+    curl -fL --retry 3 https://github.com/espressif/crosstool-NG/releases/download/esp-2021r2-patch5/riscv32-esp-elf-gcc8_4_0-esp-2021r2-patch5-macos-arm64.tar.gz |
+      tar xz -C "$TC" --strip-components 1
+    echo '{"name":"toolchain-riscv32-esp","version":"8.4.0+2021r2-patch5","system":["darwin_arm64"]}' > "$TC/package.json"
+  fi
+  # [env:flip_c3] is the last section of the override, so this lands in it.
+  echo "platform_packages = toolchain-riscv32-esp @ symlink://$TC" >> "$WLED/platformio_override.ini"
 fi
 
 cd "$WLED"

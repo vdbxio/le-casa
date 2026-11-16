@@ -70,21 +70,23 @@ def seal(key, slot, seq, opcode, a0, a1, flags=0):
 
 
 def args_for(cmd, rest):
+    if cmd == "color":
+        rgb = bytes.fromhex(rest[0].lstrip("#"))
+        v = ((rgb[0] >> 3) << 11) | ((rgb[1] >> 2) << 5) | (rgb[2] >> 3)
+        return v & 0xFF, v >> 8
     n = [int(x, 0) for x in rest if x not in ("on", "off", "sel")]
     if cmd == "power":
         return (1 if rest and rest[0] == "on" else 0), (n[0] if n else 0)
     if cmd == "brightness":
         return n[0], (n[1] if len(n) > 1 else 0)
-    if cmd == "color":
-        rgb = bytes.fromhex(rest[0].lstrip("#"))
-        v = ((rgb[0] >> 3) << 11) | ((rgb[1] >> 2) << 5) | (rgb[2] >> 3)
-        return v & 0xFF, v >> 8
     if cmd == "cct":
         return n[0] & 0xFF, n[0] >> 8
     if cmd == "segment":
         return n[0], (1 if "on" in rest else 0) | (2 if "sel" in rest else 0)
     if cmd == "nightlight":
         return n[0], 0x80 if "on" in rest else 0
+    if cmd == "effect":  # speed 0 would freeze the effect
+        return n[0], (n[1] if len(n) > 1 else 128)
     if cmd == "wake":
         return (n[0] if n else 3), 0
     return (n[0] if n else 0), (n[1] if len(n) > 1 else 0)

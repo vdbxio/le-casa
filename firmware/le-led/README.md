@@ -21,7 +21,11 @@ on GPIO10).
 
 ## Status
 
-v0, built in the cloud from WLED v16.0.1. **Not flashed or radio-tested yet.**
+v0, built from WLED v16.0.1 (85% of the app slot, 23% RAM). **Bench-tested
+on a FLIP_C3 (2026-11-15):** commands sent from a Mac as a service UUID (the
+iPad path) were all applied and acked in the next state advert, within about
+1 s, and replayed frames were refused. Android-style sending and Le'Fob are
+not radio-tested yet.
 The byte-level code (`le_proto.cpp`) is host-tested: BTHome's published
 encryption example decrypts, frames round-trip, tampering and replays are
 refused, and a separate Python implementation (`tools/leproto.py`) agrees
@@ -29,7 +33,9 @@ byte for byte.
 
 ## Build and flash
 
-Needs PlatformIO (`brew install platformio`).
+Needs PlatformIO (`brew install platformio`). On an Apple Silicon Mac it also
+needs Rosetta (`softwareupdate --install-rosetta`), because PlatformIO's
+ESP32-C3 compiler is x86_64 only.
 
 ```sh
 cd firmware/le-led
@@ -63,7 +69,8 @@ tools/leproto.py send --ios --key KEY brightness 40
 # Linux with BlueZ: send as manufacturer data, the way Android will
 sudo tools/leproto.py send --key KEY effect 9 200
 
-# Watch the light's state (MAC from the serial console)
+# Watch the light's state. The BLE MAC is the chip's base MAC + 2
+# (esptool prints the base MAC when flashing).
 tools/leproto.py watch --key KEY --mac AA:BB:CC:DD:EE:FF
 ```
 

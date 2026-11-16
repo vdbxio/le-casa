@@ -18,6 +18,14 @@ if [ ! -d "$WLED/.git" ]; then
 fi
 sed "s#@LELED_DIR@#$HERE#" "$HERE/platformio_override.ini.in" > "$WLED/platformio_override.ini"
 
+# PlatformIO's ESP32-C3 compiler is x86_64 only on macOS, so Apple Silicon
+# needs Rosetta ("Bad CPU type in executable" otherwise).
+if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ] &&
+   ! /usr/bin/arch -x86_64 /usr/bin/true 2>/dev/null; then
+  echo "Apple Silicon without Rosetta: run 'softwareupdate --install-rosetta' first" >&2
+  exit 1
+fi
+
 cd "$WLED"
 case "${1:-build}" in
   build)   pio run -e flip_c3 ;;

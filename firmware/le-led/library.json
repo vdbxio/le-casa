@@ -1,0 +1,15 @@
+{
+  "name": "le_led",
+  "version": "0.1.0",
+  "description": "Le'LED: WLED over Bluetooth LE with Le'Proto (connectionless commands, encrypted BTHome state)",
+  "license": "EUPL-1.2",
+  "build": {
+    "libArchive": false,
+    "srcFilter": [
+      "+<*.cpp>",
+      "-<tests/>",
+      "-<tools/>"
+    ]
+  },
+  "dependencies": []
+}

@@ -348,24 +348,76 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
   /// digit so it fits an iOS advert's name.
   int get _news {
     var h = 17;
-    for (final v in [
-      _maxAt(keys.records.map((r) => r.at)),
-      keys.records.length,
-      _maxAt(readBy.records.map((r) => r.at)),
-      readBy.records.length,
-      ..._layoutForNews(),
-      _outbox.values.fold(0, (n, l) => n + l.length),
-      // A status word the others may not know yet: a visit takes it over.
-      for (final d in _ownShared())
-        for (final r in d.polled!.readings)
-          if (r.value case final String w when !_knownWord(w)) textCode(w),
-      // Devices it hears, for who reads what; not their signal, which
-      // changes all the time.
-      ..._heardForNews(),
-    ]) {
-      h = (h * 31 + v) & 0x3FFFFFFF;
+    for (final part in _newsParts().values) {
+      for (final v in part) {
+        h = (h * 31 + v.hashCode) & 0x3FFFFFFF;
+      }
     }
     return h % 36;
+  }
+
+  /// What [_news] is made of, by part, readable so a change can be named.
+  Map<String, List<Object>> _newsParts() => {
+    'keys': [_maxAt(keys.records.map((r) => r.at)), keys.records.length],
+    'read by': [_maxAt(readBy.records.map((r) => r.at)), readBy.records.length],
+    'layout': _layoutForNews(),
+    'outbox': [_outbox.values.fold<int>(0, (n, l) => n + l.length)],
+    // A status word the others may not know yet: a visit takes it over.
+    'words': [
+      for (final d in _ownShared())
+        for (final r in d.polled!.readings)
+          if (r.value case final String w when !_knownWord(w)) w,
+    ],
+    // Devices it hears, for who reads what; not their signal, which
+    // changes all the time.
+    'hears': _heardForNews(),
+  };
+
+  Map<String, List<Object>>? _lastParts;
+  final Map<String, Set<String>> _peerNewsLog = {};
+
+  /// The last few changes to this screen's news, newest last, sent in its
+  /// beacon so a screen whose own log cannot be read (an iPad on a
+  /// release build) can be seen from another's.
+  final List<String> _newsLog = [];
+
+  void _noteNews() {
+    final now = _newsParts();
+    final was = _lastParts;
+    _lastParts = now;
+    if (was == null) return;
+    String named(Object x) {
+      final name = tracker['$x'.split('/').first]?.latest.name;
+      return name == null ? '$x' : '$x ($name)';
+    }
+
+    final what = <String>[];
+    for (final k in now.keys) {
+      final a = was[k] ?? const [];
+      final b = now[k]!;
+      if (a.length == b.length &&
+          Iterable.generate(a.length).every((i) => a[i] == b[i])) {
+        continue;
+      }
+      if (k == 'keys' || k == 'read by' || k == 'outbox') {
+        what.add(k);
+        continue;
+      }
+      final gone = a.where((x) => !b.contains(x)).toList();
+      final came = b.where((x) => !a.contains(x)).toList();
+      what.add(
+        '$k${[for (final x in came) ' +${named(x)}', for (final x in gone) ' -${named(x)}'].join()}',
+      );
+    }
+    if (what.isEmpty) return;
+    final t = DateTime.now();
+    final line =
+        '${t.hour.toString().padLeft(2, '0')}:'
+        '${t.minute.toString().padLeft(2, '0')}:'
+        '${t.second.toString().padLeft(2, '0')} ${what.join(', ')}';
+    debugPrint('sync: news here: $line');
+    _newsLog.add(line);
+    if (_newsLog.length > 5) _newsLog.removeAt(0);
   }
 
   /// Words this screen has sent the others in a reading, on top of
@@ -387,7 +439,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
 
   /// Hashes of the devices in this screen's beacon, over ten minutes so a
   /// device that drops out for a moment does not count as news.
-  List<int> _heardForNews() {
+  List<String> _heardForNews() {
     final now = DateTime.now();
     final ids = <String>[
       for (final l in connections.links)
@@ -396,15 +448,16 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
                 now.difference(d.lastSeen) < const Duration(minutes: 10))
           l.id,
     ]..sort();
-    return [for (final id in ids) id.hashCode & 0xFFFFF];
+    return ids;
   }
 
-  List<int> _layoutForNews() {
+  List<String> _layoutForNews() {
     for (final d in _ownShared()) {
       _shareLayout[d.id] = _shareIndexOf(d.id) << 4 | _gen(d.polled!);
     }
     return [
-      for (final id in _shareLayout.keys.toList()..sort()) _shareLayout[id]!,
+      for (final id in _shareLayout.keys.toList()..sort())
+        '$id/${_shareLayout[id]}',
     ];
   }
 
@@ -1300,7 +1353,9 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       if (pick != null) unawaited(_connectPeer(pick));
     }
     await _publishOwn();
+    if (_advertNews != null) _lastParts ??= _newsParts();
     if (_serverUp && _advertNews != null && _advertNews != _news) {
+      _noteNews();
       await _advertise();
     }
     if (_ticks % 10 == 1) await _beacon();
@@ -1465,6 +1520,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       ],
       's': _heardScreens(),
       'l': _links.keys.toList(),
+      if (_newsLog.isNotEmpty) 'nw': _newsLog,
     };
   }
 
@@ -1567,6 +1623,13 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
         if (id == home.me.id) return;
         final old = _peers[id];
         if (old != null && (m['q'] as num).toInt() <= old.seq) return;
+        if (m['nw'] case final List<Object?> log) {
+          final seen = _peerNewsLog[id] ?? const <String>{};
+          for (final l in log.whereType<String>()) {
+            if (!seen.contains(l)) debugPrint('sync: news at ${m['n']}: $l');
+          }
+          _peerNewsLog[id] = log.whereType<String>().toSet();
+        }
         final info = _peers[id] = PeerInfo.fromJson(m, DateTime.now());
         if (m['v'] != null) {
           _visitors.add(id);

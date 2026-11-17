@@ -58,6 +58,7 @@ class FakeRadio implements SyncRadio {
             DateTime.now(),
             screen: h.ad!.screen,
             adding: h.ad!.adding,
+            news: h.ad!.news,
           ),
         );
       }
@@ -991,6 +992,52 @@ void main() {
       await m10.sync.tick();
       await settle();
       expect(m10.sync.connected, isFalse);
+    });
+
+    test('visits again only when there is news, or after a while', () async {
+      await setUpWith(const Duration(milliseconds: 20));
+      // Counts links as they open: the service's own timer may end a
+      // visit before the test looks.
+      var opened = 0;
+      var was = m10.sync.connected;
+      m10.sync.addListener(() {
+        if (m10.sync.connected && !was) opened++;
+        was = m10.sync.connected;
+      });
+      Future<bool> turn() async {
+        final before = opened;
+        await m10.sync.tick();
+        await settle();
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        await FakeRadio.advertise(air);
+        await m10.sync.tick();
+        await settle(20);
+        return opened > before;
+      }
+
+      // The first visits swap what each has; then the news matches.
+      var visits = 0;
+      while (visits < 4 && await turn()) {
+        visits++;
+      }
+      expect(visits, lessThan(4));
+      expect(await turn(), isFalse);
+      // A new Read by lock on the iPad changes its news: the M10 comes.
+      ipad.hear(ipadFridge, 'AK1-AAFE13156431');
+      m10.hear(m10Fridge, 'AK1-AAFE13156431');
+      await ipad.sync.lock(ipadFridge, ipad.home.me);
+      await ipad.sync.tick();
+      await settle();
+      expect(await turn(), isTrue);
+      expect(m10.sync.readBy.lockOf(m10Fridge)?.screen, 'ipad');
+      visits = 0;
+      while (visits < 4 && await turn()) {
+        visits++;
+      }
+      expect(visits, lessThan(4));
+      // With nothing new it still drops by after idleVisit.
+      m10.sync.idleVisit = Duration.zero;
+      expect(await turn(), isTrue);
     });
 
     test('a control waits for the screen that visits', () async {

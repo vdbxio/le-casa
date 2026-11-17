@@ -108,6 +108,11 @@ class BleSyncRadio implements SyncRadio {
         android: true,
         wakeSeq: m.length >= 13 ? m[11] : 0,
         wakeLevel: m.length >= 13 ? m[12] - 128 : null,
+        news: m.length == 12
+            ? m[11]
+            : m.length >= 14
+            ? m[13]
+            : null,
       );
     }
     final name = a.name;
@@ -120,6 +125,9 @@ class BleSyncRadio implements SyncRadio {
     // the name at 26 characters, which leaves room for two.
     final wake = RegExp(r'~([0-9a-z])$').firstMatch(rest);
     if (wake != null) rest = rest.substring(0, wake.start);
+    // "=n": the news fingerprint, when there is no wake or "+" to send.
+    final news = RegExp(r'=([0-9a-z])$').firstMatch(rest);
+    if (news != null) rest = rest.substring(0, news.start);
     final parts = rest.split('.');
     return PeerSighting(
       a.id,
@@ -131,6 +139,7 @@ class BleSyncRadio implements SyncRadio {
       wakeLevel: wake == null
           ? null
           : wakeLevelOf(int.parse(wake[1]!, radix: 36)),
+      news: news == null ? null : int.parse(news[1]!, radix: 36),
     );
   }
 
@@ -145,7 +154,7 @@ class BleSyncRadio implements SyncRadio {
   /// not split by one. A cheap tablet (the M10) all but stops hearing
   /// adverts while it holds a GATT link, and so misses the light's ack.
   DateTime _quietUntil = DateTime(0);
-  static const _quietAfterSend = Duration(seconds: 3);
+  static const _quietAfterSend = Duration(seconds: 10);
 
   /// Whether this screen holds a sync link it dialled. Le'Proto waits
   /// longer for an ack while one is open (see [_quietAfterSend]).
@@ -223,9 +232,11 @@ class BleSyncRadio implements SyncRadio {
                       '$syncNamePrefix${ad.tag}.${ad.screen}'
                       '${ad.adding
                           ? '+'
-                          : ad.wakeLevel == null
-                          ? ''
-                          : '~${wakeDigit(ad.wakeLevel!).toRadixString(36)}'}',
+                          : ad.wakeLevel != null
+                          ? '~${wakeDigit(ad.wakeLevel!).toRadixString(36)}'
+                          : ad.news != null
+                          ? '=${(ad.news! % 36).toRadixString(36)}'
+                          : ''}',
                   serviceUUIDs: [UUID.fromString(syncServiceUuid)],
                 )
               : Advertisement(
@@ -241,6 +252,7 @@ class BleSyncRadio implements SyncRadio {
                           ad.wakeSeq & 0xFF,
                           (l + 128).clamp(0, 255),
                         ],
+                        if (ad.news case final n?) n & 0xFF,
                       ]),
                     ),
                   ],

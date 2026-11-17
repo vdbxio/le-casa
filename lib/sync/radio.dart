@@ -54,12 +54,18 @@ class PeerAdvert {
   final int? wakeLevel;
   final int wakeSeq;
 
+  /// A fingerprint (0-35) of what this screen has to share: keys, Read by
+  /// records, its own readings. A screen that only visits dials when it
+  /// changes, instead of every few seconds.
+  final int? news;
+
   const PeerAdvert(
     this.tag,
     this.screen, {
     this.adding = false,
     this.wakeLevel,
     this.wakeSeq = 0,
+    this.news,
   });
 }
 
@@ -85,6 +91,9 @@ class PeerSighting {
   final int? wakeLevel;
   final int wakeSeq;
 
+  /// See [PeerAdvert.news]; null when the advert had no room for it.
+  final int? news;
+
   const PeerSighting(
     this.id,
     this.tag,
@@ -95,6 +104,7 @@ class PeerSighting {
     this.android = false,
     this.wakeLevel,
     this.wakeSeq = 0,
+    this.news,
   });
 }
 

@@ -94,6 +94,15 @@ every screen directly.
   hears from about 30 broadcasts a second to about 2, whatever the link's
   interval, role or traffic (measured 2026-10-27). A control for a screen
   that visits waits for its next visit; a control from one dials at once.
+- News: each screen's advert carries a one-digit fingerprint of what it
+  has to share (keys, Read by choices, its own readings, queued
+  controls): a byte after the screen id on Android, "=n" at the end of
+  the name on iOS when the wake word or "+" is not using the room. A
+  screen that visits dials only when either fingerprint has changed since
+  the last visit, or after 2 minutes for the beacons. A screen still
+  counts as around while its advert is heard. No sync link opens while a
+  Le'LED command waits for its answer, or for 10 s after (2026-11-17: the
+  M10 missed most answers when a visit overlapped).
 - Each screen shares a new reading of a device it reads at most every
   10 seconds. Messages are deflated before they are sealed, once the
   other screen's beacon says it can read them.

@@ -175,6 +175,13 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
   Duration visitLength = const Duration(seconds: 3);
   static const _visitMax = Duration(seconds: 12);
 
+  /// A screen that visits goes again only when one end's [PeerAdvert.news]
+  /// has changed since, or after this long anyway, for the beacons (who
+  /// hears what, how loudly). Each visit costs the M10 its scan for
+  /// several seconds, and a Le'LED command sent then is all but lost.
+  @visibleForTesting
+  Duration idleVisit = const Duration(minutes: 2);
+
   /// How long the other screen must have been quiet to end a visit.
   @visibleForTesting
   Duration visitQuiet = const Duration(seconds: 2);
@@ -244,6 +251,22 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
   /// Screens that only visit, from their beacons.
   final Set<String> _visitors = {};
 
+  /// Readings of this screen's own shared so far, for [_news].
+  int _shares = 0;
+  int? _advertNews;
+
+  /// Per screen, by [shortScreen]: its news and this screen's when they
+  /// last linked, and when that link ended (or opened, while it is up).
+  final Map<String, int?> _peerNewsAt = {};
+  final Map<String, int> _myNewsAt = {};
+  final Map<String, DateTime> _lastLinked = {};
+
+  /// When the advert of each screen, by [shortScreen], was last heard.
+  final Map<String, DateTime> _airSeen = {};
+
+  /// Set by [_visitNow]: dial whatever the news says.
+  bool _urgent = false;
+
   /// Controls for a screen that only visits, sent when it next does.
   final Map<String, List<Map<String, Object?>>> _outbox = {};
   int _controlsRunning = 0;
@@ -281,7 +304,55 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
 
   /// A screen that visits and has not come back for this long is out of
   /// touch.
-  static const _visitGone = Duration(seconds: 70);
+  Duration get _visitGone => idleVisit + const Duration(minutes: 1);
+
+  /// A screen still counts as around while its advert is heard, between
+  /// visits that bring its beacon.
+  bool _alive(PeerInfo p, DateTime now) {
+    if (now.difference(p.heard) < _peerGone) return true;
+    final air = _airSeen[shortScreen(p.screen.id)];
+    return air != null &&
+        now.difference(air) < const Duration(seconds: 30) &&
+        now.difference(p.heard) < _visitGone;
+  }
+
+  /// A fingerprint of what this screen has to share, in one base-36
+  /// digit so it fits an iOS advert's name.
+  int get _news {
+    var h = 17;
+    for (final v in [
+      _maxAt(keys.records.map((r) => r.at)),
+      keys.records.length,
+      _maxAt(readBy.records.map((r) => r.at)),
+      readBy.records.length,
+      _shares,
+      _outbox.values.fold(0, (n, l) => n + l.length),
+    ]) {
+      h = (h * 31 + v) & 0x3FFFFFFF;
+    }
+    return h % 36;
+  }
+
+  /// Whether to dial screen [s] now, going by the news in its advert and
+  /// this screen's own. Links that stay up (neither end visits) always go.
+  bool _wantsLink(PeerSighting h, String s, DateTime now) {
+    final visiting = visitEvery != null;
+    final visitor = _visitors.any((v) => shortScreen(v) == s);
+    if (_urgent || (!visiting && !visitor)) return true;
+    final last = _lastLinked[s];
+    if (last == null) return true;
+    final idle = now.difference(last);
+    final mineNew = _myNewsAt[s] != _news;
+    if (visiting) {
+      return mineNew ||
+          h.news == null ||
+          h.news != _peerNewsAt[s] ||
+          idle > idleVisit;
+    }
+    // The other screen visits: it dials when this one's news changes. Go
+    // only if it has not come for a long while.
+    return (mineNew && idle > androidDialWait) || idle > idleVisit * 2;
+  }
 
   void _noLinks() {
     // Between visits the screens are still in touch; keep settling time
@@ -295,7 +366,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     final out = [
       home.me,
       for (final p in _peers.values)
-        if (now.difference(p.heard) < _peerGone) p.screen,
+        if (_alive(p, now)) p.screen,
     ];
     for (final l in _links.values) {
       if (!out.contains(l.s.peer)) out.add(l.s.peer);
@@ -473,7 +544,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     final out = <Hearing>[
       if (_heardScreens()[short] case final rssi?) (by: home.me, rssi: rssi),
       for (final p in _peers.values)
-        if (now.difference(p.heard) < _peerGone && p.sees[short] != null)
+        if (_alive(p, now) && p.sees[short] != null)
           (by: p.screen, rssi: p.sees[short]!),
     ];
     return out..sort((a, b) => b.rssi.compareTo(a.rssi));
@@ -627,7 +698,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     final now = DateTime.now();
     final out = <Hearing>[];
     for (final p in _peers.values) {
-      if (p.phone || now.difference(p.heard) >= _peerGone) continue;
+      if (p.phone || !_alive(p, now)) continue;
       for (final d in p.hears) {
         if (_resolve(d.id, d.mac, d.name, d.fp) == id) {
           out.add((by: p.screen, rssi: d.rssi));
@@ -657,6 +728,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     adding: adding,
     wakeLevel: _wakeLevel,
     wakeSeq: _wakeSeq,
+    news: _advertNews = _news,
   );
 
   int? _wakeLevel;
@@ -758,6 +830,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
 
   void _onSighting(PeerSighting h) {
     nearby[h.id] = h;
+    if (h.screen case final s? when h.tag == home.tag) _airSeen[s] = h.seen;
     final level = h.wakeLevel;
     final s = h.screen;
     if (level == null || s == null) return;
@@ -828,6 +901,17 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     }
     final l = _links[s.peer.id] = _Link(s, mine);
     _linkedSince ??= DateTime.now();
+    final short = shortScreen(s.peer.id);
+    PeerSighting? heard;
+    for (final h in nearby.values) {
+      if (h.screen == short && (heard == null || h.seen.isAfter(heard.seen))) {
+        heard = h;
+      }
+    }
+    _peerNewsAt[short] = heard?.news;
+    _myNewsAt[short] = _news;
+    _lastLinked[short] = DateTime.now();
+    _urgent = false;
     debugPrint('sync: linked to ${s.peer.name} (${mine ? 'out' : 'in'})');
     _listen(s);
     unawaited(
@@ -837,6 +921,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
         if (visitEvery != null || _visitors.contains(s.peer.id)) {
           _visited[s.peer.id] = (s.peer, DateTime.now());
         }
+        _lastLinked[shortScreen(s.peer.id)] = DateTime.now();
         if (_links[s.peer.id] == l) {
           _links.remove(s.peer.id);
           _noLinks();
@@ -910,6 +995,9 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       if (pick != null) unawaited(_connectPeer(pick));
     }
     await _publishOwn();
+    if (_serverUp && _advertNews != null && _advertNews != _news) {
+      await _advertise();
+    }
     if (_ticks % 10 == 1) await _beacon();
     if (_ticks % 60 == 0) _logRadio();
     if (_ticks % 5 == 0) {
@@ -948,10 +1036,12 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
   /// person is waiting on. True once linked.
   Future<bool> _visitNow() async {
     _nextVisit.clear();
+    _urgent = true;
     final until = DateTime.now().add(const Duration(seconds: 15));
     while (!connected && DateTime.now().isBefore(until)) {
       await Future<void>.delayed(const Duration(milliseconds: 200));
     }
+    if (!connected) _urgent = false;
     return connected;
   }
 
@@ -970,6 +1060,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       // the smaller id goes first. The other waits, then goes anyway: the
       // smaller one may not be able to hear it (no advertising allowed).
       final first = _firstHeard.putIfAbsent(s, () => now);
+      if (!_wantsLink(h, s, now)) continue;
       final waited = now.difference(first);
       // An Android screen dials an iOS one, whatever the ids say.
       final wait = h.android == dialsFirst
@@ -1011,6 +1102,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       _sharedWhen[d.id] = now;
       out.add(_own(d));
     }
+    if (out.isNotEmpty) _shares++;
     if (out.isEmpty || !connected) return;
     await _broadcast({
       't': 'state',

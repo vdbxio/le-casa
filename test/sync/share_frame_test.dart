@@ -48,6 +48,21 @@ void main() {
     expect(v.hasB, isFalse);
   });
 
+  test('a status word goes as its code', () {
+    final f = shareSeal(
+      key,
+      '1a2b3c4d',
+      8,
+      const ShareValues(0, 0, 0, null, 2.5, textA: 'Running'),
+    );
+    final v = shareOpen(key, '1a2b3c4d', shareFind({0xFFFF: f}, const [])!)!;
+    expect(v.codeA, textCode('Running'));
+    expect(v.a, isNull);
+    expect((v.codeB, v.b), (null, 2.5));
+    // Codes of the standard words do not collide.
+    expect(standardWords.map(textCode).toSet().length, standardWords.length);
+  });
+
   test('half floats hold dashboard numbers', () {
     for (final x in [0.0, 1.0, -1.0, 3.312, 70.5, 26.72, 1500.0, 0.001]) {
       expect(fromHalf(toHalf(x)), closeTo(x, x.abs() * 0.001 + 1e-6));

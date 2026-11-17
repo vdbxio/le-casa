@@ -49,6 +49,13 @@ class ShareValues {
   final bool hasA;
   final bool hasB;
 
+  /// Text values, as their [textCode]: sent in place of a number, and on
+  /// the way in the code to look up among the words this screen knows.
+  final String? textA;
+  final String? textB;
+  final int? codeA;
+  final int? codeB;
+
   const ShareValues(
     this.device,
     this.gen,
@@ -57,8 +64,101 @@ class ShareValues {
     this.b, {
     this.hasA = true,
     this.hasB = true,
+    this.textA,
+    this.textB,
+    this.codeA,
+    this.codeB,
   });
 }
+
+/// A word's code (2-1023): an FNV-1a hash, so no table has to travel. It
+/// goes on air as a negative NaN, which no number turns into. The other
+/// end matches it against words it already knows ([standardWords], and
+/// any it was given on a visit); a word it does not know waits for one.
+int textCode(String word) {
+  // FNV-1a with 7 for its start, picked so no two [standardWords] share
+  // a code (a test checks this whenever the list grows).
+  var h = 7;
+  for (final c in utf8.encode(word)) {
+    h = ((h ^ c) * 0x01000193) & 0xFFFFFFFF;
+  }
+  return 2 + h % 1022;
+}
+
+int _textHalf(String word) => 0xFC00 | textCode(word);
+int? _codeOf(int half) =>
+    half & 0xFC00 == 0xFC00 && half & 0x3FF >= 2 ? half & 0x3FF : null;
+
+/// Status words the drivers use, known to every screen from the start, so
+/// most text needs no visit at all. Add to it freely: a code is the hash
+/// of the word, not its place in the list.
+const standardWords = <String>{
+  'charging',
+  'discharging',
+  'idle',
+  'standby',
+  'resting',
+  'balancing',
+  'on',
+  'off',
+  'On',
+  'Off',
+  'Running',
+  'Stopped',
+  'Standby',
+  'Starting up',
+  'Igniting',
+  'Cooling down',
+  'Ventilating',
+  'Fan only',
+  'Fan starting',
+  'Bulk',
+  'Absorption',
+  'Float',
+  'Storage',
+  'Equalize',
+  'Inverting',
+  'Power supply',
+  'Fault',
+  'No alarm',
+  'Low voltage',
+  'High voltage',
+  'Low temperature',
+  'High temperature',
+  'Overload',
+  'Overheating',
+  'Short circuit',
+  'Out of fuel',
+  'Eco',
+  'Max',
+  'Low',
+  'Mid',
+  'High',
+  'Manual',
+  'Locked',
+  'Unlocked',
+  'Locking',
+  'Unlocking',
+  'Half locked',
+  'Not fully locked',
+  'Unknown',
+  'Not available',
+  'Solid colour',
+  'Rainbow',
+  'Twinkle',
+  'Breathe',
+  'Pulse',
+  'Chase',
+  'Strobe',
+  'Meteor',
+  'Colour fade',
+  'Colour wipe',
+  'Colour jump',
+  'Recondition',
+  'Repeated absorption',
+  'External control',
+  'Startup failure',
+};
 
 /// A frame heard: who sent it (the first byte of its screen id) and the
 /// sealed bytes, opened later against each screen that byte could be.
@@ -97,8 +197,16 @@ Uint8List shareSeal(ShareKey k, String screen, int seq, ShareValues v) {
     (seq >> 16) & 0xFF,
     (seq >> 24) & 0xFF,
   ]);
-  final a = v.hasA ? toHalf(v.a) : _keep;
-  final b = v.hasB ? toHalf(v.b) : _keep;
+  final a = v.textA != null
+      ? _textHalf(v.textA!)
+      : v.hasA
+      ? toHalf(v.a)
+      : _keep;
+  final b = v.textB != null
+      ? _textHalf(v.textB!)
+      : v.hasB
+      ? toHalf(v.b)
+      : _keep;
   final plain = Uint8List.fromList([
     (v.device & 0xF) << 4 | (v.gen & 0xF),
     v.at & 0xFF,
@@ -166,6 +274,8 @@ ShareValues? shareOpen(ShareKey k, String screen, HeardShare h) {
       fromHalf(b),
       hasA: a != _keep,
       hasB: b != _keep,
+      codeA: _codeOf(a),
+      codeB: _codeOf(b),
     );
   } on InvalidCipherTextException {
     return null;

@@ -178,11 +178,13 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
   static const _visitMax = Duration(seconds: 12);
 
   /// A screen that visits goes again only when one end's [PeerAdvert.news]
-  /// has changed since, or after this long anyway, for the beacons (who
-  /// hears what, how loudly). Each visit costs the M10 its scan for
-  /// several seconds, and a Le'LED command sent then is all but lost.
+  /// has changed since, or a reading it was given is going stale (share
+  /// frames are not getting through), or after this long if set. Each
+  /// visit costs the M10 its scan for several seconds, and a Le'LED command
+  /// sent then is all but lost. Readings, status words and who is around
+  /// all travel over the air now, so by default there is no regular visit.
   @visibleForTesting
-  Duration idleVisit = const Duration(minutes: 2);
+  Duration? idleVisit;
 
   /// How long the other screen must have been quiet to end a visit.
   @visibleForTesting
@@ -316,25 +318,24 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     final out = linked;
     final now = DateTime.now();
     for (final (peer, at) in _visited.values) {
-      if (now.difference(at) < _visitGone && !out.contains(peer)) {
+      final air = _airSeen[shortScreen(peer.id)];
+      final around =
+          now.difference(at) < const Duration(seconds: 70) ||
+          (air != null && now.difference(air) < const Duration(seconds: 30));
+      if (around && !out.contains(peer)) {
         out.add(peer);
       }
     }
     return out;
   }
 
-  /// A screen that visits and has not come back for this long is out of
-  /// touch.
-  Duration get _visitGone => idleVisit + const Duration(minutes: 1);
-
   /// A screen still counts as around while its advert is heard, between
-  /// visits that bring its beacon.
+  /// visits that bring its beacon: what that beacon said (which devices
+  /// it hears) stays good until its news says otherwise.
   bool _alive(PeerInfo p, DateTime now) {
     if (now.difference(p.heard) < _peerGone) return true;
     final air = _airSeen[shortScreen(p.screen.id)];
-    return air != null &&
-        now.difference(air) < const Duration(seconds: 30) &&
-        now.difference(p.heard) < _visitGone;
+    return air != null && now.difference(air) < const Duration(seconds: 30);
   }
 
   /// A fingerprint of what this screen has to share, in one base-36
@@ -348,10 +349,48 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       readBy.records.length,
       for (final d in _ownShared()) _shareIndexOf(d.id) << 4 | _gen(d.polled!),
       _outbox.values.fold(0, (n, l) => n + l.length),
+      // A status word the others may not know yet: a visit takes it over.
+      for (final d in _ownShared())
+        for (final r in d.polled!.readings)
+          if (r.value case final String w when !_knownWord(w)) textCode(w),
+      // Devices it hears, for who reads what; not their signal, which
+      // changes all the time.
+      ..._heardForNews(),
     ]) {
       h = (h * 31 + v) & 0x3FFFFFFF;
     }
     return h % 36;
+  }
+
+  /// Words this screen has sent the others in a reading, on top of
+  /// [standardWords]; and words it has been sent.
+  final Set<String> _sentWords = {};
+  final Set<String> _heardWords = {};
+
+  bool _knownWord(String w) =>
+      standardWords.contains(w) || _sentWords.contains(w);
+
+  void _markSent(Iterable<SharedReading> rs) {
+    for (final r in rs) {
+      if (r.ownerId != home.me.id) continue;
+      for (final x in r.decoded.readings) {
+        if (x.value case final String w) _sentWords.add(w);
+      }
+    }
+  }
+
+  /// Hashes of the devices in this screen's beacon, over ten minutes so a
+  /// device that drops out for a moment does not count as news.
+  List<int> _heardForNews() {
+    final now = DateTime.now();
+    final ids = <String>[
+      for (final l in connections.links)
+        if (tracker[l.id] case final d?
+            when !d.remoteOnly &&
+                now.difference(d.lastSeen) < const Duration(minutes: 10))
+          l.id,
+    ]..sort();
+    return [for (final id in ids) id.hashCode & 0xFFFFF];
   }
 
   /// Devices this screen reads itself and shares, freshly read.
@@ -419,6 +458,13 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       };
     }
 
+    String? text(int i) => i < rs.length
+        ? switch (rs[i].value) {
+            final String w when _knownWord(w) => w,
+            _ => null,
+          }
+        : null;
+
     final (a, hasA) = val(at);
     final (b, hasB) = val(at + 1);
     final floor = shareSeqFloor(DateTime.now());
@@ -436,6 +482,8 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
         b,
         hasA: hasA,
         hasB: hasB,
+        textA: text(at),
+        textB: text(at + 1),
       ),
     );
   }
@@ -469,9 +517,17 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
 
   void _applyFrame(SharedReading r, ShareValues v) {
     final rs = [...r.decoded.readings];
-    void put(int i, double? x, bool has) {
+    void put(int i, double? x, bool has, int? code) {
       if (!has || i >= rs.length) return;
       final old = rs[i];
+      if (code != null) {
+        final w = [
+          ...standardWords,
+          ..._heardWords,
+        ].where((w) => textCode(w) == code).firstOrNull;
+        if (w != null) rs[i] = Reading(old.label, w, old.unit);
+        return;
+      }
       final Object? value = switch (old.value) {
         _ when x == null => null,
         bool() => x >= 0.5,
@@ -482,8 +538,8 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       rs[i] = Reading(old.label, value, old.unit);
     }
 
-    put(v.at, v.a, v.hasA);
-    put(v.at + 1, v.b, v.hasB);
+    put(v.at, v.a, v.hasA, v.codeA);
+    put(v.at + 1, v.b, v.hasB, v.codeB);
     final d = r.decoded;
     final now = DateTime.now();
     final fresh = SharedReading(
@@ -554,7 +610,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
           ? 'no news in its advert'
           : h.news != _peerNewsAt[s]
           ? 'news there'
-          : idle > idleVisit
+          : idleVisit != null && idle > idleVisit!
           ? 'check-in'
           : _goingStale(s, now)
           ? 'readings going stale'
@@ -564,7 +620,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     }
     // The other screen visits: it dials when this one's news changes. Go
     // only if it has not come for a long while.
-    return (mineNew && idle > androidDialWait) || idle > idleVisit * 2;
+    return mineNew && idle > androidDialWait;
   }
 
   void _noLinks() {
@@ -1189,7 +1245,9 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       (_, h) => now.difference(h.seen) > const Duration(seconds: 30),
     );
     _peers.removeWhere(
-      (_, p) => now.difference(p.heard) > const Duration(minutes: 5),
+      (_, p) =>
+          now.difference(p.heard) > const Duration(minutes: 5) &&
+          !_alive(p, now),
     );
     _seenReq.removeWhere(
       (_, t) => now.difference(t) > const Duration(minutes: 3),
@@ -1334,6 +1392,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       out.add(_own(d));
     }
     if (out.isEmpty || !connected) return;
+    _markSent(out);
     await _broadcast({
       't': 'state',
       'r': [for (final r in out) r.toJson()],
@@ -1411,6 +1470,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
         if (r.ownerId != s.peer.id && r.freshAt(now)) r,
     ];
     if (readings.isNotEmpty) {
+      _markSent(readings);
       await _sendTo(s, {
         't': 'state',
         'r': [for (final r in readings) r.toJson()],
@@ -1504,6 +1564,9 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
         for (final j in (m['r'] as List? ?? const [])) {
           final r = SharedReading.fromJson((j as Map).cast());
           if (r.ownerId == home.me.id) continue;
+          for (final x in r.decoded.readings) {
+            if (x.value case final String w) _heardWords.add(w);
+          }
           final old = _shared[r.slot];
           if (old != null && !r.at.isAfter(old.at)) continue;
           _shared[r.slot] = r;

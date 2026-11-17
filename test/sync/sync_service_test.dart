@@ -340,9 +340,13 @@ void main() {
     final rs = tab.tracker[tabDaly]!.polled!.readings;
     expect(rs[0].value, closeTo(26.72, 0.02));
     expect(rs[1].value, 41);
-    // Text waits for the next visit; a switch comes through.
-    expect(rs[2].value, 'charging');
+    // A standard status word and a switch come through.
+    expect(rs[2].value, 'resting');
     expect(rs[3].value, isFalse);
+    // A word the M10 has never been given waits for a visit.
+    pad.tracker.setPolled(padDaly, bms(26.72, 41, 'Zapping'));
+    await FakeRadio.shareOnAir(air, 2);
+    expect(tab.tracker[tabDaly]!.polled!.readings[2].value, 'resting');
     expect(tab.tracker[tabDaly]!.polledBy, 'Kitchen iPad');
     // Another home's key does not open it.
     expect(
@@ -1135,9 +1139,13 @@ void main() {
       await settle();
       expect(m10.driver.commands, isEmpty);
       // The M10's next visit picks it up and answers before letting go.
-      await Future<void>.delayed(const Duration(milliseconds: 400));
-      await m10.sync.tick();
-      await settle();
+      // (The service's own 1 s timer may get there first.)
+      for (var i = 0; i < 5 && m10.driver.commands.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        await FakeRadio.advertise(air);
+        await m10.sync.tick();
+        await settle();
+      }
       await sent;
       expect(m10.driver.commands.single.value, 39);
     });

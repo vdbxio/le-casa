@@ -115,9 +115,17 @@ every screen directly.
   and two values as half floats, with a 4-byte MIC. The nonce holds all
   four bytes of the screen id. A visit still brings the whole reading
   (labels, units, text); frames then refresh its numbers and switches in
-  place, and text waits for the next visit. Readings no longer count as
-  news. A visiting screen also goes when a reading it was given is about
-  to go stale, in case frames are not getting through.
+  place. Status words go as a 10-bit hash in a negative NaN; the other
+  end matches it against a built-in list of common words and any it was
+  given on a visit, and a word it cannot know yet counts as news.
+  Readings no longer count as news, and there is no regular check-in
+  (2026-11-17): a screen counts as around while its advert is heard, and
+  the devices each screen hears are news only when the set changes. A
+  visiting screen also goes when a reading it was given is about to go
+  stale, in case frames are not getting through. Advert swaps pause
+  while a sync link is up and for 3 s after it drops: the M10's
+  Bluetooth chip locked up for good right after a visit's disconnect
+  while its advertiser was being re-enabled.
 - Each screen shares a new reading of a device it reads at most every
   10 seconds. Messages are deflated before they are sealed, once the
   other screen's beacon says it can read them.

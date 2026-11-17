@@ -320,6 +320,15 @@ class BleSyncRadio implements SyncRadio, ShareRadio {
     if (_rotating || _borrowed || !_serving || next == null || last == null) {
       return;
     }
+    // Leave the advertiser alone while a sync link is up and for a few
+    // seconds after it drops. The M10's chip locked up for good (vendor
+    // event 0x57, then no answer to anything) right after a visit's
+    // disconnect while the advertiser was being re-enabled (2026-11-17).
+    if (_GattChunkLink.open > 0 ||
+        _links.isNotEmpty ||
+        DateTime.now().isBefore(_GattChunkLink.quietUntil)) {
+      return;
+    }
     _rotating = true;
     try {
       final pm = _pm;
@@ -449,10 +458,10 @@ class BleSyncRadio implements SyncRadio, ShareRadio {
         if (e.state) {
           // A new subscription is a new link, even when iOS never told us
           // the last one from this screen went away.
-          _links.remove(e.central.uuid.toString())?._gone();
+          _dropCentral(e.central.uuid.toString());
           await _linkFor(e.central);
         } else {
-          _links.remove(e.central.uuid.toString())?._gone();
+          _dropCentral(e.central.uuid.toString());
         }
       }),
     ]);
@@ -461,7 +470,7 @@ class BleSyncRadio implements SyncRadio, ShareRadio {
       _subs.add(
         pm.connectionStateChanged.listen((e) {
           if (e.state == ConnectionState.disconnected) {
-            _links.remove(e.central.uuid.toString())?._gone();
+            _dropCentral(e.central.uuid.toString());
           }
         }),
       );
@@ -484,6 +493,11 @@ class BleSyncRadio implements SyncRadio, ShareRadio {
               throw StateError('Adding the GATT service timed out'),
         );
     debugPrint('sync server: service added');
+  }
+
+  void _dropCentral(String id) {
+    _links.remove(id)?._gone();
+    _GattChunkLink.quietUntil = DateTime.now().add(const Duration(seconds: 3));
   }
 
   Future<_CentralLink> _linkFor(Central c) async {
@@ -673,10 +687,14 @@ class _GattChunkLink implements ChunkLink {
   /// Links of this kind not yet dropped.
   static int open = 0;
 
+  /// No advert swaps until then: the last link dropped moments ago.
+  static DateTime quietUntil = DateTime(0);
+
   _GattChunkLink(this._link, this._rx, this._stream, this.maxChunk) {
     open++;
     _link.onDisconnected.then((_) {
       open--;
+      quietUntil = DateTime.now().add(const Duration(seconds: 3));
       if (!_closed.isCompleted) _closed.complete();
       lingering.remove(_id);
     });

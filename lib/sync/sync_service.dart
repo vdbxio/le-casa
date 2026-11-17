@@ -911,6 +911,13 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       _links.remove(s.peer.id);
       await old.s.close();
     }
+    if (mine && visitEvery != null && (holdVisits?.call() ?? false)) {
+      // A light command went out while this visit was dialling: hang up
+      // now so the M10 can hear the answer. The next visit catches up.
+      debugPrint('sync: ${s.peer.name} linked during a light command, closing');
+      await s.close();
+      return;
+    }
     final l = _links[s.peer.id] = _Link(s, mine);
     _linkedSince ??= DateTime.now();
     final short = shortScreen(s.peer.id);

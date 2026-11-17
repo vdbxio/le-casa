@@ -154,7 +154,9 @@ class BleSyncRadio implements SyncRadio {
   /// not split by one. A cheap tablet (the M10) all but stops hearing
   /// adverts while it holds a GATT link, and so misses the light's ack.
   DateTime _quietUntil = DateTime(0);
-  static const _quietAfterSend = Duration(seconds: 10);
+  // Taps come in bursts, and the M10 can stay deaf for seconds after a
+  // link closes, so leave room for the next few.
+  static const _quietAfterSend = Duration(seconds: 30);
 
   /// Whether this screen holds a sync link it dialled. Le'Proto waits
   /// longer for an ack while one is open (see [_quietAfterSend]).

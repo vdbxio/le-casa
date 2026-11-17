@@ -101,7 +101,7 @@ every screen directly.
   screen that visits dials only when either fingerprint has changed since
   the last visit, or after 2 minutes for the beacons. A screen still
   counts as around while its advert is heard. No sync link opens while a
-  Le'LED command waits for its answer, or for 10 s after (2026-11-17: the
+  Le'LED command waits for its answer, or for 30 s after (2026-11-17: the
   M10 missed most answers when a visit overlapped).
 - Each screen shares a new reading of a device it reads at most every
   10 seconds. Messages are deflated before they are sealed, once the

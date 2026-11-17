@@ -2,7 +2,10 @@
 // Copyright (C) 2026 Chloe Madison and contributors.
 // SPDX-License-Identifier: GPL-3.0-or-later WITH App-Store-Exception
 
+import 'dart:typed_data';
+
 import 'framing.dart';
+import 'share_frame.dart';
 
 /// The one Le'Casa GATT service, shared by screen sync now and the
 /// phone companion and Le' devices later. "LeCasa" in the first bytes.
@@ -126,4 +129,14 @@ abstract interface class SyncRadio {
 
   /// Connects to a screen. Throws when it cannot.
   Future<MessageLink> connect(PeerSighting peer);
+}
+
+/// A radio that can also put share frames on the air between its sync
+/// adverts and hear other screens' (share_frame.dart).
+abstract interface class ShareRadio {
+  /// Asked for the next frame whenever there is room on the air; null when
+  /// this screen has nothing to share.
+  set nextShare(Uint8List? Function()? f);
+
+  Stream<HeardShare> get shares;
 }

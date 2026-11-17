@@ -18,9 +18,11 @@ import '../ble/connection_manager.dart';
 import '../ble/gatt_link.dart';
 import '../ble/gatt_session.dart';
 import '../decoders/raw_advertisement.dart';
+import '../leproto/leproto.dart';
 import 'framing.dart';
 import 'home.dart';
 import 'radio.dart';
+import 'share_frame.dart';
 
 /// Largest sync chunk, in bytes. It fits one link-layer packet (251 bytes
 /// with data length extension, less the L2CAP and ATT headers). The M10's
@@ -68,7 +70,7 @@ Future<bool> disconnectWhenIdle(
   return true;
 }
 
-class BleSyncRadio implements SyncRadio {
+class BleSyncRadio implements SyncRadio, ShareRadio {
   final BleScanner scanner;
   PeripheralManager? _pmInstance;
   final _incoming = StreamController<MessageLink>.broadcast();
@@ -162,8 +164,13 @@ class BleSyncRadio implements SyncRadio {
   /// longer for an ack while one is open (see [_quietAfterSend]).
   bool get linkOpen => _GattChunkLink.open > 0;
 
-  /// A Le'Proto command is out, or went out in the last few seconds.
-  bool get commandBusy => _borrowed || DateTime.now().isBefore(_quietUntil);
+  /// A Le'Proto command is out, or went out in the last 5 s: a sync visit
+  /// up now should hang up so this screen can hear its answer.
+  bool get commandBusy =>
+      _borrowed ||
+      DateTime.now().isBefore(
+        _quietUntil.subtract(_quietAfterSend - const Duration(seconds: 5)),
+      );
 
   /// Puts [ad] on air instead of the sync advert while [hold] runs, then
   /// brings the sync advert back. Le'Proto commands go out this way: the
@@ -184,6 +191,7 @@ class BleSyncRadio implements SyncRadio {
       _advertAuthorized = true;
     }
     _borrowed = true;
+    await _rotationDone();
     try {
       try {
         await pm.stopAdvertising();
@@ -213,6 +221,7 @@ class BleSyncRadio implements SyncRadio {
     _lastAd = ad;
     // Back on air when the borrowed advert ends.
     if (_borrowed) return;
+    await _rotationDone();
     if (!_serving) await _serve(ad.tag);
     _serving = true;
     final pm = _pm;
@@ -221,53 +230,138 @@ class BleSyncRadio implements SyncRadio {
     } catch (_) {
       // Was not advertising.
     }
-    final apple =
-        defaultTargetPlatform == TargetPlatform.iOS ||
-        defaultTargetPlatform == TargetPlatform.macOS;
     debugPrint('sync: starting advert');
+    _onShare = false;
     await pm
-        .startAdvertising(
-          // iOS adverts carry only a name and service UUIDs, so everything goes
-          // in the name there. On Android a name would rename the tablet's
-          // Bluetooth, so it rides in manufacturer data instead, without the
-          // 16-byte service UUID: both do not fit in a legacy advert.
-          apple
-              ? Advertisement(
-                  name:
-                      '$syncNamePrefix${ad.tag}.${ad.screen}'
-                      '${ad.adding
-                          ? '+'
-                          : ad.wakeLevel != null
-                          ? '~${wakeDigit(ad.wakeLevel!).toRadixString(36)}'
-                          : ad.news != null
-                          ? '=${(ad.news! % 36).toRadixString(36)}'
-                          : ''}',
-                  serviceUUIDs: [UUID.fromString(syncServiceUuid)],
-                )
-              : Advertisement(
-                  manufacturerSpecificData: [
-                    ManufacturerSpecificData(
-                      id: syncCompanyId,
-                      data: Uint8List.fromList([
-                        ...syncMagic,
-                        ad.adding ? 1 : 0,
-                        ...fromHexString(ad.tag),
-                        ...fromHexString(ad.screen),
-                        if (ad.wakeLevel case final l?) ...[
-                          ad.wakeSeq & 0xFF,
-                          (l + 128).clamp(0, 255),
-                        ],
-                        if (ad.news case final n?) n & 0xFF,
-                      ]),
-                    ),
-                  ],
-                ),
-        )
+        .startAdvertising(_syncAdvertisement(ad))
         .timeout(
           const Duration(seconds: 10),
           onTimeout: () => throw StateError('Starting the advert timed out'),
         );
     debugPrint('sync: advertising ${ad.tag} as ${ad.screen}');
+  }
+
+  static bool get _apple =>
+      defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.macOS;
+
+  static Advertisement _syncAdvertisement(PeerAdvert ad) {
+    final apple = _apple;
+    return
+    // iOS adverts carry only a name and service UUIDs, so everything goes
+    // in the name there. On Android a name would rename the tablet's
+    // Bluetooth, so it rides in manufacturer data instead, without the
+    // 16-byte service UUID: both do not fit in a legacy advert.
+    apple
+        ? Advertisement(
+            name:
+                '$syncNamePrefix${ad.tag}.${ad.screen}'
+                '${ad.adding
+                    ? '+'
+                    : ad.wakeLevel != null
+                    ? '~${wakeDigit(ad.wakeLevel!).toRadixString(36)}'
+                    : ad.news != null
+                    ? '=${(ad.news! % 36).toRadixString(36)}'
+                    : ''}',
+            serviceUUIDs: [UUID.fromString(syncServiceUuid)],
+          )
+        : Advertisement(
+            manufacturerSpecificData: [
+              ManufacturerSpecificData(
+                id: syncCompanyId,
+                data: Uint8List.fromList([
+                  ...syncMagic,
+                  ad.adding ? 1 : 0,
+                  ...fromHexString(ad.tag),
+                  ...fromHexString(ad.screen),
+                  if (ad.wakeLevel case final l?) ...[
+                    ad.wakeSeq & 0xFF,
+                    (l + 128).clamp(0, 255),
+                  ],
+                  if (ad.news case final n?) n & 0xFF,
+                ]),
+              ),
+            ],
+          );
+  }
+
+  // ---- share frames ---------------------------------------------------------
+
+  Uint8List? Function()? _nextShare;
+  Timer? _rotation;
+  bool _onShare = false;
+  bool _rotating = false;
+  int _syncSlots = 0;
+
+  /// The air is shared in slots: the sync advert for two, then one share
+  /// frame, so other screens still see the advert (and its news) often.
+  static const _shareSlot = Duration(milliseconds: 400);
+
+  @override
+  set nextShare(Uint8List? Function()? f) {
+    _nextShare = f;
+    if (f == null) {
+      _rotation?.cancel();
+      _rotation = null;
+      return;
+    }
+    _rotation ??= Timer.periodic(_shareSlot, (_) => _rotate());
+  }
+
+  @override
+  Stream<HeardShare> get shares => scanner.advertisements
+      .map((a) => shareFind(a.manufacturerData, a.longServiceUuids))
+      .where((h) => h != null)
+      .cast();
+
+  Future<void> _rotate() async {
+    final next = _nextShare;
+    final last = _lastAd;
+    if (_rotating || _borrowed || !_serving || next == null || last == null) {
+      return;
+    }
+    _rotating = true;
+    try {
+      final pm = _pm;
+      if (_onShare) {
+        _onShare = false;
+        _syncSlots = 0;
+        await _swap(pm, _syncAdvertisement(last));
+        return;
+      }
+      if (++_syncSlots < 2) return;
+      final frame = next();
+      if (frame == null) return;
+      _onShare = true;
+      await _swap(
+        pm,
+        _apple
+            ? Advertisement(serviceUUIDs: [UUID.fromString(lepUuid(frame))])
+            : Advertisement(
+                manufacturerSpecificData: [
+                  ManufacturerSpecificData(id: syncCompanyId, data: frame),
+                ],
+              ),
+      );
+    } catch (e) {
+      debugPrint('sync: share advert failed: $e');
+    } finally {
+      _rotating = false;
+    }
+  }
+
+  static Future<void> _swap(PeripheralManager pm, Advertisement ad) async {
+    try {
+      await pm.stopAdvertising();
+    } catch (_) {}
+    await pm.startAdvertising(ad).timeout(const Duration(seconds: 3));
+  }
+
+  /// Lets a share frame that is going on air finish first.
+  Future<void> _rotationDone() async {
+    for (var i = 0; _rotating && i < 100; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
   }
 
   Future<void> _serve(String tag) async {
@@ -445,7 +539,7 @@ class BleSyncRadio implements SyncRadio {
 
   @override
   Future<MessageLink> connect(PeerSighting peer) async {
-    final until = DateTime.now().add(const Duration(seconds: 30));
+    final until = DateTime.now().add(const Duration(seconds: 45));
     while ((_borrowed || DateTime.now().isBefore(_quietUntil)) &&
         DateTime.now().isBefore(until)) {
       await Future<void>.delayed(const Duration(milliseconds: 200));

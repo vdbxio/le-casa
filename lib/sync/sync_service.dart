@@ -20,6 +20,7 @@ import 'package:flutter/foundation.dart';
 
 import '../ble/connection_manager.dart';
 import '../ble/device_tracker.dart';
+import '../decoders/decoded.dart';
 import '../decoders/raw_advertisement.dart';
 import '../drivers/driver.dart';
 import '../keys/key_store.dart';
@@ -30,6 +31,7 @@ import 'home.dart';
 import 'radio.dart';
 import 'read_by.dart';
 import 'session.dart';
+import 'share_frame.dart';
 import 'wire.dart';
 
 /// A pairing code waiting for the person to compare it.
@@ -251,9 +253,23 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
   /// Screens that only visit, from their beacons.
   final Set<String> _visitors = {};
 
-  /// Readings of this screen's own shared so far, for [_news].
-  int _shares = 0;
   int? _advertNews;
+
+  // ---- share frames: readings over the air, no link (share_frame.dart) ----
+
+  /// This screen's devices in its share table, by id: their place.
+  final Map<String, int> _shareIndex = {};
+  int _shareSeq = 0;
+  int _shareCursor = 0;
+  (Uint8List, ShareKey)? _shareKey;
+
+  /// Highest frame taken from each screen, by [shortScreen].
+  final Map<String, int> _shareSeen = {};
+  StreamSubscription? _shareSub;
+
+  /// Frames sent and taken, for the radio log line.
+  int _framesSent = 0;
+  int _framesTaken = 0;
 
   /// Per screen, by [shortScreen]: its news and this screen's when they
   /// last linked, and when that link ended (or opened, while it is up).
@@ -330,12 +346,195 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       keys.records.length,
       _maxAt(readBy.records.map((r) => r.at)),
       readBy.records.length,
-      _shares,
+      for (final d in _ownShared()) _shareIndexOf(d.id) << 4 | _gen(d.polled!),
       _outbox.values.fold(0, (n, l) => n + l.length),
     ]) {
       h = (h * 31 + v) & 0x3FFFFFFF;
     }
     return h % 36;
+  }
+
+  /// Devices this screen reads itself and shares, freshly read.
+  Iterable<TrackedDevice> _ownShared() {
+    final now = DateTime.now();
+    return tracker.devices.where((d) {
+      final at = d.polledAt;
+      return d.polled != null &&
+          d.polledBy == null &&
+          at != null &&
+          now.difference(at) < const Duration(minutes: 3);
+    });
+  }
+
+  static bool _isHex8(String s) => RegExp(r'^[0-9a-f]{8}$').hasMatch(s);
+
+  int _shareIndexOf(String id) =>
+      _shareIndex[id] ??= _shareIndex.length < 16 ? _shareIndex.length : 15;
+
+  /// A hash of a reading's labels and units (0-15): frames say which
+  /// layout they fill in, and one that changed waits for a visit.
+  static int _gen(Decoded d) {
+    var h = 7;
+    for (final r in d.readings) {
+      for (final c in '${r.label}|${r.unit}|'.codeUnits) {
+        h = (h * 31 + c) & 0x3FFFFFFF;
+      }
+    }
+    return h & 0xF;
+  }
+
+  ShareKey? get _key {
+    final k = home.key;
+    if (k == null) return null;
+    final cached = _shareKey;
+    if (cached != null && identical(cached.$1, k)) return cached.$2;
+    final made = ShareKey(k);
+    _shareKey = (k, made);
+    return made;
+  }
+
+  /// The next share frame for the radio: the next two readings of the
+  /// next device this screen shares, round and round.
+  Uint8List? _nextShareFrame() {
+    final key = _key;
+    final me = shortScreen(home.me.id);
+    if (key == null || screens.length < 2 || !_isHex8(me)) return null;
+    final windows = <(TrackedDevice, int)>[];
+    for (final d in _ownShared()) {
+      if (_shareIndexOf(d.id) > 14) continue;
+      for (var i = 0; i < d.polled!.readings.length; i += 2) {
+        windows.add((d, i));
+      }
+    }
+    if (windows.isEmpty) return null;
+    final (d, at) = windows[_shareCursor++ % windows.length];
+    final rs = d.polled!.readings;
+    (double?, bool) val(int i) {
+      if (i >= rs.length) return (null, false);
+      return switch (rs[i].value) {
+        final num n => (n.toDouble(), true),
+        final bool b => (b ? 1.0 : 0.0, true),
+        null => (null, true),
+        _ => (null, false),
+      };
+    }
+
+    final (a, hasA) = val(at);
+    final (b, hasB) = val(at + 1);
+    final floor = shareSeqFloor(DateTime.now());
+    _shareSeq = _shareSeq + 1 > floor ? _shareSeq + 1 : floor;
+    _framesSent++;
+    return shareSeal(
+      key,
+      me,
+      _shareSeq,
+      ShareValues(
+        _shareIndexOf(d.id),
+        _gen(d.polled!),
+        at,
+        a,
+        b,
+        hasA: hasA,
+        hasB: hasB,
+      ),
+    );
+  }
+
+  void _onShare(HeardShare h) {
+    final key = _key;
+    if (key == null) return;
+    final me = shortScreen(home.me.id);
+    final owners = <String>{
+      for (final r in _shared.values)
+        if (r.shareIndex != null) shortScreen(r.ownerId),
+    };
+    for (final owner in owners) {
+      if (owner == me || !_isHex8(owner)) continue;
+      if (int.tryParse(owner.substring(0, 2), radix: 16) != h.src) continue;
+      if (h.seq <= (_shareSeen[owner] ?? -1)) continue;
+      final v = shareOpen(key, owner, h);
+      if (v == null) continue;
+      _shareSeen[owner] = h.seq;
+      for (final r in _shared.values.toList()) {
+        if (shortScreen(r.ownerId) != owner ||
+            r.shareIndex != v.device ||
+            r.shareGen != v.gen) {
+          continue;
+        }
+        _applyFrame(r, v);
+      }
+      return;
+    }
+  }
+
+  void _applyFrame(SharedReading r, ShareValues v) {
+    final rs = [...r.decoded.readings];
+    void put(int i, double? x, bool has) {
+      if (!has || i >= rs.length) return;
+      final old = rs[i];
+      final Object? value = switch (old.value) {
+        _ when x == null => null,
+        bool() => x >= 0.5,
+        int() => x.round(),
+        String() => old.value,
+        _ => x,
+      };
+      rs[i] = Reading(old.label, value, old.unit);
+    }
+
+    put(v.at, v.a, v.hasA);
+    put(v.at + 1, v.b, v.hasB);
+    final d = r.decoded;
+    final now = DateTime.now();
+    final fresh = SharedReading(
+      id: r.id,
+      name: r.name,
+      mac: r.mac,
+      fp: r.fp,
+      ownerId: r.ownerId,
+      ownerName: r.ownerName,
+      at: now,
+      every: r.every,
+      controllable: r.controllable,
+      shareIndex: r.shareIndex,
+      shareGen: r.shareGen,
+      decoded: Decoded(
+        protocol: d.protocol,
+        model: d.model,
+        kind: d.kind,
+        readings: rs,
+        needs: d.needs,
+        info: d.info,
+        keyCheck: d.keyCheck,
+        decryptedAt: d.decryptedAt,
+      ),
+    );
+    _shared[r.slot] = fresh;
+    _framesTaken++;
+    final local = _resolve(r.id, r.mac, r.name, r.fp);
+    _ownerSlotOf[local] = r.slot;
+    tracker.setRemote(
+      local,
+      decoded: fresh.decoded,
+      at: now,
+      by: r.ownerName,
+      name: r.name,
+      mac: parseMac(r.mac),
+    );
+  }
+
+  /// A reading from screen [s] that frames have not kept fresh, about to
+  /// count as gone (and this screen to try reading the device itself).
+  bool _goingStale(String s, DateTime now) {
+    for (final r in _shared.values) {
+      if (shortScreen(r.ownerId) != s) continue;
+      final left =
+          r.every * 3 + const Duration(seconds: 30) - now.difference(r.at);
+      if (left < const Duration(seconds: 20) && left > Duration.zero) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// Whether to dial screen [s] now, going by the news in its advert and
@@ -357,6 +556,8 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
           ? 'news there'
           : idle > idleVisit
           ? 'check-in'
+          : _goingStale(s, now)
+          ? 'readings going stale'
           : null;
       if (why != null && !connecting) debugPrint('sync: visiting $s ($why)');
       return why != null;
@@ -403,6 +604,10 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     readBy.addListener(tracker.relabel);
     tracker.relabel();
     _sightingSub = radio.sightings.listen(_onSighting);
+    if (radio case final ShareRadio r) {
+      r.nextShare = _nextShareFrame;
+      _shareSub = r.shares.listen(_onShare);
+    }
     keys.addListener(_onKeys);
     readBy.addListener(_onReadBy);
     readBy.addListener(_applyChoices);
@@ -428,6 +633,8 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     _disposed = true;
     _tick?.cancel();
     _sightingSub?.cancel();
+    _shareSub?.cancel();
+    if (radio case final ShareRadio r) r.nextShare = null;
     _wakeEnd?.cancel();
     unawaited(_wakes.close());
     keys.removeListener(_onKeys);
@@ -1104,8 +1311,11 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     final t = SyncTraffic.take();
     debugPrint(
       'radio: last minute heard $heard adverts (${(heard / 60).toStringAsFixed(1)}/s); '
-      'sync sent ${t.messages} messages, ${t.bytes} B, on ${_links.length} links',
+      'sync sent ${t.messages} messages, ${t.bytes} B, on ${_links.length} links; '
+      'share frames sent $_framesSent, taken $_framesTaken',
     );
+    _framesSent = 0;
+    _framesTaken = 0;
   }
 
   /// Sends readings this screen took itself since the last tick, each
@@ -1123,7 +1333,6 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       _sharedWhen[d.id] = now;
       out.add(_own(d));
     }
-    if (out.isNotEmpty) _shares++;
     if (out.isEmpty || !connected) return;
     await _broadcast({
       't': 'state',
@@ -1144,6 +1353,8 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       every: link?.driver.interval ?? const Duration(minutes: 1),
       controllable: link?.driver is ControllableDriver,
       decoded: d.polled!,
+      shareIndex: _shareIndexOf(d.id),
+      shareGen: _gen(d.polled!),
     );
   }
 

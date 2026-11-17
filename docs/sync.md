@@ -103,6 +103,21 @@ every screen directly.
   counts as around while its advert is heard. No sync link opens while a
   Le'LED command waits for its answer, or for 30 s after (2026-11-17: the
   M10 missed most answers when a visit overlapped).
+- Share frames (2026-11-17): readings also go out as 16-byte adverts,
+  so a screen that visits gets them without a link. A screen's advert
+  takes turns: the sync advert for 0.8 s, then one frame for 0.4 s (on
+  Android as manufacturer data 0xFFFF, on iOS as one 128-bit service
+  UUID). A frame is `'S'`, the first byte of the sender's screen id, a
+  32-bit sequence number (at least a quarter-second count since
+  2026-11-01, so it climbs across restarts), then AES-CCM under a key
+  from the home key (HKDF "LeCasa share v0"): the device's place in the
+  sender's share table and a 4-bit hash of its labels, which reading,
+  and two values as half floats, with a 4-byte MIC. The nonce holds all
+  four bytes of the screen id. A visit still brings the whole reading
+  (labels, units, text); frames then refresh its numbers and switches in
+  place, and text waits for the next visit. Readings no longer count as
+  news. A visiting screen also goes when a reading it was given is about
+  to go stale, in case frames are not getting through.
 - Each screen shares a new reading of a device it reads at most every
   10 seconds. Messages are deflated before they are sealed, once the
   other screen's beacon says it can read them.

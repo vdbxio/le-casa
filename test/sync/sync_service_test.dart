@@ -15,6 +15,7 @@ import 'package:lecasa/sync/framing.dart';
 import 'package:lecasa/sync/home.dart';
 import 'package:lecasa/sync/radio.dart';
 import 'package:lecasa/sync/read_by.dart';
+import 'package:lecasa/sync/share_frame.dart';
 import 'package:lecasa/sync/sync_service.dart';
 import 'package:lecasa/sync/wire.dart';
 
@@ -30,7 +31,7 @@ class Air {
   int? Function(FakeRadio listener, FakeRadio server) signal = (_, _) => -50;
 }
 
-class FakeRadio implements SyncRadio {
+class FakeRadio implements SyncRadio, ShareRadio {
   final Air air;
   final String id;
   final _incoming = StreamController<MessageLink>.broadcast();
@@ -74,6 +75,31 @@ class FakeRadio implements SyncRadio {
     }
     this.ad = ad;
     air.servers[id] = this;
+  }
+
+  Uint8List? Function()? share;
+  final _shares = StreamController<HeardShare>.broadcast();
+
+  @override
+  set nextShare(Uint8List? Function()? f) => share = f;
+
+  @override
+  Stream<HeardShare> get shares => _shares.stream;
+
+  /// Puts [frames] share frames from every screen on the air, as the
+  /// advert rotation would, sent as manufacturer data.
+  static Future<void> shareOnAir(Air air, int frames) async {
+    for (final h in air.servers.values) {
+      for (var i = 0; i < frames; i++) {
+        final f = h.share?.call();
+        if (f == null) break;
+        for (final l in air.listeners) {
+          if (l == h || air.signal(l, h) == null) continue;
+          l._shares.add(shareFind({0xFFFF: f}, const [])!);
+        }
+      }
+    }
+    await pumpEventQueue();
   }
 
   @override
@@ -275,6 +301,58 @@ void main() {
   tearDown(() {
     ipad.dispose();
     m10.dispose();
+  });
+
+  test('share frames refresh readings over the air, no link', () async {
+    final air = Air();
+    final pad = Screen(air, '1a2b3c4d5e6f', 'Kitchen iPad');
+    final tab = Screen(air, '9f8e7d6c5b4a', 'M10');
+    addTearDown(pad.dispose);
+    addTearDown(tab.dispose);
+    await pad.sync.startHome('Bus');
+    await pairThrough(air, pad, tab);
+    await link(air, [pad, tab]);
+    final mfr = {
+      0x302: Uint8List.fromList([0x16, 0x40, 0x17, 0x10, 0x01, 0x5c]),
+    };
+    const padDaly = '7E48D8DF-E13A-24F8-78D4-C05C53494BA3';
+    const tabDaly = 'D2:19:08:01:C5:61';
+    pad.hear(padDaly, 'DL-694201312BA', mfr: mfr);
+    tab.hear(tabDaly, null, mfr: mfr);
+    Decoded bms(double v, int soc, String state) => Decoded(
+      protocol: 'Daly',
+      model: 'BMS',
+      kind: DeviceKind.battery,
+      readings: [
+        Reading('voltage', v, 'V'),
+        Reading('charge', soc, '%'),
+        Reading('state', state),
+        Reading('charging', soc > 50),
+      ],
+    );
+    pad.tracker.setPolled(padDaly, bms(26.5, 70, 'charging'));
+    await pad.sync.tick();
+    await settle();
+    expect(tab.tracker[tabDaly]!.polled!.readings[0].value, 26.5);
+    // No tick on the iPad, so the next reading comes only as frames.
+    pad.tracker.setPolled(padDaly, bms(26.72, 41, 'resting'));
+    await FakeRadio.shareOnAir(air, 2);
+    final rs = tab.tracker[tabDaly]!.polled!.readings;
+    expect(rs[0].value, closeTo(26.72, 0.02));
+    expect(rs[1].value, 41);
+    // Text waits for the next visit; a switch comes through.
+    expect(rs[2].value, 'charging');
+    expect(rs[3].value, isFalse);
+    expect(tab.tracker[tabDaly]!.polledBy, 'Kitchen iPad');
+    // Another home's key does not open it.
+    expect(
+      shareOpen(
+        ShareKey(Uint8List(32)),
+        '1a2b3c4d',
+        shareFind({0xFFFF: pad.radio.share!()!}, const [])!,
+      ),
+      isNull,
+    );
   });
 
   test('each screen knows the others', () {

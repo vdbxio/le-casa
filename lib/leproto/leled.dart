@@ -13,10 +13,6 @@ import 'leproto.dart';
 /// The model name Le'LED shows as.
 const String leLedModel = "Le'LED";
 
-/// The 1-byte raw object of the advert that carries the light's MAC
-/// (PROTOCOL.md, "The MAC advert").
-const String leLedMacMark = '4c';
-
 /// Keys that decrypted a Le'LED, by device id. Sending a command needs the
 /// same key, wherever it came from (saved here, synced, or matched by trial).
 class LeLedKeys {
@@ -25,8 +21,6 @@ class LeLedKeys {
 
   static Uint8List? keyOf(String id) => _keys[id];
   static LeLedState? stateOf(String id) => _state[id];
-
-  static void rememberKey(String id, Uint8List key) => _keys[id] = key;
 
   static void remember(String id, Uint8List key, LeLedState s) {
     _keys[id] = key;
@@ -53,31 +47,14 @@ Decoded? leLedDecoded(
   final raw = readings.where((r) => r.label == 'raw').firstOrNull;
   if (power?.value is! bool || raw?.value is! String) return null;
   final hexRaw = (raw!.value as String).replaceAll(' ', '');
+  if (hexRaw.length != 20) return null;
+  final bytes = [
+    for (var i = 0; i < 20; i += 2)
+      int.parse(hexRaw.substring(i, i + 2), radix: 16),
+  ];
+  final s = LeLedState.parse(bytes)!;
+  LeLedKeys.remember(id, key, s);
   final on = power!.value as bool;
-  LeLedState? s;
-  if (hexRaw == leLedMacMark) {
-    // The advert that carries the MAC: only power is new.
-    s = LeLedKeys.stateOf(id);
-    LeLedKeys.rememberKey(id, key);
-    if (s == null) {
-      return Decoded(
-        protocol: "Le'Proto",
-        kind: DeviceKind.lights,
-        model: leLedModel,
-        readings: [Reading('on', on)],
-        info: info,
-        keyCheck: KeyCheck.works,
-      );
-    }
-  } else {
-    if (hexRaw.length != 20) return null;
-    final bytes = [
-      for (var i = 0; i < 20; i += 2)
-        int.parse(hexRaw.substring(i, i + 2), radix: 16),
-    ];
-    s = LeLedState.parse(bytes)!;
-    LeLedKeys.remember(id, key, s);
-  }
   return Decoded(
     protocol: "Le'Proto",
     kind: DeviceKind.lights,

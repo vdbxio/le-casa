@@ -33,9 +33,6 @@
 #define LELED_IDLE_INTERVAL_MS 1000
 #define LELED_FAST_INTERVAL_MS 30
 #define LELED_FAST_FOR_MS 2000
-// iOS hides addresses, so every so often the advert carries the MAC.
-#define LELED_MAC_EVERY_MS 10000
-#define LELED_MAC_FOR_MS 1100 // just over one idle interval
 #define LELED_COUNTER_RESERVE 4096
 #define LELED_JSON_LOCK 76
 
@@ -121,9 +118,6 @@ class LeLedUsermod : public Usermod {
   uint8_t lastRaw[2 + LE_STATE_RAW_LEN];
   bool haveLast = false;
   unsigned long fastUntil = 0;
-  uint8_t stateAdv[31];
-  size_t stateAdvLen = 0;
-  unsigned long nextMacAt = 0, macUntil = 0;
   bool fastNow = false;
   unsigned long lastPoll = 0;
 
@@ -233,37 +227,10 @@ class LeLedUsermod : public Usermod {
     uint8_t adv[31];
     size_t n = le_build_state_adv(keys.key, ownMac, nextCounter(), s, rev, ack,
                                   adv);
-    memcpy(stateAdv, adv, n);
-    stateAdvLen = n;
-    macUntil = 0;
-    setAdvert(adv, n);
-    burst(LELED_FAST_FOR_MS);
-  }
-
-  void setAdvert(const uint8_t *adv, size_t n) {
     NimBLEAdvertisementData data;
     data.addData((char *)adv, n);
     NimBLEDevice::getAdvertising()->setAdvertisementData(data);
-  }
-
-  // Every LELED_MAC_EVERY_MS while idle, swap in the MAC advert for one
-  // interval, then put the state advert back.
-  void macAdvert(unsigned long now) {
-    if (!bleUp || !keyOk || !stateAdvLen) return;
-    if (macUntil) {
-      if ((long)(now - macUntil) > 0) {
-        setAdvert(stateAdv, stateAdvLen);
-        macUntil = 0;
-      }
-      return;
-    }
-    if (fastNow || (long)(now - nextMacAt) < 0) return;
-    uint8_t adv[31];
-    size_t n = le_build_mac_adv(keys.key, ownMac, nextCounter(), lastRaw[0],
-                                adv);
-    setAdvert(adv, n);
-    macUntil = now + LELED_MAC_FOR_MS;
-    nextMacAt = now + LELED_MAC_EVERY_MS;
+    burst(LELED_FAST_FOR_MS);
   }
 
   void startBle() {
@@ -277,6 +244,13 @@ class LeLedUsermod : public Usermod {
     snprintf(name, sizeof name, "LeLED-%02X%02X", ownMac[4], ownMac[5]);
     NimBLEAdvertisementData rsp;
     rsp.setName(name);
+    // iOS and macOS hide addresses, and BTHome's nonce needs one, so the
+    // scan response carries it: manufacturer data 0xFFFF, 'M', the MAC
+    // most significant byte first. Apple's scanners scan actively and keep
+    // the scan response with the device.
+    uint8_t macAd[2 + 2 + 1 + 6] = {10, 0xFF, 0xFF, 0xFF, LE_SCAN_MAC_MARK};
+    memcpy(macAd + 5, ownMac, 6);
+    rsp.addData((char *)macAd, sizeof macAd);
     NimBLEAdvertising *adv = NimBLEDevice::getAdvertising();
     adv->setAdvertisementType(BLE_GAP_CONN_MODE_NON);
     adv->setScanResponse(true);
@@ -446,7 +420,6 @@ class LeLedUsermod : public Usermod {
       publish(false);
     }
     if (fastNow && (long)(now - fastUntil) > 0) setInterval(false);
-    macAdvert(now);
     if (ledOffAt && (long)(now - ledOffAt) > 0) {
       digitalWrite(statusPin, LOW);
       ledOffAt = 0;

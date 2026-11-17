@@ -265,13 +265,20 @@ void le_state_pack(const LedState &s, uint8_t rev, uint8_t ack,
   out[9] = s.preset;
 }
 
-// Flags, then encrypted BTHome service data for `plain` (n bytes, encrypted
-// in place), with the MAC in the clear when `with_mac`.
-static size_t build_bthome_adv(const uint8_t key[16], const uint8_t mac[6],
-                               uint32_t counter, bool with_mac, uint8_t *plain,
-                               size_t n, uint8_t out[31]) {
-  const uint8_t info = BTHOME_INFO_V2 | BTHOME_INFO_ENCRYPTED |
-                       (with_mac ? BTHOME_INFO_MAC : 0); // 0x41 or 0x43
+size_t le_build_state_adv(const uint8_t key[16], const uint8_t mac[6],
+                          uint32_t counter, const LedState &s, uint8_t rev,
+                          uint8_t ack, uint8_t out[31]) {
+  const uint8_t info = BTHOME_INFO_V2 | BTHOME_INFO_ENCRYPTED; // 0x41
+  uint8_t plain[2 + 2 + LE_STATE_RAW_LEN];
+  size_t n = 0;
+
+  plain[n++] = BTHOME_OBJ_POWER;
+  plain[n++] = s.on ? 1 : 0;
+  plain[n++] = BTHOME_OBJ_RAW;
+  plain[n++] = LE_STATE_RAW_LEN;
+  le_state_pack(s, rev, ack, plain + n);
+  n += LE_STATE_RAW_LEN;
+
   uint8_t nonce[13];
   bthome_nonce(nonce, mac, info, counter);
   uint8_t mic[4];
@@ -281,13 +288,11 @@ static size_t build_bthome_adv(const uint8_t key[16], const uint8_t mac[6],
   out[o++] = 0x02; // flags
   out[o++] = 0x01;
   out[o++] = 0x06;
-  out[o++] = (uint8_t)(1 + 2 + 1 + (with_mac ? 6 : 0) + n + 8); // AD length
-  out[o++] = 0x16; // service data, 16-bit UUID
+  out[o++] = (uint8_t)(1 + 2 + 1 + n + 8); // AD length
+  out[o++] = 0x16;                         // service data, 16-bit UUID
   out[o++] = (uint8_t)(BTHOME_UUID & 0xFF);
   out[o++] = (uint8_t)(BTHOME_UUID >> 8);
   out[o++] = info;
-  if (with_mac)
-    for (int i = 5; i >= 0; i--) out[o++] = mac[i]; // little-endian on air
   memcpy(out + o, plain, n);
   o += n;
   out[o++] = (uint8_t)counter;
@@ -297,27 +302,6 @@ static size_t build_bthome_adv(const uint8_t key[16], const uint8_t mac[6],
   memcpy(out + o, mic, 4);
   o += 4;
   return o;
-}
-
-size_t le_build_state_adv(const uint8_t key[16], const uint8_t mac[6],
-                          uint32_t counter, const LedState &s, uint8_t rev,
-                          uint8_t ack, uint8_t out[31]) {
-  uint8_t plain[2 + 2 + LE_STATE_RAW_LEN];
-  size_t n = 0;
-  plain[n++] = BTHOME_OBJ_POWER;
-  plain[n++] = s.on ? 1 : 0;
-  plain[n++] = BTHOME_OBJ_RAW;
-  plain[n++] = LE_STATE_RAW_LEN;
-  le_state_pack(s, rev, ack, plain + n);
-  n += LE_STATE_RAW_LEN;
-  return build_bthome_adv(key, mac, counter, false, plain, n, out);
-}
-
-size_t le_build_mac_adv(const uint8_t key[16], const uint8_t mac[6],
-                        uint32_t counter, bool on, uint8_t out[31]) {
-  uint8_t plain[5] = {BTHOME_OBJ_POWER, (uint8_t)(on ? 1 : 0), BTHOME_OBJ_RAW,
-                      1, LE_MAC_ADV_MARK};
-  return build_bthome_adv(key, mac, counter, true, plain, sizeof plain, out);
 }
 
 // ---- Le'Proto frame --------------------------------------------------------

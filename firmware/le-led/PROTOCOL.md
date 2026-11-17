@@ -135,29 +135,17 @@ Raw state (10 bytes):
 | 8 | intensity |
 | 9 | current preset (0 = none) |
 
-With flags, the whole advert is 30 bytes. The device name (`LeLED-xxxx`) is
-in the scan response. The advert repeats every 1 s, and every 30 ms for 2 s
+With flags, the whole advert is 30 bytes. The scan response holds the
+device name (`LeLED-xxxx`) and the MAC, because iOS and macOS never show an
+app the address of what it hears and BTHome's nonce needs it: manufacturer
+data with company id `0xFFFF`, then `0x4D` (`M`) and the 6-byte MAC, most
+significant byte first. Apple's scanners scan actively and keep the scan
+response with the device, so a screen there has the MAC from the first
+sighting. The advert repeats every 1 s, and every 30 ms for 2 s
 after a change or a command.
 
 The BTHome counter is reserved 4096 at a time in NVS, so it never repeats
 across reboots.
-
-### The MAC advert
-
-BTHome's nonce starts with the sender's MAC, and iOS and macOS never show
-an app the MAC of what it hears. So every 10 s, while idle, the light swaps
-in a second advert for one interval (about 1 s): device info `0x43` (v2,
-encrypted, **MAC included**), the MAC in the clear (little-endian, as
-BTHome specifies), then encrypted:
-
-| Object | Bytes | Content |
-| --- | --- | --- |
-| `0x10` power | 1 | 1 = on |
-| `0x54` raw | 1 + 1 | `0x4C`, marking it as Le'LED |
-
-27 bytes with flags. A screen that hides MACs learns it here and decrypts
-the state adverts from then on. The state advert stays as it is, so Home
-Assistant keeps its power and the full state still fits.
 
 ## Remotes (BTHome in, no screen needed)
 

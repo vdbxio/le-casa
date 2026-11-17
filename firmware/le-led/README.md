@@ -7,8 +7,8 @@ It is the first device to speak [Le'Proto](PROTOCOL.md).
 - **State out:** the light broadcasts its power, brightness, colour, effect,
   palette, speed, intensity and preset as an encrypted BTHome v2 advert,
   every second and every 30 ms for 2 s after a change. Every Le'Casa screen
-  in range reads it at once, and Home Assistant can too. Every 10 s it also
-  sends its MAC, so iPads and iPhones (which hide MACs) can decrypt it.
+  in range reads it at once, and Home Assistant can too. The scan response
+  carries the MAC, so iPads and iPhones (which hide MACs) can decrypt it.
 - **Commands in:** the light scans all the time for 16-byte encrypted
   Le'Proto frames. An Android screen sends them as manufacturer data, an iPad
   as a 128-bit service UUID. Each command is turned into WLED JSON and

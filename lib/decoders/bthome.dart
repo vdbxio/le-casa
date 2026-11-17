@@ -96,7 +96,7 @@ class BtHomeDecoder implements Decoder {
     }
 
     var offset = 1;
-    Uint8List? mac = adv.mac;
+    Uint8List? mac = adv.mac ?? _scanResponseMac(adv);
     if (macIncluded) {
       if (data.length < 7) return null;
       // MAC is sent reversed (little-endian).
@@ -164,11 +164,6 @@ class BtHomeDecoder implements Decoder {
         }
       }
       if (mac != null) extra['mac'] = hex(mac, sep: ':').toUpperCase();
-      // A device that sends its MAC now and then (Le'LED does every 10 s)
-      // decrypts by it in between, where the radio hides it (iOS).
-      if (plain != null && macIncluded && usedKey != null && mac != null) {
-        _found[adv.id] = (usedKey, mac);
-      }
       if (plain == null) {
         final needs = key == null
             ? 'Needs the 16-byte BTHome encryption key'
@@ -288,6 +283,20 @@ class BtHomeDecoder implements Decoder {
       info: extra,
       keyCheck: encrypted ? KeyCheck.works : null,
     );
+  }
+
+  /// MACs devices put in their scan response, by id, for screens whose
+  /// radio hides them (iOS, macOS). Le'LED does this.
+  final Map<String, Uint8List> _scanMacs = {};
+
+  /// A MAC in manufacturer data 0xFFFF after the mark 0x4D, or the last one
+  /// seen from this id.
+  Uint8List? _scanResponseMac(RawAdvertisement adv) {
+    final m = adv.manufacturerData[0xFFFF];
+    if (m != null && m.length == 7 && m[0] == 0x4D) {
+      return _scanMacs[adv.id] = Uint8List.fromList(m.sublist(1));
+    }
+    return _scanMacs[adv.id];
   }
 
   /// Tries the stored keys that could belong to [id]. With [key] set, only

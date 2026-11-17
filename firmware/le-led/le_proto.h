@@ -46,7 +46,6 @@ bool le_ccm_decrypt(const uint8_t key[16], const uint8_t nonce[13],
 
 #define BTHOME_UUID 0xFCD2
 #define BTHOME_INFO_ENCRYPTED 0x01
-#define BTHOME_INFO_MAC 0x02 // MAC included, little-endian, after the info byte
 #define BTHOME_INFO_TRIGGER 0x04
 #define BTHOME_INFO_V2 0x40
 
@@ -109,6 +108,9 @@ struct LedState {
 };
 
 #define LE_STATE_RAW_LEN 10 // bytes inside the 0x54 raw object
+// First byte of the scan response's manufacturer data (0xFFFF) that
+// carries the MAC, so it never looks like a Le'Proto frame (0x4C).
+#define LE_SCAN_MAC_MARK 0x4D
 
 uint16_t rgb_to_565(uint8_t r, uint8_t g, uint8_t b);
 void rgb_from_565(uint16_t v, uint8_t *r, uint8_t *g, uint8_t *b);
@@ -123,15 +125,6 @@ void le_state_pack(const LedState &s, uint8_t rev, uint8_t ack,
 size_t le_build_state_adv(const uint8_t key[16], const uint8_t mac[6],
                           uint32_t counter, const LedState &s, uint8_t rev,
                           uint8_t ack, uint8_t out[31]);
-
-// The "MAC advert" Le'LED sends every 10 s in place of the state advert:
-// BTHome with the MAC-included bit (0x43), the address in the clear, power,
-// and a 1-byte raw object 0x4C marking it as Le'LED. iOS and macOS hide
-// addresses, and BTHome's nonce needs one; a screen there learns it from
-// this. Returns its length (27).
-#define LE_MAC_ADV_MARK 0x4C
-size_t le_build_mac_adv(const uint8_t key[16], const uint8_t mac[6],
-                        uint32_t counter, bool on, uint8_t out[31]);
 
 // ---- Le'Proto compact frame -----------------------------------------------
 

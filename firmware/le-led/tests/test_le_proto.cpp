@@ -128,32 +128,6 @@ int main() {
           "effect, palette, speed, intensity, preset");
   }
 
-  printf("Le'LED MAC advert\n");
-  {
-    uint8_t key[16], mac[6];
-    unhex(key, "00112233445566778899aabbccddeeff");
-    unhex(mac, "a0b1c2d3e4f5");
-    uint8_t adv[31];
-    size_t n = le_build_mac_adv(key, mac, 1001, true, adv);
-    check(n == 27, "fits a legacy advert (27 bytes)");
-    print_hex("advert", adv, n);
-    const uint8_t *body = nullptr;
-    size_t bl = bthome_find(adv, n, &body);
-    check(bl == 1 + 6 + 5 + 8 && body[0] == 0x43, "info 0x43: MAC included");
-    check(body[1] == 0xf5 && body[6] == 0xa0, "MAC in the clear, reversed");
-    // bthome_decrypt takes the body without the MAC.
-    uint8_t rest[32];
-    rest[0] = body[0];
-    memcpy(rest + 1, body + 7, bl - 7);
-    uint8_t plain[32];
-    uint32_t ctr = 0;
-    int pl = bthome_decrypt(key, mac, rest, bl - 6, plain, &ctr);
-    check(pl == 5 && ctr == 1001, "decrypts with the MAC it carries");
-    check(plain[0] == 0x10 && plain[1] == 1 && plain[2] == 0x54 &&
-              plain[3] == 1 && plain[4] == LE_MAC_ADV_MARK,
-          "power, and the 1-byte Le'LED mark");
-  }
-
   printf("Le'Proto compact frame\n");
   {
     uint8_t key[16];

@@ -262,11 +262,18 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
   /// This screen's devices in its share table, by id: their place.
   final Map<String, int> _shareIndex = {};
 
-  /// The layout ([_shareIndexOf] and [_gen]) of each device this screen
-  /// has shared, kept after its reading goes quiet: a device read now and
-  /// then is not news each time it comes back, only when its layout
-  /// changes.
-  final Map<String, int> _shareLayout = {};
+  /// The layouts ([_gen]) each device this screen shares has had, kept
+  /// after its reading goes quiet: a device read now and then is not news
+  /// each time it comes back, and one whose readings come in two shapes
+  /// (a BMS shows time to go only while discharging, and its pack
+  /// readings only on some polls) is news once per shape, not at every
+  /// flip: the other screens keep each shape they are given.
+  final Map<String, Set<int>> _shareLayout = {};
+
+  /// Each shape a device's reading from another screen has come in, by
+  /// [SharedReading.slot] and gen, so a frame in a shape seen before
+  /// still lands after the device flips back to it.
+  final Map<String, Map<int, List<Reading>>> _shapes = {};
   int _shareSeq = 0;
   int _shareCursor = 0;
   (Uint8List, ShareKey)? _shareKey;
@@ -453,11 +460,13 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
 
   List<String> _layoutForNews() {
     for (final d in _ownShared()) {
-      _shareLayout[d.id] = _shareIndexOf(d.id) << 4 | _gen(d.polled!);
+      final gens = _shareLayout.putIfAbsent(d.id, () => {});
+      // A device that keeps changing shape is let off after a few.
+      if (gens.length < 6) gens.add(_gen(d.id, d.polled!));
     }
     return [
       for (final id in _shareLayout.keys.toList()..sort())
-        '$id/${_shareLayout[id]}',
+        '$id/${_shareIndexOf(id)}:${(_shareLayout[id]!.toList()..sort()).join('.')}',
     ];
   }
 
@@ -481,17 +490,32 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
   int _shareIndexOf(String id) =>
       _shareIndex[id] ??= _shareIndex.length < 16 ? _shareIndex.length : 15;
 
-  /// A hash of a reading's labels and units (0-15): frames say which
-  /// layout they fill in, and one that changed waits for a visit.
-  static int _gen(Decoded d) {
-    var h = 7;
-    for (final r in d.readings) {
-      for (final c in '${r.label}|${r.unit}|'.codeUnits) {
-        h = (h * 31 + c) & 0x3FFFFFFF;
-      }
+  /// A number for the shape of device [id]'s reading (0-15), from its
+  /// labels and units: frames say which shape they fill in. It starts as
+  /// a hash, and when two shapes of one device hash alike the newer one
+  /// takes the next free number, so they never mix (a Daly's reading with
+  /// and without time to go did, 2026-11-17).
+  int _gen(String id, Decoded d) {
+    final shape = [for (final r in d.readings) '${r.label}|${r.unit}']
+        .join('|');
+    final taken = _gens.putIfAbsent(id, () => {});
+    for (final e in taken.entries) {
+      if (e.value == shape) return e.key;
     }
-    return h & 0xF;
+    var h = 7;
+    for (final c in shape.codeUnits) {
+      h = (h * 31 + c) & 0x3FFFFFFF;
+    }
+    var g = h & 0xF;
+    for (var i = 0; i < 16 && taken.containsKey(g); i++) {
+      g = (g + 1) & 0xF;
+    }
+    if (taken.length >= 16) taken.clear();
+    taken[g] = shape;
+    return g;
   }
+
+  final Map<String, Map<int, String>> _gens = {};
 
   ShareKey? get _key {
     final k = home.key;
@@ -547,7 +571,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       _shareSeq,
       ShareValues(
         _shareIndexOf(d.id),
-        _gen(d.polled!),
+        _gen(d.id, d.polled!),
         at,
         a,
         b,
@@ -575,15 +599,47 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       if (v == null) continue;
       _shareSeen[owner] = h.seq;
       for (final r in _shared.values.toList()) {
-        if (shortScreen(r.ownerId) != owner ||
-            r.shareIndex != v.device ||
-            r.shareGen != v.gen) {
+        if (shortScreen(r.ownerId) != owner || r.shareIndex != v.device) {
           continue;
         }
-        _applyFrame(r, v);
+        if (r.shareGen == v.gen) {
+          _applyFrame(r, v);
+        } else if (_shapes[r.slot]?[v.gen] case final shape?) {
+          _applyFrame(_reshaped(r, shape, v.gen), v);
+        }
       }
       return;
     }
+  }
+
+  /// [r] in another shape it has come in before: the readings of [shape],
+  /// with the values [r] has for them where it has them.
+  SharedReading _reshaped(SharedReading r, List<Reading> shape, int gen) {
+    final now = {for (final x in r.decoded.readings) '${x.label}|${x.unit}': x};
+    final d = r.decoded;
+    return SharedReading(
+      id: r.id,
+      name: r.name,
+      mac: r.mac,
+      fp: r.fp,
+      ownerId: r.ownerId,
+      ownerName: r.ownerName,
+      at: r.at,
+      every: r.every,
+      controllable: r.controllable,
+      shareIndex: r.shareIndex,
+      shareGen: gen,
+      decoded: Decoded(
+        protocol: d.protocol,
+        model: d.model,
+        kind: d.kind,
+        readings: [for (final x in shape) now['${x.label}|${x.unit}'] ?? x],
+        needs: d.needs,
+        info: d.info,
+        keyCheck: d.keyCheck,
+        decryptedAt: d.decryptedAt,
+      ),
+    );
   }
 
   void _applyFrame(SharedReading r, ShareValues v) {
@@ -1489,7 +1545,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       controllable: link?.driver is ControllableDriver,
       decoded: d.polled!,
       shareIndex: _shareIndexOf(d.id),
-      shareGen: _gen(d.polled!),
+      shareGen: _gen(d.id, d.polled!),
     );
   }
 
@@ -1651,8 +1707,21 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
           for (final x in r.decoded.readings) {
             if (x.value case final String w) _heardWords.add(w);
           }
+          if (r.shareGen case final g?) {
+            final shapes = _shapes.putIfAbsent(r.slot, () => {});
+            if (shapes.length < 6 || shapes.containsKey(g)) {
+              shapes[g] = r.decoded.readings;
+            }
+          }
           final old = _shared[r.slot];
-          if (old != null && !r.at.isAfter(old.at)) continue;
+          // Frames date a reading when they land, so one from a visit can
+          // look older than what frames made of it; take it all the same
+          // when it is in another shape.
+          if (old != null &&
+              !r.at.isAfter(old.at) &&
+              r.shareGen == old.shareGen) {
+            continue;
+          }
           _shared[r.slot] = r;
           fresh.add(r);
           final local = _resolve(r.id, r.mac, r.name, r.fp);

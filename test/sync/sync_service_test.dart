@@ -348,6 +348,37 @@ void main() {
     await FakeRadio.shareOnAir(air, 2);
     expect(tab.tracker[tabDaly]!.polled!.readings[2].value, 'resting');
     expect(tab.tracker[tabDaly]!.polledBy, 'Kitchen iPad');
+    // A BMS shows time to go only while discharging, so its reading comes
+    // in two shapes. Once the M10 has been given both, frames in either
+    // land, back and forth, with no visit.
+    Decoded draining(double v, int mins) => Decoded(
+      protocol: 'Daly',
+      model: 'BMS',
+      kind: DeviceKind.battery,
+      readings: [
+        Reading('voltage', v, 'V'),
+        Reading('charge', 40, '%'),
+        Reading('state', 'discharging'),
+        Reading('charging', false),
+        Reading('time to go', mins, 'min'),
+      ],
+    );
+    pad.sync.shareEvery = Duration.zero;
+    pad.tracker.setPolled(padDaly, draining(26.4, 90));
+    await pad.sync.tick();
+    await settle();
+    expect(tab.tracker[tabDaly]!.polled!.readings, hasLength(5));
+    pad.tracker.setPolled(padDaly, bms(26.6, 42, 'charging'));
+    await FakeRadio.shareOnAir(air, 3);
+    var now = tab.tracker[tabDaly]!.polled!.readings;
+    expect(now, hasLength(4));
+    expect(now[0].value, closeTo(26.6, 0.02));
+    expect(now[2].value, 'charging');
+    pad.tracker.setPolled(padDaly, draining(26.3, 75));
+    await FakeRadio.shareOnAir(air, 3);
+    now = tab.tracker[tabDaly]!.polled!.readings;
+    expect(now, hasLength(5));
+    expect(now[4].value, 75);
     // Another home's key does not open it.
     expect(
       shareOpen(

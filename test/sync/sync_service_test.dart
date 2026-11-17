@@ -1108,8 +1108,12 @@ void main() {
       ipad.hear(ipadFridge, 'AK1-AAFE13156431');
       m10.hear(m10Fridge, 'AK1-AAFE13156431');
       await ipad.sync.lock(ipadFridge, ipad.home.me);
+      // The iPad leaves it to the M10, which reads its news, even when it
+      // would otherwise have called by now.
+      ipad.sync.androidDialWait = Duration.zero;
       await ipad.sync.tick();
       await settle();
+      expect(ipad.sync.connected, isFalse);
       expect(await turn(), isTrue);
       expect(m10.sync.readBy.lockOf(m10Fridge)?.screen, 'ipad');
       visits = 0;

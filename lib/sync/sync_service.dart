@@ -261,6 +261,12 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
 
   /// This screen's devices in its share table, by id: their place.
   final Map<String, int> _shareIndex = {};
+
+  /// The layout ([_shareIndexOf] and [_gen]) of each device this screen
+  /// has shared, kept after its reading goes quiet: a device read now and
+  /// then is not news each time it comes back, only when its layout
+  /// changes.
+  final Map<String, int> _shareLayout = {};
   int _shareSeq = 0;
   int _shareCursor = 0;
   (Uint8List, ShareKey)? _shareKey;
@@ -347,7 +353,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       keys.records.length,
       _maxAt(readBy.records.map((r) => r.at)),
       readBy.records.length,
-      for (final d in _ownShared()) _shareIndexOf(d.id) << 4 | _gen(d.polled!),
+      ..._layoutForNews(),
       _outbox.values.fold(0, (n, l) => n + l.length),
       // A status word the others may not know yet: a visit takes it over.
       for (final d in _ownShared())
@@ -393,15 +399,27 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     return [for (final id in ids) id.hashCode & 0xFFFFF];
   }
 
-  /// Devices this screen reads itself and shares, freshly read.
+  List<int> _layoutForNews() {
+    for (final d in _ownShared()) {
+      _shareLayout[d.id] = _shareIndexOf(d.id) << 4 | _gen(d.polled!);
+    }
+    return [
+      for (final id in _shareLayout.keys.toList()..sort()) _shareLayout[id]!,
+    ];
+  }
+
+  /// Devices this screen reads itself and shares, freshly read: within
+  /// three minutes, or two of its reads for one read less often, so it
+  /// does not drop out of the frames between reads.
   Iterable<TrackedDevice> _ownShared() {
     final now = DateTime.now();
     return tracker.devices.where((d) {
       final at = d.polledAt;
-      return d.polled != null &&
-          d.polledBy == null &&
-          at != null &&
-          now.difference(at) < const Duration(minutes: 3);
+      if (d.polled == null || d.polledBy != null || at == null) return false;
+      final every = connections[d.id]?.driver.interval;
+      var fresh = const Duration(minutes: 3);
+      if (every != null && every * 2 > fresh) fresh = every * 2;
+      return now.difference(at) < fresh;
     });
   }
 
@@ -618,9 +636,12 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       if (why != null && !connecting) debugPrint('sync: visiting $s ($why)');
       return why != null;
     }
-    // The other screen visits: it dials when this one's news changes. Go
-    // only if it has not come for a long while.
-    return mineNew && idle > androidDialWait;
+    // The other screen visits: it dials when this one's news changes, and
+    // one whose advert carries news reads ours, so leave it to come. Only
+    // an older one that does not gets a call, if it has not come for a
+    // long while. Both dialling at once is how the M10's link flapped and
+    // its light commands went unheard (2026-11-17).
+    return h.news == null && mineNew && idle > androidDialWait;
   }
 
   void _noLinks() {

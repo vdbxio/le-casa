@@ -164,6 +164,11 @@ class BtHomeDecoder implements Decoder {
         }
       }
       if (mac != null) extra['mac'] = hex(mac, sep: ':').toUpperCase();
+      // A device that sends its MAC now and then (Le'LED does every 10 s)
+      // decrypts by it in between, where the radio hides it (iOS).
+      if (plain != null && macIncluded && usedKey != null && mac != null) {
+        _found[adv.id] = (usedKey, mac);
+      }
       if (plain == null) {
         final needs = key == null
             ? 'Needs the 16-byte BTHome encryption key'

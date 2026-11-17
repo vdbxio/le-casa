@@ -106,4 +106,44 @@ void main() {
     expect(s.acks(1, 77), isFalse);
     expect(LeLedKeys.keyOf('A0:B1:C2:D3:E4:F5'), key);
   });
+
+  test('iOS learns the MAC from the MAC advert, then reads the state', () {
+    LeLedKeys.clear();
+    const id = '64FA0E6C-79EC-A70E-E6AA-F071A29BD9CC';
+    final dec = BtHomeDecoder(
+      keyFor: keyFor(id, '00112233445566778899aabbccddeeff'),
+    );
+    // Before the MAC advert: the hidden MAC leaves it unreadable.
+    final state = adv(
+      id: id,
+      mac: null,
+      serviceData: {0xFCD2: '416483fc80612c1f0691b8e3ff4594e80300003cc6a4f0'},
+    );
+    expect(dec.decode(state)!.isReadable, isFalse);
+
+    final macAdv = dec.decode(
+      adv(
+        id: id,
+        mac: null,
+        serviceData: {0xFCD2: '43f5e4d3c2b1a05d1dc0bf38e903000038caef50'},
+      ),
+    )!;
+    expect(macAdv.model, leLedModel);
+    expect(macAdv.info['mac'], 'A0:B1:C2:D3:E4:F5');
+    expect(values(macAdv), {'on': true});
+
+    final out = dec.decode(state)!;
+    expect(out.model, leLedModel);
+    expect(values(out)['brightness'], 50);
+
+    // Once the state is known, the MAC advert keeps showing it.
+    final again = dec.decode(
+      adv(
+        id: id,
+        mac: null,
+        serviceData: {0xFCD2: '43f5e4d3c2b1a05d1dc0bf38e903000038caef50'},
+      ),
+    )!;
+    expect(values(again)['pattern'], 'Rainbow');
+  });
 }

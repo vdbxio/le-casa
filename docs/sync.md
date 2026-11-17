@@ -125,7 +125,10 @@ every screen directly.
   stale, in case frames are not getting through. Advert swaps pause
   while a sync link is up and for 3 s after it drops: the M10's
   Bluetooth chip locked up for good right after a visit's disconnect
-  while its advertiser was being re-enabled.
+  while its advertiser was being re-enabled. It did so a second time with
+  only the sync advert on air, so an Android screen now takes its advert
+  off before it dials a visit or as a visit reaches it, and puts it back
+  3 s after the last link is gone.
 - Each screen shares a new reading of a device it reads at most every
   10 seconds. Messages are deflated before they are sealed, once the
   other screen's beacon says it can read them.

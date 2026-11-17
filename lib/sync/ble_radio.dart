@@ -152,6 +152,47 @@ class BleSyncRadio implements SyncRadio, ShareRadio {
   bool _borrowed = false;
   bool _advertAuthorized = false;
 
+  /// Sync links under way that keep the sync advert off (Android). The
+  /// M10's chip locked up for good twice (vendor event 0x57, then no
+  /// answer to anything) moments after a visit's disconnect, while
+  /// Android was re-enabling the connectable advert it had stopped for
+  /// the link (2026-11-17). So the advert goes off before a link and
+  /// comes back only a few seconds after the last one drops.
+  int _advertHolds = 0;
+  Timer? _advertBack;
+  final Set<String> _heldCentrals = {};
+  static const _advertRest = Duration(seconds: 3);
+
+  Future<void> _holdAdvert() async {
+    if (_apple) return;
+    _advertHolds++;
+    _advertBack?.cancel();
+    if (_advertHolds > 1) return;
+    await _rotationDone();
+    if (_borrowed) return;
+    try {
+      await _pm.stopAdvertising();
+      debugPrint('sync: advert off for a link');
+    } catch (_) {
+      // Was not advertising.
+    }
+  }
+
+  void _releaseAdvert() {
+    if (_apple || _advertHolds == 0) return;
+    if (--_advertHolds > 0) return;
+    _advertBack?.cancel();
+    _advertBack = Timer(_advertRest, () {
+      final last = _lastAd;
+      if (_advertHolds > 0 || last == null || !_serving) return;
+      unawaited(
+        startServer(
+          last,
+        ).catchError((Object e) => debugPrint('sync: advert not restored: $e')),
+      );
+    });
+  }
+
   /// No sync link opens until this, so quick taps on a light's card are
   /// not split by one. A cheap tablet (the M10) all but stops hearing
   /// adverts while it holds a GATT link, and so misses the light's ack.
@@ -224,6 +265,8 @@ class BleSyncRadio implements SyncRadio, ShareRadio {
     await _rotationDone();
     if (!_serving) await _serve(ad.tag);
     _serving = true;
+    // Back on air a few seconds after the last link drops.
+    if (_advertHolds > 0) return;
     final pm = _pm;
     try {
       await pm.stopAdvertising();
@@ -324,7 +367,8 @@ class BleSyncRadio implements SyncRadio, ShareRadio {
     // seconds after it drops. The M10's chip locked up for good (vendor
     // event 0x57, then no answer to anything) right after a visit's
     // disconnect while the advertiser was being re-enabled (2026-11-17).
-    if (_GattChunkLink.open > 0 ||
+    if (_advertHolds > 0 ||
+        _GattChunkLink.open > 0 ||
         _links.isNotEmpty ||
         DateTime.now().isBefore(_GattChunkLink.quietUntil)) {
       return;
@@ -497,6 +541,7 @@ class BleSyncRadio implements SyncRadio, ShareRadio {
 
   void _dropCentral(String id) {
     _links.remove(id)?._gone();
+    if (_heldCentrals.remove(id)) _releaseAdvert();
     _GattChunkLink.quietUntil = DateTime.now().add(const Duration(seconds: 3));
   }
 
@@ -516,6 +561,7 @@ class BleSyncRadio implements SyncRadio, ShareRadio {
     }
     final again = _links[key];
     if (again != null && !again.isClosed) return again;
+    if (_heldCentrals.add(key)) unawaited(_holdAdvert());
     final link = _links[key] = _CentralLink(
       _pm,
       c,
@@ -541,6 +587,9 @@ class BleSyncRadio implements SyncRadio, ShareRadio {
     }
     _links.clear();
     _lastAd = null;
+    _heldCentrals.clear();
+    _advertHolds = 0;
+    _advertBack?.cancel();
     final pm = _pmInstance;
     if (pm == null) return;
     try {
@@ -582,6 +631,8 @@ class BleSyncRadio implements SyncRadio, ShareRadio {
         scanner.scanning &&
         await RadioWrites.settle();
     if (wasScanning) await scanner.stop();
+    // The advert stays off until this link is gone.
+    await _holdAdvert();
     GattLink? link;
     try {
       for (var attempt = 1; ; attempt++) {
@@ -598,6 +649,9 @@ class BleSyncRadio implements SyncRadio, ShareRadio {
           await Future<void>.delayed(Duration(milliseconds: 700 * attempt));
         }
       }
+    } catch (_) {
+      _releaseAdvert();
+      rethrow;
     } finally {
       if (wasScanning) unawaited(scanner.resume());
     }
@@ -611,8 +665,11 @@ class BleSyncRadio implements SyncRadio, ShareRadio {
       debugPrint(
         'sync: connected to ${peer.id}, chunks of $chunk (MTU allows $max)',
       );
-      return MessageLink(_GattChunkLink(l, rx, stream, chunk));
+      return MessageLink(
+        _GattChunkLink(l, rx, stream, chunk, onGone: _releaseAdvert),
+      );
     } catch (_) {
+      _releaseAdvert();
       await l.close();
       rethrow;
     }
@@ -690,14 +747,34 @@ class _GattChunkLink implements ChunkLink {
   /// No advert swaps until then: the last link dropped moments ago.
   static DateTime quietUntil = DateTime(0);
 
-  _GattChunkLink(this._link, this._rx, this._stream, this.maxChunk) {
+  /// Called once, when the link is gone either way.
+  final void Function()? onGone;
+  bool _gone = false;
+
+  _GattChunkLink(
+    this._link,
+    this._rx,
+    this._stream,
+    this.maxChunk, {
+    this.onGone,
+  }) {
     open++;
     _link.onDisconnected.then((_) {
-      open--;
-      quietUntil = DateTime.now().add(const Duration(seconds: 3));
       if (!_closed.isCompleted) _closed.complete();
       lingering.remove(_id);
+      _dropped();
     });
+  }
+
+  /// The device dropped the link, or this end's disconnect went through.
+  /// A link closed from here never hears its own disconnect, so both
+  /// count.
+  void _dropped() {
+    if (_gone) return;
+    _gone = true;
+    open--;
+    quietUntil = DateTime.now().add(const Duration(seconds: 3));
+    onGone?.call();
   }
 
   String get _id => _link.peripheral.uuid.toString();
@@ -719,13 +796,17 @@ class _GattChunkLink implements ChunkLink {
     if (!_closed.isCompleted) _closed.complete();
     if (_link.droppedByDevice) {
       await _link.close();
+      _dropped();
       return;
     }
     lingering.add(_id);
     unawaited(
       disconnectWhenIdle(_inFlight, _link.close, 'link to $_id').then((done) {
         // Still stuck: it stays lingering until the link drops.
-        if (done) lingering.remove(_id);
+        if (done) {
+          lingering.remove(_id);
+          _dropped();
+        }
       }),
     );
   }

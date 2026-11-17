@@ -120,6 +120,8 @@ class LeLedUsermod : public Usermod {
   unsigned long fastUntil = 0;
   bool fastNow = false;
   unsigned long lastPoll = 0;
+  unsigned long lastHeapLog = 0;
+  uint32_t heapBeforeBle = 0;
 
   // Stats for the info page.
   uint32_t accepted = 0, rejected = 0, fobPresses = 0;
@@ -234,6 +236,7 @@ class LeLedUsermod : public Usermod {
   }
 
   void startBle() {
+    heapBeforeBle = ESP.getFreeHeap();
     NimBLEDevice::init("");
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
     const uint8_t *a = NimBLEDevice::getAddress().getNative();
@@ -408,6 +411,13 @@ class LeLedUsermod : public Usermod {
                   keys.dst[0], keys.dst[1], keys.dst[2]);
 
     startBle();
+    // Runtime memory: the build's RAM figure is static only; Bluetooth
+    // takes its buffers, queues and task stack from the heap at start.
+    Serial.printf("Le'LED heap: %u free before Bluetooth, %u after "
+                  "(Bluetooth took %d), largest block %u\n",
+                  heapBeforeBle, ESP.getFreeHeap(),
+                  (int)heapBeforeBle - (int)ESP.getFreeHeap(),
+                  ESP.getMaxAllocHeap());
     initDone = true;
   }
 
@@ -424,6 +434,12 @@ class LeLedUsermod : public Usermod {
       publish(false);
     }
     if (fastNow && (long)(now - fastUntil) > 0) setInterval(false);
+    if (now - lastHeapLog > 60000) {
+      lastHeapLog = now;
+      Serial.printf("Le'LED heap: %u free, lowest %u, largest block %u\n",
+                    ESP.getFreeHeap(), ESP.getMinFreeHeap(),
+                    ESP.getMaxAllocHeap());
+    }
     if (ledOffAt && (long)(now - ledOffAt) > 0) {
       digitalWrite(statusPin, LOW);
       ledOffAt = 0;

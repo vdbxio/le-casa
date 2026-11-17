@@ -359,7 +359,11 @@ class LeLedUsermod : public Usermod {
       LepCommand c;
       LepResult r = lep_open(keys, frame, lastSeq, &c);
       if (r == LEP_OK) handleCommand(c);
-      else if (r != LEP_NOT_OURS) rejected++;
+      // Still repeating: it has not heard the ack. Keep the fast adverts up
+      // so a screen that hears few packets (the M10) catches one.
+      else if (r == LEP_REPEAT && ack == lep_ack_byte(c.slot, c.seq))
+        burst(LELED_FAST_FOR_MS);
+      else if (r != LEP_NOT_OURS && r != LEP_REPEAT) rejected++;
       return;
     }
     const uint8_t *body = nullptr;

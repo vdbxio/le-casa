@@ -64,13 +64,23 @@ class LeProtoSender {
   /// This screen's source slot (0-3). The bench tool uses 3.
   final int slot;
 
-  /// How long to wait for the light's ack before giving up.
+  /// How long to wait for the light's ack before giving up. The light
+  /// keeps bursting while it hears the frame, but a cheap tablet (the M10)
+  /// can take a few seconds to catch one of its packets.
   final Duration ackWait;
+
+  /// Whether this screen holds a sync link now. A cheap tablet hears few
+  /// adverts while it does, so the wait runs on (up to [ackWaitBusy]) until
+  /// the link closes and scanning picks up again.
+  final bool Function()? linkBusy;
+  final Duration ackWaitBusy;
 
   LeProtoSender(
     this.borrow, {
     int? slot,
-    this.ackWait = const Duration(seconds: 3),
+    this.ackWait = const Duration(seconds: 5),
+    this.linkBusy,
+    this.ackWaitBusy = const Duration(seconds: 15),
   }) : slot = slot ?? _platformSlot();
 
   static int _platformSlot() => switch (defaultTargetPlatform) {
@@ -112,16 +122,27 @@ class LeProtoSender {
           );
     debugPrint('leproto: $id $command seq $seq');
     var acked = false;
+    final sentAt = DateTime.now();
     await borrow(ad, () async {
-      final until = DateTime.now().add(ackWait);
+      final start = DateTime.now();
+      final most = start.add(ackWaitBusy);
+      var until = start.add(ackWait);
       while (DateTime.now().isBefore(until)) {
         await Future<void>.delayed(const Duration(milliseconds: 100));
         if (LeLedKeys.stateOf(id)?.acks(slot, seq) ?? false) {
           acked = true;
           return;
         }
+        if ((linkBusy?.call() ?? false) && until.isBefore(most)) {
+          final more = DateTime.now().add(const Duration(seconds: 1));
+          if (more.isAfter(until)) until = more.isAfter(most) ? most : more;
+        }
       }
     });
+    debugPrint(
+      'leproto: seq $seq ${acked ? 'acked' : 'no ack'} after '
+      '${DateTime.now().difference(sentAt).inMilliseconds} ms',
+    );
     if (!acked) {
       throw TimeoutException("The light didn't answer. Is it in range?");
     }

@@ -139,6 +139,17 @@ class BleSyncRadio implements SyncRadio {
   /// The sync advert to put back after [borrowAdvert].
   PeerAdvert? _lastAd;
   bool _borrowed = false;
+  bool _advertAuthorized = false;
+
+  /// No sync link opens until this, so quick taps on a light's card are
+  /// not split by one. A cheap tablet (the M10) all but stops hearing
+  /// adverts while it holds a GATT link, and so misses the light's ack.
+  DateTime _quietUntil = DateTime(0);
+  static const _quietAfterSend = Duration(seconds: 3);
+
+  /// Whether this screen holds a sync link it dialled. Le'Proto waits
+  /// longer for an ack while one is open (see [_quietAfterSend]).
+  bool get linkOpen => _GattChunkLink.open > 0;
 
   /// Puts [ad] on air instead of the sync advert while [hold] runs, then
   /// brings the sync advert back. Le'Proto commands go out this way: the
@@ -148,12 +159,15 @@ class BleSyncRadio implements SyncRadio {
     Future<void> Function() hold,
   ) async {
     final pm = _pm;
-    try {
-      await pm.authorize().timeout(const Duration(seconds: 8));
-    } on UnsupportedError {
-      // iOS asks by itself.
-    } on TimeoutException {
-      debugPrint('leproto: no answer to the permission request');
+    if (!_advertAuthorized) {
+      try {
+        await pm.authorize().timeout(const Duration(seconds: 8));
+      } on UnsupportedError {
+        // iOS asks by itself.
+      } on TimeoutException {
+        debugPrint('leproto: no answer to the permission request');
+      }
+      _advertAuthorized = true;
     }
     _borrowed = true;
     try {
@@ -169,6 +183,7 @@ class BleSyncRadio implements SyncRadio {
         await pm.stopAdvertising();
       } catch (_) {}
       _borrowed = false;
+      _quietUntil = DateTime.now().add(_quietAfterSend);
       if (_lastAd case final last?) {
         try {
           await startServer(last);
@@ -412,7 +427,12 @@ class BleSyncRadio implements SyncRadio {
   }
 
   @override
-  Future<MessageLink> connect(PeerSighting peer) {
+  Future<MessageLink> connect(PeerSighting peer) async {
+    final until = DateTime.now().add(const Duration(seconds: 30));
+    while ((_borrowed || DateTime.now().isBefore(_quietUntil)) &&
+        DateTime.now().isBefore(until)) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
     final c = connections;
     // The connect gives up after 32 s and each step after it has its own
     // limit, so exclusive's 60 s is only a backstop.
@@ -539,8 +559,13 @@ class _GattChunkLink implements ChunkLink {
   /// Screens whose old link is still waiting to be disconnected.
   static final Set<String> lingering = {};
 
+  /// Links of this kind not yet dropped.
+  static int open = 0;
+
   _GattChunkLink(this._link, this._rx, this._stream, this.maxChunk) {
+    open++;
     _link.onDisconnected.then((_) {
+      open--;
       if (!_closed.isCompleted) _closed.complete();
       lingering.remove(_id);
     });

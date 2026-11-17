@@ -79,6 +79,9 @@ Commands set state ("brightness 128"), never toggle it, so sending one twice
 is harmless. A screen repeats its frame about every 100 ms, with the same
 sequence number, until the device's state advert shows the new state with
 its slot and the low 6 bits of its sequence in the ack byte. Then it stops.
+While the device keeps hearing the frame it already took, it keeps its fast
+(30 ms) adverts going, so a screen that hears only some packets still
+catches the ack. A repeat is not run again.
 For a slider, send only the latest value, at most about 10 a second, each
 with a new sequence number.
 

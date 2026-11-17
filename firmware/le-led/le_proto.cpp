@@ -366,7 +366,12 @@ LepResult lep_open(const LepKeys &k, const uint8_t frame[16],
   uint8_t slot = frame[5];
   uint32_t seq = (uint32_t)frame[6] | (uint32_t)frame[7] << 8 |
                  (uint32_t)frame[8] << 16;
-  if (seq == 0 || seq <= last_seq[slot]) return LEP_REPLAY;
+  if (seq != 0 && seq == last_seq[slot]) {
+    c->slot = slot;
+    c->seq = seq;
+    return LEP_REPEAT;
+  }
+  if (seq == 0 || seq < last_seq[slot]) return LEP_REPLAY;
   last_seq[slot] = seq;
 
   c->slot = slot;

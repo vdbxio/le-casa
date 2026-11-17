@@ -170,10 +170,11 @@ struct LepCommand {
 void lep_seal(const LepKeys &k, const LepCommand &c, uint8_t out[16]);
 
 // Light side. `last_seq` holds the highest accepted seq per slot (0 means
-// none yet; senders start at 1). On success it is advanced and true is
-// returned. Wrong magic, wrong destination, bad MIC and replays all return
-// false and leave last_seq alone.
-enum LepResult { LEP_OK = 0, LEP_NOT_OURS, LEP_BAD_MIC, LEP_REPLAY };
+// none yet; senders start at 1). On LEP_OK it is advanced. LEP_REPEAT is
+// the last accepted frame again, authentic: the sender has not seen its ack
+// yet and is still repeating it (out holds its slot and seq). Wrong magic,
+// wrong destination, bad MIC and older frames leave last_seq alone.
+enum LepResult { LEP_OK = 0, LEP_NOT_OURS, LEP_BAD_MIC, LEP_REPLAY, LEP_REPEAT };
 LepResult lep_open(const LepKeys &k, const uint8_t frame[16],
                    uint32_t last_seq[LEP_SLOTS], LepCommand *out);
 

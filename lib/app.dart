@@ -204,7 +204,10 @@ class _LeCasaAppState extends State<LeCasaApp> {
         .then((_) => home.load())
         .then((_) => sync.readBy.load())
         .then((_) => sync.start());
-    connections.leProto = LeProtoSender(radio.borrowAdvert);
+    connections.leProto = LeProtoSender(
+      radio.borrowAdvert,
+      linkBusy: () => radio.linkOpen,
+    );
     connections.load();
     dashboard.load();
     people.load();

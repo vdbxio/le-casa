@@ -154,8 +154,8 @@ int main() {
               got.a0 == 200 && got.a1 == 3 && got.slot == 1 && got.seq == 42,
           "opens and decrypts");
     check(last[1] == 42, "replay window advanced");
-    check(lep_open(k, f, last, &got) == LEP_REPLAY,
-          "the same frame again is a replay");
+    check(lep_open(k, f, last, &got) == LEP_REPEAT && got.seq == 42,
+          "the same frame again is a repeat, not run twice");
 
     c.seq = 41;
     lep_seal(k, c, f);

@@ -160,6 +160,9 @@ class BleSyncRadio implements SyncRadio {
   /// longer for an ack while one is open (see [_quietAfterSend]).
   bool get linkOpen => _GattChunkLink.open > 0;
 
+  /// A Le'Proto command is out, or went out in the last few seconds.
+  bool get commandBusy => _borrowed || DateTime.now().isBefore(_quietUntil);
+
   /// Puts [ad] on air instead of the sync advert while [hold] runs, then
   /// brings the sync advert back. Le'Proto commands go out this way: the
   /// plugin runs one advert at a time.

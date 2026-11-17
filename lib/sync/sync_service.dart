@@ -264,6 +264,11 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
   /// When the advert of each screen, by [shortScreen], was last heard.
   final Map<String, DateTime> _airSeen = {};
 
+  /// True while a Le'LED command is waiting for its answer: a visit under
+  /// way then ends at once, since the M10 hears next to nothing while
+  /// linked. Set by the app.
+  bool Function()? holdVisits;
+
   /// Set by [_visitNow]: dial whatever the news says.
   bool _urgent = false;
 
@@ -344,10 +349,17 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     final idle = now.difference(last);
     final mineNew = _myNewsAt[s] != _news;
     if (visiting) {
-      return mineNew ||
-          h.news == null ||
-          h.news != _peerNewsAt[s] ||
-          idle > idleVisit;
+      final why = mineNew
+          ? 'news here'
+          : h.news == null
+          ? 'no news in its advert'
+          : h.news != _peerNewsAt[s]
+          ? 'news there'
+          : idle > idleVisit
+          ? 'check-in'
+          : null;
+      if (why != null && !connecting) debugPrint('sync: visiting $s ($why)');
+      return why != null;
     }
     // The other screen visits: it dials when this one's news changes. Go
     // only if it has not come for a long while.
@@ -1021,7 +1033,9 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
           _controlsRunning > 0 ||
           _pending.isNotEmpty ||
           _routes.values.any((r) => r.$1 == l.s);
-      final done = age >= visitLength && quiet >= visitQuiet;
+      final done =
+          (age >= visitLength && quiet >= visitQuiet) ||
+          (holdVisits?.call() ?? false);
       if (busy ? age < _visitMax * 6 : !done && age < _visitMax) continue;
       _links.remove(l.s.peer.id);
       _noLinks();

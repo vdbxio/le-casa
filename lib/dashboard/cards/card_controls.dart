@@ -151,25 +151,32 @@ class _CardControlsViewState extends State<CardControlsView> {
 
   Future<void> _togglePower() async {
     final connections = _connections;
-    if (connections == null || _switching) return;
+    if (connections == null) return;
     final on = !(_wantPower ?? widget.controls.power ?? false);
     HapticFeedback.selectionClick();
-    final messenger = ScaffoldMessenger.of(context);
     _powerTimer?.cancel();
+    setState(() => _wantPower = on);
+    // A switch flips at once and takes taps while it sends; the send
+    // under way picks up the latest one, as the stepper does.
+    if (_switching) return;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _switching = true);
     var ok = false;
-    setState(() {
-      _switching = true;
-      _wantPower = on;
-    });
+    bool? sent;
     try {
-      await connections.control(
-        widget.controls.id,
-        DeviceCommand(widget.controls.powerSetting, on),
-      );
+      while (_wantPower != null && _wantPower != sent) {
+        sent = _wantPower;
+        await connections.control(
+          widget.controls.id,
+          DeviceCommand(widget.controls.powerSetting, sent!),
+        );
+      }
       ok = true;
     } catch (e) {
       messenger.showSnackBar(
-        SnackBar(content: Text('Could not turn it ${on ? 'on' : 'off'}: $e')),
+        SnackBar(
+          content: Text('Could not turn it ${sent == true ? 'on' : 'off'}: $e'),
+        ),
       );
     } finally {
       if (mounted) {
@@ -208,7 +215,7 @@ class _CardControlsViewState extends State<CardControlsView> {
         );
     final powerButton = power == null
         ? null
-        : _switching
+        : _switching && !widget.controls.toggle
         ? SizedBox.square(
             dimension: d,
             child: Center(

@@ -208,6 +208,7 @@ class _LeCasaAppState extends State<LeCasaApp> {
       radio.borrowAdvert,
       linkBusy: () => radio.linkOpen,
     );
+    sync.holdVisits = () => radio.commandBusy;
     connections.load();
     dashboard.load();
     people.load();

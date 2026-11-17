@@ -169,7 +169,7 @@ class _SyncPageState extends State<SyncPage> {
       subtitle: Text(
         sync.inTouch
             ? 'Linked to ${sync.touching.map((p) => p.name).join(', ')}'
-                  '${sync.visitEvery != null ? ' (short visits every ${sync.visitEvery!.inSeconds} s, so this tablet keeps hearing broadcasts)' : ''}'
+                  '${sync.visitEvery != null ? ' (short visits when there is news, so this tablet keeps hearing broadcasts)' : ''}'
             : sync.connecting
             ? 'Linking…'
             : 'Looking for your other screens…',

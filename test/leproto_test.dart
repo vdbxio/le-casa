@@ -129,5 +129,19 @@ void main() {
       adv(id: id, mac: null, serviceData: {0xFCD2: state}),
     )!;
     expect(values(again)['brightness'], 50);
+    // Health bytes after the MAC (firmware since 2026-11-18) are fine.
+    LeLedKeys.clear();
+    final fresh = BtHomeDecoder(
+      keyFor: keyFor(id, '00112233445566778899aabbccddeeff'),
+    );
+    final withHealth = fresh.decode(
+      adv(
+        id: id,
+        mac: null,
+        serviceData: {0xFCD2: state},
+        manufacturerData: {0xFFFF: '4d a0 b1 c2 d3 e4 f5 79 78 64 05 00 01'},
+      ),
+    )!;
+    expect(withHealth.info['mac'], 'A0:B1:C2:D3:E4:F5');
   });
 }

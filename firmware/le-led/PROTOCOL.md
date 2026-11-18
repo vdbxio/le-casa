@@ -144,7 +144,15 @@ app the address of what it hears and BTHome's nonce needs it: manufacturer
 data with company id `0xFFFF`, then `0x4D` (`M`) and the 6-byte MAC, most
 significant byte first. Apple's scanners scan actively and keep the scan
 response with the device, so a screen there has the MAC from the first
-sighting. The advert repeats every 1 s, and every 30 ms for 2 s
+sighting.
+
+After the MAC come 6 bytes of health, refreshed every minute, so a leak
+or a crash shows without a cable (opening the ESP32-C3's USB serial
+resets it): free heap, lowest free heap since boot and largest free block
+(KB each, capped at 255), uptime in hours (16 bits, little-endian) and
+the reset reason (`esp_reset_reason_t`: 1 power-on, 3 software, 4 panic,
+5-7 watchdogs, 9 brownout). A reader must take the MAC as the 6 bytes
+after `M` and allow more after them. `leproto.py watch` prints the health. The advert repeats every 1 s, and every 30 ms for 2 s
 after a change or a command.
 
 The BTHome counter is reserved 4096 at a time in NVS, so it never repeats

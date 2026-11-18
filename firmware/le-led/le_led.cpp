@@ -16,6 +16,7 @@
 #include "wled.h"
 
 #include <NimBLEDevice.h>
+#include <esp_system.h>
 #include <Preferences.h>
 #include <freertos/queue.h>
 #include <mbedtls/aes.h>
@@ -235,6 +236,35 @@ class LeLedUsermod : public Usermod {
     burst(LELED_FAST_FOR_MS);
   }
 
+  /// The scan response: the name, so the main advert keeps its room, and
+  /// manufacturer data 0xFFFF with 'M', the MAC and the light's health.
+  /// iOS and macOS hide addresses, and BTHome's nonce needs one; Apple's
+  /// scanners scan actively and keep the scan response with the device.
+  /// Health is free heap, lowest free heap since boot and largest free
+  /// block (KB each), uptime in hours (LE) and the reset reason, so a
+  /// leak or a crash shows from a phone with no cable (opening the C3's
+  /// USB serial resets it). Refreshed every minute.
+  void setScanResponse() {
+    char name[16];
+    snprintf(name, sizeof name, "LeLED-%02X%02X", ownMac[4], ownMac[5]);
+    NimBLEAdvertisementData rsp;
+    rsp.setName(name);
+    auto kb = [](uint32_t b) { return (uint8_t)(b / 1024 > 255 ? 255 : b / 1024); };
+    uint32_t hours = millis() / 3600000UL;
+    uint8_t ad[2 + 2 + 1 + 6 + LE_SCAN_HEALTH_LEN] = {
+        sizeof ad - 1, 0xFF, 0xFF, 0xFF, LE_SCAN_MAC_MARK};
+    memcpy(ad + 5, ownMac, 6);
+    uint8_t *h = ad + 11;
+    h[0] = kb(ESP.getFreeHeap());
+    h[1] = kb(ESP.getMinFreeHeap());
+    h[2] = kb(ESP.getMaxAllocHeap());
+    h[3] = hours & 0xFF;
+    h[4] = (hours >> 8) & 0xFF;
+    h[5] = (uint8_t)esp_reset_reason();
+    rsp.addData((char *)ad, sizeof ad);
+    NimBLEDevice::getAdvertising()->setScanResponseData(rsp);
+  }
+
   void startBle() {
     heapBeforeBle = ESP.getFreeHeap();
     NimBLEDevice::init("");
@@ -242,22 +272,10 @@ class LeLedUsermod : public Usermod {
     const uint8_t *a = NimBLEDevice::getAddress().getNative();
     for (int i = 0; i < 6; i++) ownMac[i] = a[5 - i];
 
-    // Scan response carries the name, so the main advert keeps its room.
-    char name[16];
-    snprintf(name, sizeof name, "LeLED-%02X%02X", ownMac[4], ownMac[5]);
-    NimBLEAdvertisementData rsp;
-    rsp.setName(name);
-    // iOS and macOS hide addresses, and BTHome's nonce needs one, so the
-    // scan response carries it: manufacturer data 0xFFFF, 'M', the MAC
-    // most significant byte first. Apple's scanners scan actively and keep
-    // the scan response with the device.
-    uint8_t macAd[2 + 2 + 1 + 6] = {10, 0xFF, 0xFF, 0xFF, LE_SCAN_MAC_MARK};
-    memcpy(macAd + 5, ownMac, 6);
-    rsp.addData((char *)macAd, sizeof macAd);
     NimBLEAdvertising *adv = NimBLEDevice::getAdvertising();
     adv->setAdvertisementType(BLE_GAP_CONN_MODE_NON);
     adv->setScanResponse(true);
-    adv->setScanResponseData(rsp);
+    setScanResponse();
 
     g_rx = xQueueCreate(16, sizeof(RxAdv));
     NimBLEScan *scan = NimBLEDevice::getScan();
@@ -439,6 +457,7 @@ class LeLedUsermod : public Usermod {
       Serial.printf("Le'LED heap: %u free, lowest %u, largest block %u\n",
                     ESP.getFreeHeap(), ESP.getMinFreeHeap(),
                     ESP.getMaxAllocHeap());
+      setScanResponse();
     }
     if (ledOffAt && (long)(now - ledOffAt) > 0) {
       digitalWrite(statusPin, LOW);

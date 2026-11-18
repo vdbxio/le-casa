@@ -111,6 +111,9 @@ struct LedState {
 // First byte of the scan response's manufacturer data (0xFFFF) that
 // carries the MAC, so it never looks like a Le'Proto frame (0x4C).
 #define LE_SCAN_MAC_MARK 0x4D
+// After the MAC: free heap, lowest free heap since boot, largest free
+// block (KB), uptime in hours (LE), reset reason (esp_reset_reason_t).
+#define LE_SCAN_HEALTH_LEN 6
 
 uint16_t rgb_to_565(uint8_t r, uint8_t g, uint8_t b);
 void rgb_from_565(uint16_t v, uint8_t *r, uint8_t *g, uint8_t *b);

@@ -201,7 +201,19 @@ def cmd_watch(a):
     mac = bytes.fromhex(a.mac.replace(":", ""))
     last = {}
 
+    reasons = {1: "power-on", 3: "software", 4: "panic", 5: "int watchdog",
+               6: "task watchdog", 7: "watchdog", 9: "brownout"}
+
     def cb(dev, data):
+        m = data.manufacturer_data.get(0xFFFF)
+        if m and len(m) >= 13 and m[0] == 0x4D and m[1:7] == mac:
+            h = (m[7], m[8], m[9], m[10] | m[11] << 8, m[12])
+            if h != last.get("h"):
+                last["h"] = h
+                print(time.strftime("%H:%M:%S"), dev.address,
+                      f"heap {h[0]} KB free, lowest {h[1]} KB, largest block "
+                      f"{h[2]} KB, up {h[3]} h, last reset "
+                      f"{reasons.get(h[4], h[4])}", flush=True)
         body = data.service_data.get("0000fcd2-0000-1000-8000-00805f9b34fb")
         if not body:
             return

@@ -293,8 +293,9 @@ class BtHomeDecoder implements Decoder {
   /// seen from this id.
   Uint8List? _scanResponseMac(RawAdvertisement adv) {
     final m = adv.manufacturerData[0xFFFF];
-    if (m != null && m.length == 7 && m[0] == 0x4D) {
-      return _scanMacs[adv.id] = Uint8List.fromList(m.sublist(1));
+    // Le'LED adds its health after the MAC (see firmware/le-led/PROTOCOL.md).
+    if (m != null && m.length >= 7 && m[0] == 0x4D) {
+      return _scanMacs[adv.id] = Uint8List.fromList(m.sublist(1, 7));
     }
     return _scanMacs[adv.id];
   }

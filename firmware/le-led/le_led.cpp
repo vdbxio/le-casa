@@ -120,6 +120,9 @@ class LeLedUsermod : public Usermod {
   bool haveLast = false;
   unsigned long fastUntil = 0;
   bool fastNow = false;
+  // Wi-Fi up (the setup AP, or joined to a network): the scan gives way.
+  bool scanShared = false;
+  unsigned long lastWifiCheck = 0;
   unsigned long lastPoll = 0;
   unsigned long lastHeapLog = 0;
   uint32_t heapBeforeBle = 0;
@@ -265,6 +268,18 @@ class LeLedUsermod : public Usermod {
     NimBLEDevice::getAdvertising()->setScanResponseData(rsp);
   }
 
+  /// Bluetooth and Wi-Fi share the C3's one radio. With Wi-Fi off (the
+  /// usual btOnly case) the scan takes all of it, so no command is heard
+  /// late; while Wi-Fi is up it takes a third, or the setup page crawls.
+  void setScanDuty(bool shared) {
+    NimBLEScan *scan = NimBLEDevice::getScan();
+    if (scan->isScanning()) scan->stop();
+    scan->setInterval(shared ? 96 : 40);
+    scan->setWindow(shared ? 32 : 40);
+    scan->start(0, nullptr, false);
+    scanShared = shared;
+  }
+
   void startBle() {
     heapBeforeBle = ESP.getFreeHeap();
     NimBLEDevice::init("");
@@ -283,9 +298,7 @@ class LeLedUsermod : public Usermod {
     scan->setActiveScan(false);
     scan->setDuplicateFilter(false); // a tablet repeats with new bytes
     scan->setMaxResults(0);          // callbacks only, keep no list
-    scan->setInterval(40);
-    scan->setWindow(40); // 100% duty; the controller shares with Wi-Fi
-    scan->start(0, nullptr, false);
+    setScanDuty(false);
 
     bleUp = true;
     publish(true);
@@ -452,6 +465,11 @@ class LeLedUsermod : public Usermod {
       publish(false);
     }
     if (fastNow && (long)(now - fastUntil) > 0) setInterval(false);
+    if (now - lastWifiCheck > 1000) {
+      lastWifiCheck = now;
+      bool wifiUp = apActive || WLED_CONNECTED;
+      if (wifiUp != scanShared) setScanDuty(wifiUp);
+    }
     if (now - lastHeapLog > 60000) {
       lastHeapLog = now;
       Serial.printf("Le'LED heap: %u free, lowest %u, largest block %u\n",

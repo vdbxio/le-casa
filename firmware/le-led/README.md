@@ -55,7 +55,9 @@ Le'LED key 3f9a...c2, Le'Proto id 1b2c3d
 Wi-Fi stays off. To reach WLED's web UI, hold BOOT for 6 s (not 10: that
 factory-resets and makes a new key) and join the `WLED-AP` network
 (password `wled1234`). The key, the remote keys and the button actions are
-under Config > Usermods > LeLED.
+under Config > Usermods > LeLED. While Wi-Fi is up the light listens for
+Bluetooth a third of the time instead of all of it, since both share the
+C3's one radio; commands can take a little longer then.
 
 ## Use it from a computer (bench testing)
 

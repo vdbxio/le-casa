@@ -15,6 +15,7 @@ import 'package:lecasa/sync/framing.dart';
 import 'package:lecasa/sync/home.dart';
 import 'package:lecasa/sync/radio.dart';
 import 'package:lecasa/sync/read_by.dart';
+import 'package:lecasa/sync/share_frame.dart';
 import 'package:lecasa/sync/sync_service.dart';
 import 'package:lecasa/sync/wire.dart';
 
@@ -30,7 +31,7 @@ class Air {
   int? Function(FakeRadio listener, FakeRadio server) signal = (_, _) => -50;
 }
 
-class FakeRadio implements SyncRadio {
+class FakeRadio implements SyncRadio, ShareRadio {
   final Air air;
   final String id;
   final _incoming = StreamController<MessageLink>.broadcast();
@@ -58,6 +59,7 @@ class FakeRadio implements SyncRadio {
             DateTime.now(),
             screen: h.ad!.screen,
             adding: h.ad!.adding,
+            news: h.ad!.news,
           ),
         );
       }
@@ -73,6 +75,31 @@ class FakeRadio implements SyncRadio {
     }
     this.ad = ad;
     air.servers[id] = this;
+  }
+
+  Uint8List? Function()? share;
+  final _shares = StreamController<HeardShare>.broadcast();
+
+  @override
+  set nextShare(Uint8List? Function()? f) => share = f;
+
+  @override
+  Stream<HeardShare> get shares => _shares.stream;
+
+  /// Puts [frames] share frames from every screen on the air, as the
+  /// advert rotation would, sent as manufacturer data.
+  static Future<void> shareOnAir(Air air, int frames) async {
+    for (final h in air.servers.values) {
+      for (var i = 0; i < frames; i++) {
+        final f = h.share?.call();
+        if (f == null) break;
+        for (final l in air.listeners) {
+          if (l == h || air.signal(l, h) == null) continue;
+          l._shares.add(shareFind({0xFFFF: f}, const [])!);
+        }
+      }
+    }
+    await pumpEventQueue();
   }
 
   @override
@@ -274,6 +301,93 @@ void main() {
   tearDown(() {
     ipad.dispose();
     m10.dispose();
+  });
+
+  test('share frames refresh readings over the air, no link', () async {
+    final air = Air();
+    final pad = Screen(air, '1a2b3c4d5e6f', 'Kitchen iPad');
+    final tab = Screen(air, '9f8e7d6c5b4a', 'M10');
+    addTearDown(pad.dispose);
+    addTearDown(tab.dispose);
+    await pad.sync.startHome('Bus');
+    await pairThrough(air, pad, tab);
+    await link(air, [pad, tab]);
+    final mfr = {
+      0x302: Uint8List.fromList([0x16, 0x40, 0x17, 0x10, 0x01, 0x5c]),
+    };
+    const padDaly = '7E48D8DF-E13A-24F8-78D4-C05C53494BA3';
+    const tabDaly = 'D2:19:08:01:C5:61';
+    pad.hear(padDaly, 'DL-694201312BA', mfr: mfr);
+    tab.hear(tabDaly, null, mfr: mfr);
+    Decoded bms(double v, int soc, String state) => Decoded(
+      protocol: 'Daly',
+      model: 'BMS',
+      kind: DeviceKind.battery,
+      readings: [
+        Reading('voltage', v, 'V'),
+        Reading('charge', soc, '%'),
+        Reading('state', state),
+        Reading('charging', soc > 50),
+      ],
+    );
+    pad.tracker.setPolled(padDaly, bms(26.5, 70, 'charging'));
+    await pad.sync.tick();
+    await settle();
+    expect(tab.tracker[tabDaly]!.polled!.readings[0].value, 26.5);
+    // No tick on the iPad, so the next reading comes only as frames.
+    pad.tracker.setPolled(padDaly, bms(26.72, 41, 'resting'));
+    await FakeRadio.shareOnAir(air, 2);
+    final rs = tab.tracker[tabDaly]!.polled!.readings;
+    expect(rs[0].value, closeTo(26.72, 0.02));
+    expect(rs[1].value, 41);
+    // A standard status word and a switch come through.
+    expect(rs[2].value, 'resting');
+    expect(rs[3].value, isFalse);
+    // A word the M10 has never been given waits for a visit.
+    pad.tracker.setPolled(padDaly, bms(26.72, 41, 'Zapping'));
+    await FakeRadio.shareOnAir(air, 2);
+    expect(tab.tracker[tabDaly]!.polled!.readings[2].value, 'resting');
+    expect(tab.tracker[tabDaly]!.polledBy, 'Kitchen iPad');
+    // A BMS shows time to go only while discharging, so its reading comes
+    // in two shapes. Once the M10 has been given both, frames in either
+    // land, back and forth, with no visit.
+    Decoded draining(double v, int mins) => Decoded(
+      protocol: 'Daly',
+      model: 'BMS',
+      kind: DeviceKind.battery,
+      readings: [
+        Reading('voltage', v, 'V'),
+        Reading('charge', 40, '%'),
+        Reading('state', 'discharging'),
+        Reading('charging', false),
+        Reading('time to go', mins, 'min'),
+      ],
+    );
+    pad.sync.shareEvery = Duration.zero;
+    pad.tracker.setPolled(padDaly, draining(26.4, 90));
+    await pad.sync.tick();
+    await settle();
+    expect(tab.tracker[tabDaly]!.polled!.readings, hasLength(5));
+    pad.tracker.setPolled(padDaly, bms(26.6, 42, 'charging'));
+    await FakeRadio.shareOnAir(air, 3);
+    var now = tab.tracker[tabDaly]!.polled!.readings;
+    expect(now, hasLength(4));
+    expect(now[0].value, closeTo(26.6, 0.02));
+    expect(now[2].value, 'charging');
+    pad.tracker.setPolled(padDaly, draining(26.3, 75));
+    await FakeRadio.shareOnAir(air, 3);
+    now = tab.tracker[tabDaly]!.polled!.readings;
+    expect(now, hasLength(5));
+    expect(now[4].value, 75);
+    // Another home's key does not open it.
+    expect(
+      shareOpen(
+        ShareKey(Uint8List(32)),
+        '1a2b3c4d',
+        shareFind({0xFFFF: pad.radio.share!()!}, const [])!,
+      ),
+      isNull,
+    );
   });
 
   test('each screen knows the others', () {
@@ -993,6 +1107,56 @@ void main() {
       expect(m10.sync.connected, isFalse);
     });
 
+    test('visits again only when there is news, or after a while', () async {
+      await setUpWith(const Duration(milliseconds: 20));
+      // Counts links as they open: the service's own timer may end a
+      // visit before the test looks.
+      var opened = 0;
+      var was = m10.sync.connected;
+      m10.sync.addListener(() {
+        if (m10.sync.connected && !was) opened++;
+        was = m10.sync.connected;
+      });
+      Future<bool> turn() async {
+        final before = opened;
+        await m10.sync.tick();
+        await settle();
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        await FakeRadio.advertise(air);
+        await m10.sync.tick();
+        await settle(20);
+        return opened > before;
+      }
+
+      // The first visits swap what each has; then the news matches.
+      var visits = 0;
+      while (visits < 4 && await turn()) {
+        visits++;
+      }
+      expect(visits, lessThan(4));
+      expect(await turn(), isFalse);
+      // A new Read by lock on the iPad changes its news: the M10 comes.
+      ipad.hear(ipadFridge, 'AK1-AAFE13156431');
+      m10.hear(m10Fridge, 'AK1-AAFE13156431');
+      await ipad.sync.lock(ipadFridge, ipad.home.me);
+      // The iPad leaves it to the M10, which reads its news, even when it
+      // would otherwise have called by now.
+      ipad.sync.androidDialWait = Duration.zero;
+      await ipad.sync.tick();
+      await settle();
+      expect(ipad.sync.connected, isFalse);
+      expect(await turn(), isTrue);
+      expect(m10.sync.readBy.lockOf(m10Fridge)?.screen, 'ipad');
+      visits = 0;
+      while (visits < 4 && await turn()) {
+        visits++;
+      }
+      expect(visits, lessThan(4));
+      // With nothing new it still drops by after idleVisit.
+      m10.sync.idleVisit = Duration.zero;
+      expect(await turn(), isTrue);
+    });
+
     test('a control waits for the screen that visits', () async {
       await setUpWith(const Duration(milliseconds: 300));
       ipad.hear(ipadFridge, 'AK1-AAFE13156431');
@@ -1010,9 +1174,13 @@ void main() {
       await settle();
       expect(m10.driver.commands, isEmpty);
       // The M10's next visit picks it up and answers before letting go.
-      await Future<void>.delayed(const Duration(milliseconds: 400));
-      await m10.sync.tick();
-      await settle();
+      // (The service's own 1 s timer may get there first.)
+      for (var i = 0; i < 5 && m10.driver.commands.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        await FakeRadio.advertise(air);
+        await m10.sync.tick();
+        await settle();
+      }
       await sent;
       expect(m10.driver.commands.single.value, 39);
     });

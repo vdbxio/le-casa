@@ -20,6 +20,7 @@ import 'package:flutter/foundation.dart';
 
 import '../ble/connection_manager.dart';
 import '../ble/device_tracker.dart';
+import '../decoders/decoded.dart';
 import '../decoders/raw_advertisement.dart';
 import '../drivers/driver.dart';
 import '../keys/key_store.dart';
@@ -30,6 +31,7 @@ import 'home.dart';
 import 'radio.dart';
 import 'read_by.dart';
 import 'session.dart';
+import 'share_frame.dart';
 import 'wire.dart';
 
 /// A pairing code waiting for the person to compare it.
@@ -175,6 +177,15 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
   Duration visitLength = const Duration(seconds: 3);
   static const _visitMax = Duration(seconds: 12);
 
+  /// A screen that visits goes again only when one end's [PeerAdvert.news]
+  /// has changed since, or a reading it was given is going stale (share
+  /// frames are not getting through), or after this long if set. Each
+  /// visit costs the M10 its scan for several seconds, and a Le'LED command
+  /// sent then is all but lost. Readings, status words and who is around
+  /// all travel over the air now, so by default there is no regular visit.
+  @visibleForTesting
+  Duration? idleVisit;
+
   /// How long the other screen must have been quiet to end a visit.
   @visibleForTesting
   Duration visitQuiet = const Duration(seconds: 2);
@@ -244,6 +255,54 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
   /// Screens that only visit, from their beacons.
   final Set<String> _visitors = {};
 
+  int? _advertNews;
+
+  // ---- share frames: readings over the air, no link (share_frame.dart) ----
+
+  /// This screen's devices in its share table, by id: their place.
+  final Map<String, int> _shareIndex = {};
+
+  /// The layouts ([_gen]) each device this screen shares has had, kept
+  /// after its reading goes quiet: a device read now and then is not news
+  /// each time it comes back, and one whose readings come in two shapes
+  /// (a BMS shows time to go only while discharging, and its pack
+  /// readings only on some polls) is news once per shape, not at every
+  /// flip: the other screens keep each shape they are given.
+  final Map<String, Set<int>> _shareLayout = {};
+
+  /// Each shape a device's reading from another screen has come in, by
+  /// [SharedReading.slot] and gen, so a frame in a shape seen before
+  /// still lands after the device flips back to it.
+  final Map<String, Map<int, List<Reading>>> _shapes = {};
+  int _shareSeq = 0;
+  int _shareCursor = 0;
+  (Uint8List, ShareKey)? _shareKey;
+
+  /// Highest frame taken from each screen, by [shortScreen].
+  final Map<String, int> _shareSeen = {};
+  StreamSubscription? _shareSub;
+
+  /// Frames sent and taken, for the radio log line.
+  int _framesSent = 0;
+  int _framesTaken = 0;
+
+  /// Per screen, by [shortScreen]: its news and this screen's when they
+  /// last linked, and when that link ended (or opened, while it is up).
+  final Map<String, int?> _peerNewsAt = {};
+  final Map<String, int> _myNewsAt = {};
+  final Map<String, DateTime> _lastLinked = {};
+
+  /// When the advert of each screen, by [shortScreen], was last heard.
+  final Map<String, DateTime> _airSeen = {};
+
+  /// True while a Le'LED command is waiting for its answer: a visit under
+  /// way then ends at once, since the M10 hears next to nothing while
+  /// linked. Set by the app.
+  bool Function()? holdVisits;
+
+  /// Set by [_visitNow]: dial whatever the news says.
+  bool _urgent = false;
+
   /// Controls for a screen that only visits, sent when it next does.
   final Map<String, List<Map<String, Object?>>> _outbox = {};
   int _controlsRunning = 0;
@@ -272,16 +331,427 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     final out = linked;
     final now = DateTime.now();
     for (final (peer, at) in _visited.values) {
-      if (now.difference(at) < _visitGone && !out.contains(peer)) {
+      final air = _airSeen[shortScreen(peer.id)];
+      final around =
+          now.difference(at) < const Duration(seconds: 70) ||
+          (air != null && now.difference(air) < const Duration(seconds: 30));
+      if (around && !out.contains(peer)) {
         out.add(peer);
       }
     }
     return out;
   }
 
-  /// A screen that visits and has not come back for this long is out of
-  /// touch.
-  static const _visitGone = Duration(seconds: 70);
+  /// A screen still counts as around while its advert is heard, between
+  /// visits that bring its beacon: what that beacon said (which devices
+  /// it hears) stays good until its news says otherwise.
+  bool _alive(PeerInfo p, DateTime now) {
+    if (now.difference(p.heard) < _peerGone) return true;
+    final air = _airSeen[shortScreen(p.screen.id)];
+    return air != null && now.difference(air) < const Duration(seconds: 30);
+  }
+
+  /// A fingerprint of what this screen has to share, in one base-36
+  /// digit so it fits an iOS advert's name.
+  int get _news {
+    var h = 17;
+    for (final part in _newsParts().values) {
+      for (final v in part) {
+        h = (h * 31 + v.hashCode) & 0x3FFFFFFF;
+      }
+    }
+    return h % 36;
+  }
+
+  /// What [_news] is made of, by part, readable so a change can be named.
+  Map<String, List<Object>> _newsParts() => {
+    'keys': [_maxAt(keys.records.map((r) => r.at)), keys.records.length],
+    'read by': [_maxAt(readBy.records.map((r) => r.at)), readBy.records.length],
+    'layout': _layoutForNews(),
+    'outbox': [_outbox.values.fold<int>(0, (n, l) => n + l.length)],
+    // A status word the others may not know yet: a visit takes it over.
+    'words': [
+      for (final d in _ownShared())
+        for (final r in d.polled!.readings)
+          if (r.value case final String w when !_knownWord(w)) w,
+    ],
+    // Devices it hears, for who reads what; not their signal, which
+    // changes all the time.
+    'hears': _heardForNews(),
+  };
+
+  Map<String, List<Object>>? _lastParts;
+  final Map<String, Set<String>> _peerNewsLog = {};
+
+  /// The last few changes to this screen's news, newest last, sent in its
+  /// beacon so a screen whose own log cannot be read (an iPad on a
+  /// release build) can be seen from another's.
+  final List<String> _newsLog = [];
+
+  void _noteNews() {
+    final now = _newsParts();
+    final was = _lastParts;
+    _lastParts = now;
+    if (was == null) return;
+    String named(Object x) {
+      final name = tracker['$x'.split('/').first]?.latest.name;
+      return name == null ? '$x' : '$x ($name)';
+    }
+
+    final what = <String>[];
+    for (final k in now.keys) {
+      final a = was[k] ?? const [];
+      final b = now[k]!;
+      if (a.length == b.length &&
+          Iterable.generate(a.length).every((i) => a[i] == b[i])) {
+        continue;
+      }
+      if (k == 'keys' || k == 'read by' || k == 'outbox') {
+        what.add(k);
+        continue;
+      }
+      final gone = a.where((x) => !b.contains(x)).toList();
+      final came = b.where((x) => !a.contains(x)).toList();
+      what.add(
+        '$k${[for (final x in came) ' +${named(x)}', for (final x in gone) ' -${named(x)}'].join()}',
+      );
+    }
+    if (what.isEmpty) return;
+    final t = DateTime.now();
+    final line =
+        '${t.hour.toString().padLeft(2, '0')}:'
+        '${t.minute.toString().padLeft(2, '0')}:'
+        '${t.second.toString().padLeft(2, '0')} ${what.join(', ')}';
+    debugPrint('sync: news here: $line');
+    _newsLog.add(line);
+    if (_newsLog.length > 5) _newsLog.removeAt(0);
+  }
+
+  /// Words this screen has sent the others in a reading, on top of
+  /// [standardWords]; and words it has been sent.
+  final Set<String> _sentWords = {};
+  final Set<String> _heardWords = {};
+
+  bool _knownWord(String w) =>
+      standardWords.contains(w) || _sentWords.contains(w);
+
+  void _markSent(Iterable<SharedReading> rs) {
+    for (final r in rs) {
+      if (r.ownerId != home.me.id) continue;
+      for (final x in r.decoded.readings) {
+        if (x.value case final String w) _sentWords.add(w);
+      }
+    }
+  }
+
+  /// Hashes of the devices in this screen's beacon, over ten minutes so a
+  /// device that drops out for a moment does not count as news.
+  List<String> _heardForNews() {
+    final now = DateTime.now();
+    final ids = <String>[
+      for (final l in connections.links)
+        if (tracker[l.id] case final d?
+            when !d.remoteOnly &&
+                now.difference(d.lastSeen) < const Duration(minutes: 10))
+          l.id,
+    ]..sort();
+    return ids;
+  }
+
+  List<String> _layoutForNews() {
+    for (final d in _ownShared()) {
+      final gens = _shareLayout.putIfAbsent(d.id, () => {});
+      // A device that keeps changing shape is let off after a few.
+      if (gens.length < 6) gens.add(_gen(d.id, d.polled!));
+    }
+    return [
+      for (final id in _shareLayout.keys.toList()..sort())
+        '$id/${_shareIndexOf(id)}:${(_shareLayout[id]!.toList()..sort()).join('.')}',
+    ];
+  }
+
+  /// Devices this screen reads itself and shares, freshly read: within
+  /// three minutes, or two of its reads for one read less often, so it
+  /// does not drop out of the frames between reads.
+  Iterable<TrackedDevice> _ownShared() {
+    final now = DateTime.now();
+    return tracker.devices.where((d) {
+      final at = d.polledAt;
+      if (d.polled == null || d.polledBy != null || at == null) return false;
+      final every = connections[d.id]?.driver.interval;
+      var fresh = const Duration(minutes: 3);
+      if (every != null && every * 2 > fresh) fresh = every * 2;
+      return now.difference(at) < fresh;
+    });
+  }
+
+  static bool _isHex8(String s) => RegExp(r'^[0-9a-f]{8}$').hasMatch(s);
+
+  int _shareIndexOf(String id) =>
+      _shareIndex[id] ??= _shareIndex.length < 16 ? _shareIndex.length : 15;
+
+  /// A number for the shape of device [id]'s reading (0-15), from its
+  /// labels and units: frames say which shape they fill in. It starts as
+  /// a hash, and when two shapes of one device hash alike the newer one
+  /// takes the next free number, so they never mix (a Daly's reading with
+  /// and without time to go did, 2026-11-17).
+  int _gen(String id, Decoded d) {
+    final shape = [for (final r in d.readings) '${r.label}|${r.unit}']
+        .join('|');
+    final taken = _gens.putIfAbsent(id, () => {});
+    for (final e in taken.entries) {
+      if (e.value == shape) return e.key;
+    }
+    var h = 7;
+    for (final c in shape.codeUnits) {
+      h = (h * 31 + c) & 0x3FFFFFFF;
+    }
+    var g = h & 0xF;
+    for (var i = 0; i < 16 && taken.containsKey(g); i++) {
+      g = (g + 1) & 0xF;
+    }
+    if (taken.length >= 16) taken.clear();
+    taken[g] = shape;
+    return g;
+  }
+
+  final Map<String, Map<int, String>> _gens = {};
+
+  ShareKey? get _key {
+    final k = home.key;
+    if (k == null) return null;
+    final cached = _shareKey;
+    if (cached != null && identical(cached.$1, k)) return cached.$2;
+    final made = ShareKey(k);
+    _shareKey = (k, made);
+    return made;
+  }
+
+  /// The next share frame for the radio: the next two readings of the
+  /// next device this screen shares, round and round.
+  Uint8List? _nextShareFrame() {
+    final key = _key;
+    final me = shortScreen(home.me.id);
+    if (key == null || screens.length < 2 || !_isHex8(me)) return null;
+    final windows = <(TrackedDevice, int)>[];
+    for (final d in _ownShared()) {
+      if (_shareIndexOf(d.id) > 14) continue;
+      for (var i = 0; i < d.polled!.readings.length; i += 2) {
+        windows.add((d, i));
+      }
+    }
+    if (windows.isEmpty) return null;
+    final (d, at) = windows[_shareCursor++ % windows.length];
+    final rs = d.polled!.readings;
+    (double?, bool) val(int i) {
+      if (i >= rs.length) return (null, false);
+      return switch (rs[i].value) {
+        final num n => (n.toDouble(), true),
+        final bool b => (b ? 1.0 : 0.0, true),
+        null => (null, true),
+        _ => (null, false),
+      };
+    }
+
+    String? text(int i) => i < rs.length
+        ? switch (rs[i].value) {
+            final String w when _knownWord(w) => w,
+            _ => null,
+          }
+        : null;
+
+    final (a, hasA) = val(at);
+    final (b, hasB) = val(at + 1);
+    final floor = shareSeqFloor(DateTime.now());
+    _shareSeq = _shareSeq + 1 > floor ? _shareSeq + 1 : floor;
+    _framesSent++;
+    return shareSeal(
+      key,
+      me,
+      _shareSeq,
+      ShareValues(
+        _shareIndexOf(d.id),
+        _gen(d.id, d.polled!),
+        at,
+        a,
+        b,
+        hasA: hasA,
+        hasB: hasB,
+        textA: text(at),
+        textB: text(at + 1),
+      ),
+    );
+  }
+
+  void _onShare(HeardShare h) {
+    final key = _key;
+    if (key == null) return;
+    final me = shortScreen(home.me.id);
+    final owners = <String>{
+      for (final r in _shared.values)
+        if (r.shareIndex != null) shortScreen(r.ownerId),
+    };
+    for (final owner in owners) {
+      if (owner == me || !_isHex8(owner)) continue;
+      if (int.tryParse(owner.substring(0, 2), radix: 16) != h.src) continue;
+      if (h.seq <= (_shareSeen[owner] ?? -1)) continue;
+      final v = shareOpen(key, owner, h);
+      if (v == null) continue;
+      _shareSeen[owner] = h.seq;
+      for (final r in _shared.values.toList()) {
+        if (shortScreen(r.ownerId) != owner || r.shareIndex != v.device) {
+          continue;
+        }
+        if (r.shareGen == v.gen) {
+          _applyFrame(r, v);
+        } else if (_shapes[r.slot]?[v.gen] case final shape?) {
+          _applyFrame(_reshaped(r, shape, v.gen), v);
+        }
+      }
+      return;
+    }
+  }
+
+  /// [r] in another shape it has come in before: the readings of [shape],
+  /// with the values [r] has for them where it has them.
+  SharedReading _reshaped(SharedReading r, List<Reading> shape, int gen) {
+    final now = {for (final x in r.decoded.readings) '${x.label}|${x.unit}': x};
+    final d = r.decoded;
+    return SharedReading(
+      id: r.id,
+      name: r.name,
+      mac: r.mac,
+      fp: r.fp,
+      ownerId: r.ownerId,
+      ownerName: r.ownerName,
+      at: r.at,
+      every: r.every,
+      controllable: r.controllable,
+      shareIndex: r.shareIndex,
+      shareGen: gen,
+      decoded: Decoded(
+        protocol: d.protocol,
+        model: d.model,
+        kind: d.kind,
+        readings: [for (final x in shape) now['${x.label}|${x.unit}'] ?? x],
+        needs: d.needs,
+        info: d.info,
+        keyCheck: d.keyCheck,
+        decryptedAt: d.decryptedAt,
+      ),
+    );
+  }
+
+  void _applyFrame(SharedReading r, ShareValues v) {
+    final rs = [...r.decoded.readings];
+    void put(int i, double? x, bool has, int? code) {
+      if (!has || i >= rs.length) return;
+      final old = rs[i];
+      if (code != null) {
+        final w = [
+          ...standardWords,
+          ..._heardWords,
+        ].where((w) => textCode(w) == code).firstOrNull;
+        if (w != null) rs[i] = Reading(old.label, w, old.unit);
+        return;
+      }
+      final Object? value = switch (old.value) {
+        _ when x == null => null,
+        bool() => x >= 0.5,
+        int() => x.round(),
+        String() => old.value,
+        _ => x,
+      };
+      rs[i] = Reading(old.label, value, old.unit);
+    }
+
+    put(v.at, v.a, v.hasA, v.codeA);
+    put(v.at + 1, v.b, v.hasB, v.codeB);
+    final d = r.decoded;
+    final now = DateTime.now();
+    final fresh = SharedReading(
+      id: r.id,
+      name: r.name,
+      mac: r.mac,
+      fp: r.fp,
+      ownerId: r.ownerId,
+      ownerName: r.ownerName,
+      at: now,
+      every: r.every,
+      controllable: r.controllable,
+      shareIndex: r.shareIndex,
+      shareGen: r.shareGen,
+      decoded: Decoded(
+        protocol: d.protocol,
+        model: d.model,
+        kind: d.kind,
+        readings: rs,
+        needs: d.needs,
+        info: d.info,
+        keyCheck: d.keyCheck,
+        decryptedAt: d.decryptedAt,
+      ),
+    );
+    _shared[r.slot] = fresh;
+    _framesTaken++;
+    final local = _resolve(r.id, r.mac, r.name, r.fp);
+    _ownerSlotOf[local] = r.slot;
+    tracker.setRemote(
+      local,
+      decoded: fresh.decoded,
+      at: now,
+      by: r.ownerName,
+      name: r.name,
+      mac: parseMac(r.mac),
+    );
+  }
+
+  /// A reading from screen [s] that frames have not kept fresh, about to
+  /// count as gone (and this screen to try reading the device itself).
+  bool _goingStale(String s, DateTime now) {
+    for (final r in _shared.values) {
+      if (shortScreen(r.ownerId) != s) continue;
+      final left =
+          r.every * 3 + const Duration(seconds: 30) - now.difference(r.at);
+      if (left < const Duration(seconds: 20) && left > Duration.zero) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Whether to dial screen [s] now, going by the news in its advert and
+  /// this screen's own. Links that stay up (neither end visits) always go.
+  bool _wantsLink(PeerSighting h, String s, DateTime now) {
+    final visiting = visitEvery != null;
+    final visitor = _visitors.any((v) => shortScreen(v) == s);
+    if (_urgent || (!visiting && !visitor)) return true;
+    final last = _lastLinked[s];
+    if (last == null) return true;
+    final idle = now.difference(last);
+    final mineNew = _myNewsAt[s] != _news;
+    if (visiting) {
+      final why = mineNew
+          ? 'news here'
+          : h.news == null
+          ? 'no news in its advert'
+          : h.news != _peerNewsAt[s]
+          ? 'news there'
+          : idleVisit != null && idle > idleVisit!
+          ? 'check-in'
+          : _goingStale(s, now)
+          ? 'readings going stale'
+          : null;
+      if (why != null && !connecting) debugPrint('sync: visiting $s ($why)');
+      return why != null;
+    }
+    // The other screen visits: it dials when this one's news changes, and
+    // one whose advert carries news reads ours, so leave it to come. Only
+    // an older one that does not gets a call, if it has not come for a
+    // long while. Both dialling at once is how the M10's link flapped and
+    // its light commands went unheard (2026-11-17).
+    return h.news == null && mineNew && idle > androidDialWait;
+  }
 
   void _noLinks() {
     // Between visits the screens are still in touch; keep settling time
@@ -295,7 +765,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     final out = [
       home.me,
       for (final p in _peers.values)
-        if (now.difference(p.heard) < _peerGone) p.screen,
+        if (_alive(p, now)) p.screen,
     ];
     for (final l in _links.values) {
       if (!out.contains(l.s.peer)) out.add(l.s.peer);
@@ -320,6 +790,10 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     readBy.addListener(tracker.relabel);
     tracker.relabel();
     _sightingSub = radio.sightings.listen(_onSighting);
+    if (radio case final ShareRadio r) {
+      r.nextShare = _nextShareFrame;
+      _shareSub = r.shares.listen(_onShare);
+    }
     keys.addListener(_onKeys);
     readBy.addListener(_onReadBy);
     readBy.addListener(_applyChoices);
@@ -345,6 +819,8 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     _disposed = true;
     _tick?.cancel();
     _sightingSub?.cancel();
+    _shareSub?.cancel();
+    if (radio case final ShareRadio r) r.nextShare = null;
     _wakeEnd?.cancel();
     unawaited(_wakes.close());
     keys.removeListener(_onKeys);
@@ -473,7 +949,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     final out = <Hearing>[
       if (_heardScreens()[short] case final rssi?) (by: home.me, rssi: rssi),
       for (final p in _peers.values)
-        if (now.difference(p.heard) < _peerGone && p.sees[short] != null)
+        if (_alive(p, now) && p.sees[short] != null)
           (by: p.screen, rssi: p.sees[short]!),
     ];
     return out..sort((a, b) => b.rssi.compareTo(a.rssi));
@@ -627,7 +1103,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     final now = DateTime.now();
     final out = <Hearing>[];
     for (final p in _peers.values) {
-      if (p.phone || now.difference(p.heard) >= _peerGone) continue;
+      if (p.phone || !_alive(p, now)) continue;
       for (final d in p.hears) {
         if (_resolve(d.id, d.mac, d.name, d.fp) == id) {
           out.add((by: p.screen, rssi: d.rssi));
@@ -657,6 +1133,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     adding: adding,
     wakeLevel: _wakeLevel,
     wakeSeq: _wakeSeq,
+    news: _advertNews = _news,
   );
 
   int? _wakeLevel;
@@ -758,6 +1235,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
 
   void _onSighting(PeerSighting h) {
     nearby[h.id] = h;
+    if (h.screen case final s? when h.tag == home.tag) _airSeen[s] = h.seen;
     final level = h.wakeLevel;
     final s = h.screen;
     if (level == null || s == null) return;
@@ -826,8 +1304,26 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       _links.remove(s.peer.id);
       await old.s.close();
     }
+    if (mine && visitEvery != null && (holdVisits?.call() ?? false)) {
+      // A light command went out while this visit was dialling: hang up
+      // now so the M10 can hear the answer. The next visit catches up.
+      debugPrint('sync: ${s.peer.name} linked during a light command, closing');
+      await s.close();
+      return;
+    }
     final l = _links[s.peer.id] = _Link(s, mine);
     _linkedSince ??= DateTime.now();
+    final short = shortScreen(s.peer.id);
+    PeerSighting? heard;
+    for (final h in nearby.values) {
+      if (h.screen == short && (heard == null || h.seen.isAfter(heard.seen))) {
+        heard = h;
+      }
+    }
+    _peerNewsAt[short] = heard?.news;
+    _myNewsAt[short] = _news;
+    _lastLinked[short] = DateTime.now();
+    _urgent = false;
     debugPrint('sync: linked to ${s.peer.name} (${mine ? 'out' : 'in'})');
     _listen(s);
     unawaited(
@@ -837,6 +1333,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
         if (visitEvery != null || _visitors.contains(s.peer.id)) {
           _visited[s.peer.id] = (s.peer, DateTime.now());
         }
+        _lastLinked[shortScreen(s.peer.id)] = DateTime.now();
         if (_links[s.peer.id] == l) {
           _links.remove(s.peer.id);
           _noLinks();
@@ -878,7 +1375,9 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       (_, h) => now.difference(h.seen) > const Duration(seconds: 30),
     );
     _peers.removeWhere(
-      (_, p) => now.difference(p.heard) > const Duration(minutes: 5),
+      (_, p) =>
+          now.difference(p.heard) > const Duration(minutes: 5) &&
+          !_alive(p, now),
     );
     _seenReq.removeWhere(
       (_, t) => now.difference(t) > const Duration(minutes: 3),
@@ -910,6 +1409,11 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       if (pick != null) unawaited(_connectPeer(pick));
     }
     await _publishOwn();
+    if (_advertNews != null) _lastParts ??= _newsParts();
+    if (_serverUp && _advertNews != null && _advertNews != _news) {
+      _noteNews();
+      await _advertise();
+    }
     if (_ticks % 10 == 1) await _beacon();
     if (_ticks % 60 == 0) _logRadio();
     if (_ticks % 5 == 0) {
@@ -933,7 +1437,9 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
           _controlsRunning > 0 ||
           _pending.isNotEmpty ||
           _routes.values.any((r) => r.$1 == l.s);
-      final done = age >= visitLength && quiet >= visitQuiet;
+      final done =
+          (age >= visitLength && quiet >= visitQuiet) ||
+          (holdVisits?.call() ?? false);
       if (busy ? age < _visitMax * 6 : !done && age < _visitMax) continue;
       _links.remove(l.s.peer.id);
       _noLinks();
@@ -948,10 +1454,12 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
   /// person is waiting on. True once linked.
   Future<bool> _visitNow() async {
     _nextVisit.clear();
+    _urgent = true;
     final until = DateTime.now().add(const Duration(seconds: 15));
     while (!connected && DateTime.now().isBefore(until)) {
       await Future<void>.delayed(const Duration(milliseconds: 200));
     }
+    if (!connected) _urgent = false;
     return connected;
   }
 
@@ -970,6 +1478,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       // the smaller id goes first. The other waits, then goes anyway: the
       // smaller one may not be able to hear it (no advertising allowed).
       final first = _firstHeard.putIfAbsent(s, () => now);
+      if (!_wantsLink(h, s, now)) continue;
       final waited = now.difference(first);
       // An Android screen dials an iOS one, whatever the ids say.
       final wait = h.android == dialsFirst
@@ -992,8 +1501,11 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
     final t = SyncTraffic.take();
     debugPrint(
       'radio: last minute heard $heard adverts (${(heard / 60).toStringAsFixed(1)}/s); '
-      'sync sent ${t.messages} messages, ${t.bytes} B, on ${_links.length} links',
+      'sync sent ${t.messages} messages, ${t.bytes} B, on ${_links.length} links; '
+      'share frames sent $_framesSent, taken $_framesTaken',
     );
+    _framesSent = 0;
+    _framesTaken = 0;
   }
 
   /// Sends readings this screen took itself since the last tick, each
@@ -1012,6 +1524,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       out.add(_own(d));
     }
     if (out.isEmpty || !connected) return;
+    _markSent(out);
     await _broadcast({
       't': 'state',
       'r': [for (final r in out) r.toJson()],
@@ -1031,6 +1544,8 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       every: link?.driver.interval ?? const Duration(minutes: 1),
       controllable: link?.driver is ControllableDriver,
       decoded: d.polled!,
+      shareIndex: _shareIndexOf(d.id),
+      shareGen: _gen(d.id, d.polled!),
     );
   }
 
@@ -1061,6 +1576,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
       ],
       's': _heardScreens(),
       'l': _links.keys.toList(),
+      if (_newsLog.isNotEmpty) 'nw': _newsLog,
     };
   }
 
@@ -1087,6 +1603,7 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
         if (r.ownerId != s.peer.id && r.freshAt(now)) r,
     ];
     if (readings.isNotEmpty) {
+      _markSent(readings);
       await _sendTo(s, {
         't': 'state',
         'r': [for (final r in readings) r.toJson()],
@@ -1162,6 +1679,13 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
         if (id == home.me.id) return;
         final old = _peers[id];
         if (old != null && (m['q'] as num).toInt() <= old.seq) return;
+        if (m['nw'] case final List<Object?> log) {
+          final seen = _peerNewsLog[id] ?? const <String>{};
+          for (final l in log.whereType<String>()) {
+            if (!seen.contains(l)) debugPrint('sync: news at ${m['n']}: $l');
+          }
+          _peerNewsLog[id] = log.whereType<String>().toSet();
+        }
         final info = _peers[id] = PeerInfo.fromJson(m, DateTime.now());
         if (m['v'] != null) {
           _visitors.add(id);
@@ -1180,8 +1704,24 @@ class SyncService extends ChangeNotifier implements RemoteLinks, WakeShare {
         for (final j in (m['r'] as List? ?? const [])) {
           final r = SharedReading.fromJson((j as Map).cast());
           if (r.ownerId == home.me.id) continue;
+          for (final x in r.decoded.readings) {
+            if (x.value case final String w) _heardWords.add(w);
+          }
+          if (r.shareGen case final g?) {
+            final shapes = _shapes.putIfAbsent(r.slot, () => {});
+            if (shapes.length < 6 || shapes.containsKey(g)) {
+              shapes[g] = r.decoded.readings;
+            }
+          }
           final old = _shared[r.slot];
-          if (old != null && !r.at.isAfter(old.at)) continue;
+          // Frames date a reading when they land, so one from a visit can
+          // look older than what frames made of it; take it all the same
+          // when it is in another shape.
+          if (old != null &&
+              !r.at.isAfter(old.at) &&
+              r.shareGen == old.shareGen) {
+            continue;
+          }
           _shared[r.slot] = r;
           fresh.add(r);
           final local = _resolve(r.id, r.mac, r.name, r.fp);

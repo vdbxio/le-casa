@@ -117,6 +117,39 @@ void main() {
     expect(wakeLevelOf(wakeDigit(-40)), -35);
     expect(wakeLevelOf(wakeDigit(40)), 35);
     expect(ios?.wakeLevel, isNull);
+    // The news fingerprint: a byte after the screen (and after a wake) on
+    // Android, "=n" on iOS when nothing else needs the room.
+    expect(android?.news, isNull);
+    Uint8List mfrOf(List<int> tail) => Uint8List.fromList([
+      0x4c, 0x43, 0x00, //
+      0x1a, 0x2b, 0x3c, 0x4d, //
+      0x0f, 0x1e, 0x2d, 0x3c, ...tail,
+    ]);
+    final news = BleSyncRadio.sightingOf(
+      adv(
+        uuids: const [],
+        mfr: {
+          syncCompanyId: mfrOf([23]),
+        },
+      ),
+    );
+    expect(news?.news, 23);
+    expect(news?.wakeLevel, isNull);
+    final both = BleSyncRadio.sightingOf(
+      adv(
+        uuids: const [],
+        mfr: {
+          syncCompanyId: mfrOf([3, 128 + 7, 23]),
+        },
+      ),
+    );
+    expect((both?.wakeLevel, both?.news), (7, 23));
+    expect(woke?.news, isNull);
+    final iosNews = BleSyncRadio.sightingOf(
+      adv(name: 'LeCasa 1a2b3c4d.0f1e2d3c=${23.toRadixString(36)}'),
+    );
+    expect((iosNews?.screen, iosNews?.news), ('0f1e2d3c', 23));
+    expect(ios?.news, isNull);
     // Other test gear on 0xFFFF, and anything else, is not a screen.
     expect(
       BleSyncRadio.sightingOf(

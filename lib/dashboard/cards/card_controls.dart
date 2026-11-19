@@ -2,6 +2,8 @@
 // Copyright (C) 2026 Chloe Madison and contributors.
 // SPDX-License-Identifier: GPL-3.0-or-later WITH App-Store-Exception
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -60,6 +62,36 @@ class _CardControlsViewState extends State<CardControlsView> {
   bool _sending = false;
   bool _switching = false;
 
+  /// After a command lands, the card keeps showing what was sent until the
+  /// device's own reading catches up, so the number does not flick back to
+  /// the old value (and the next tap does not step from it). If the reading
+  /// never matches, the device's value wins after this long.
+  static const _hold = Duration(seconds: 4);
+  Timer? _wantTimer;
+  Timer? _powerTimer;
+
+  @override
+  void didUpdateWidget(CardControlsView old) {
+    super.didUpdateWidget(old);
+    if (!_sending && _want != null && _want == _stepper?.value) {
+      _wantTimer?.cancel();
+      _want = null;
+    }
+    if (!_switching &&
+        _wantPower != null &&
+        _wantPower == widget.controls.power) {
+      _powerTimer?.cancel();
+      _wantPower = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _wantTimer?.cancel();
+    _powerTimer?.cancel();
+    super.dispose();
+  }
+
   ConnectionManager? get _connections =>
       context.dependOnInheritedWidgetOfExactType<AppServices>()?.connections;
 
@@ -68,7 +100,12 @@ class _CardControlsViewState extends State<CardControlsView> {
 
   void _step(int by) {
     final s = _stepper!;
-    final next = (_shown + by).clamp(s.min, s.max);
+    // A step bigger than one lands on its multiples: 37 goes to 40, not 47.
+    final raw = _shown + by * s.step;
+    final next = (s.step > 1 ? (raw / s.step).round() * s.step : raw).clamp(
+      s.min,
+      s.max,
+    );
     if (next == _shown) return;
     HapticFeedback.selectionClick();
     setState(() => _want = next);
@@ -80,7 +117,9 @@ class _CardControlsViewState extends State<CardControlsView> {
     final connections = _connections;
     if (connections == null) return;
     final messenger = ScaffoldMessenger.of(context);
+    _wantTimer?.cancel();
     setState(() => _sending = true);
+    var ok = false;
     try {
       int? sent;
       while (_want != sent) {
@@ -90,6 +129,7 @@ class _CardControlsViewState extends State<CardControlsView> {
           DeviceCommand(s.setting, sent!),
         );
       }
+      ok = true;
     } catch (e) {
       messenger.showSnackBar(
         SnackBar(content: Text('Could not change the ${s.label}: $e')),
@@ -98,37 +138,57 @@ class _CardControlsViewState extends State<CardControlsView> {
       if (mounted) {
         setState(() {
           _sending = false;
-          _want = null;
+          if (!ok || _want == _stepper?.value) _want = null;
         });
+        if (_want != null) {
+          _wantTimer = Timer(_hold, () {
+            if (mounted) setState(() => _want = null);
+          });
+        }
       }
     }
   }
 
   Future<void> _togglePower() async {
     final connections = _connections;
-    if (connections == null || _switching) return;
-    final on = !(widget.controls.power ?? false);
+    if (connections == null) return;
+    final on = !(_wantPower ?? widget.controls.power ?? false);
     HapticFeedback.selectionClick();
+    _powerTimer?.cancel();
+    setState(() => _wantPower = on);
+    // A switch flips at once and takes taps while it sends; the send
+    // under way picks up the latest one, as the stepper does.
+    if (_switching) return;
     final messenger = ScaffoldMessenger.of(context);
-    setState(() {
-      _switching = true;
-      _wantPower = on;
-    });
+    setState(() => _switching = true);
+    var ok = false;
+    bool? sent;
     try {
-      await connections.control(
-        widget.controls.id,
-        DeviceCommand(widget.controls.powerSetting, on),
-      );
+      while (_wantPower != null && _wantPower != sent) {
+        sent = _wantPower;
+        await connections.control(
+          widget.controls.id,
+          DeviceCommand(widget.controls.powerSetting, sent!),
+        );
+      }
+      ok = true;
     } catch (e) {
       messenger.showSnackBar(
-        SnackBar(content: Text('Could not turn it ${on ? 'on' : 'off'}: $e')),
+        SnackBar(
+          content: Text('Could not turn it ${sent == true ? 'on' : 'off'}: $e'),
+        ),
       );
     } finally {
       if (mounted) {
         setState(() {
           _switching = false;
-          _wantPower = null;
+          if (!ok || _wantPower == widget.controls.power) _wantPower = null;
         });
+        if (_wantPower != null) {
+          _powerTimer = Timer(_hold, () {
+            if (mounted) setState(() => _wantPower = null);
+          });
+        }
       }
     }
   }
@@ -155,7 +215,7 @@ class _CardControlsViewState extends State<CardControlsView> {
         );
     final powerButton = power == null
         ? null
-        : _switching
+        : _switching && !widget.controls.toggle
         ? SizedBox.square(
             dimension: d,
             child: Center(

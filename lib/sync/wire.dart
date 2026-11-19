@@ -88,6 +88,11 @@ class SharedReading {
   final bool controllable;
   final Decoded decoded;
 
+  /// Its place in the owner's share table, and a hash of its reading
+  /// labels: share frames refresh the numbers by place (share_frame.dart).
+  final int? shareIndex;
+  final int? shareGen;
+
   const SharedReading({
     required this.id,
     required this.ownerId,
@@ -99,6 +104,8 @@ class SharedReading {
     this.fp,
     this.every = const Duration(minutes: 1),
     this.controllable = false,
+    this.shareIndex,
+    this.shareGen,
   });
 
   String get slot => '$ownerId|$id';
@@ -119,6 +126,8 @@ class SharedReading {
     'age': DateTime.now().difference(at).inMilliseconds,
     'every': every.inSeconds,
     if (controllable) 'ctl': true,
+    'si': ?shareIndex,
+    'sg': ?shareGen,
     'd': decodedToJson(decoded),
   };
 
@@ -136,6 +145,8 @@ class SharedReading {
     ),
     every: Duration(seconds: (j['every'] as num?)?.toInt() ?? 60),
     controllable: j['ctl'] == true,
+    shareIndex: (j['si'] as num?)?.toInt(),
+    shareGen: (j['sg'] as num?)?.toInt(),
     decoded: decodedFromJson((j['d'] as Map).cast()),
   );
 }

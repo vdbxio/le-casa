@@ -1,0 +1,55 @@
+; Le'LED build for Chloe's FLIP_C3 board (ESP32-C3-MINI-1, 4 MB flash).
+; tools/build.sh copies this into a WLED checkout as platformio_override.ini
+; and fills in @LELED_DIR@.
+;
+;   GPIO8   onboard WS2812, chained out to the RGBOUT header
+;   GPIO9   BOOT button = WLED button 0 (6 s opens the Wi-Fi AP, 10 s resets)
+;   GPIO10  red LED, blinks on every accepted Bluetooth command
+;
+; Library sources are pinned git URLs rather than PlatformIO registry names,
+; so the build also works where the registry is unreachable.
+
+[platformio]
+default_envs = flip_c3
+
+[env:flip_c3]
+extends = esp32c3
+platform = ${esp32c3.platform}
+platform_packages = ${esp32c3.platform_packages}
+framework = arduino
+board = esp32-c3-devkitm-1
+board_build.partitions = ${esp32.default_partitions}
+board_build.flash_mode = dio
+upload_speed = 460800
+monitor_speed = 115200
+monitor_filters = esp32_exception_decoder
+custom_usermods =
+  le_led = symlink://@LELED_DIR@
+build_unflags = ${common.build_unflags}
+  -D WLED_ENABLE_GIF
+build_flags = ${common.build_flags} ${esp32c3.build_flags}
+  -D WLED_RELEASE_NAME=\"FLIP_C3_LeLED\"
+  -D WLED_WATCHDOG_TIMEOUT=0
+  -D ARDUINO_USB_CDC_ON_BOOT=1
+  -D DATA_PINS=8
+  -D BTNPIN=9
+  -D RLYPIN=-1
+  -D IRPIN=-1
+  -D LELED_STATUS_PIN=10
+  -D WLED_DISABLE_ALEXA
+  -D WLED_DISABLE_HUESYNC
+  -D WLED_DISABLE_MQTT
+  -D WLED_DISABLE_INFRARED
+  -D WLED_DISABLE_LOXONE
+  -D WLED_DISABLE_ESPNOW
+  -D CONFIG_BT_NIMBLE_ROLE_CENTRAL_DISABLED
+  -D CONFIG_BT_NIMBLE_ROLE_PERIPHERAL_DISABLED
+lib_deps =
+  https://github.com/ESP32Async/AsyncTCP.git#v3.4.7
+  https://github.com/crankyoldgit/IRremoteESP8266.git#v2.8.2
+  https://github.com/Makuna/NeoPixelBus.git#1d7ff38f14d04a976f9c6e365c83a232bcba04fc
+  https://github.com/Aircoookie/ESPAsyncWebServer.git#v2.4.2
+  https://github.com/marvinroger/async-mqtt-client.git#v0.9.0
+  https://github.com/blazoncek/QuickESPNow.git#optional-debug
+  https://github.com/someweisguy/esp_dmx.git#47db25d8c515e76fabcf5fc5ab0b786f98eeade0
+  https://github.com/h2zero/NimBLE-Arduino.git#1.4.3

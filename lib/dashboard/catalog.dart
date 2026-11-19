@@ -8,6 +8,7 @@ import '../ble/device_tracker.dart';
 import '../decoders/decoded.dart';
 import '../drivers/heater_driver.dart';
 import '../drivers/heater_protocol.dart';
+import '../leproto/leled.dart' show leLedModel;
 import '../platform/tablet.dart';
 import '../ui/format.dart';
 import '../ui/palette.dart';
@@ -551,6 +552,7 @@ CardModel _switch(TrackedDevice d, Decoded v, String name, CardSources s) {
 /// A light whose state is what this screen last set; tapping toggles it,
 /// and turns it on when nothing has been set yet.
 CardModel _light(TrackedDevice d, Decoded v, String name) {
+  if (v.model == leLedModel) return _leLed(d, v, name);
   final on = _r(v, 'on')?.value;
   final onText = on == null ? null : (on == true ? 'On' : 'Off');
   return CardModel(
@@ -576,6 +578,44 @@ CardModel _light(TrackedDevice d, Decoded v, String name) {
       power: on == true,
       powerSetting: 'on',
       toggle: true,
+    ),
+  );
+}
+
+/// A Le'LED reports its own state, so the card shows the light as it is,
+/// with its switch and brightness.
+CardModel _leLed(TrackedDevice d, Decoded v, String name) {
+  final on = _r(v, 'on')?.value == true;
+  final bri = _n(v, 'brightness')?.round() ?? 0;
+  final pattern = _r(v, 'pattern')?.value as String?;
+  return CardModel(
+    title: name,
+    subtitle: v.model,
+    icon: Icons.lightbulb_outline,
+    tone: Tone.solar,
+    headline: Metric('Light', on ? 'On' : 'Off'),
+    details: [
+      if (pattern != null) Metric('Pattern', pattern),
+      if (pattern == 'Solid colour')
+        if (_r(v, 'colour')?.value case final String c) Metric('Colour', c),
+      if (_r(v, 'preset')?.value case final int p) Metric('Preset', '$p'),
+    ],
+    pillLabel: on ? 'on' : 'off',
+    action: ('on', !on),
+    controls: CardControls(
+      id: d.id,
+      power: on,
+      powerSetting: 'on',
+      toggle: true,
+      stepper: CardStepper(
+        setting: 'brightness',
+        label: 'Brightness',
+        value: bri.clamp(1, 100),
+        min: 1,
+        max: 100,
+        unit: '%',
+        step: 10,
+      ),
     ),
   );
 }

@@ -85,6 +85,9 @@ class CardStepper {
   final int max;
   final String unit;
 
+  /// How far one tap moves the value.
+  final int step;
+
   const CardStepper({
     required this.setting,
     required this.label,
@@ -92,6 +95,7 @@ class CardStepper {
     required this.min,
     required this.max,
     this.unit = '',
+    this.step = 1,
   });
 }
 

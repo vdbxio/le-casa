@@ -18,9 +18,11 @@ import '../ble/connection_manager.dart';
 import '../ble/gatt_link.dart';
 import '../ble/gatt_session.dart';
 import '../decoders/raw_advertisement.dart';
+import '../leproto/leproto.dart';
 import 'framing.dart';
 import 'home.dart';
 import 'radio.dart';
+import 'share_frame.dart';
 
 /// Largest sync chunk, in bytes. It fits one link-layer packet (251 bytes
 /// with data length extension, less the L2CAP and ATT headers). The M10's
@@ -68,7 +70,7 @@ Future<bool> disconnectWhenIdle(
   return true;
 }
 
-class BleSyncRadio implements SyncRadio {
+class BleSyncRadio implements SyncRadio, ShareRadio {
   final BleScanner scanner;
   PeripheralManager? _pmInstance;
   final _incoming = StreamController<MessageLink>.broadcast();
@@ -108,6 +110,11 @@ class BleSyncRadio implements SyncRadio {
         android: true,
         wakeSeq: m.length >= 13 ? m[11] : 0,
         wakeLevel: m.length >= 13 ? m[12] - 128 : null,
+        news: m.length == 12
+            ? m[11]
+            : m.length >= 14
+            ? m[13]
+            : null,
       );
     }
     final name = a.name;
@@ -120,6 +127,9 @@ class BleSyncRadio implements SyncRadio {
     // the name at 26 characters, which leaves room for two.
     final wake = RegExp(r'~([0-9a-z])$').firstMatch(rest);
     if (wake != null) rest = rest.substring(0, wake.start);
+    // "=n": the news fingerprint, when there is no wake or "+" to send.
+    final news = RegExp(r'=([0-9a-z])$').firstMatch(rest);
+    if (news != null) rest = rest.substring(0, news.start);
     final parts = rest.split('.');
     return PeerSighting(
       a.id,
@@ -131,65 +141,280 @@ class BleSyncRadio implements SyncRadio {
       wakeLevel: wake == null
           ? null
           : wakeLevelOf(int.parse(wake[1]!, radix: 36)),
+      news: news == null ? null : int.parse(news[1]!, radix: 36),
     );
   }
 
   bool _serving = false;
 
+  /// The sync advert to put back after [borrowAdvert].
+  PeerAdvert? _lastAd;
+  bool _borrowed = false;
+  bool _advertAuthorized = false;
+
+  /// Sync links under way that keep the sync advert off (Android). The
+  /// M10's chip locked up for good twice (vendor event 0x57, then no
+  /// answer to anything) moments after a visit's disconnect, while
+  /// Android was re-enabling the connectable advert it had stopped for
+  /// the link (2026-11-17). So the advert goes off before a link and
+  /// comes back only a few seconds after the last one drops.
+  int _advertHolds = 0;
+  Timer? _advertBack;
+  final Set<String> _heldCentrals = {};
+  static const _advertRest = Duration(seconds: 3);
+
+  Future<void> _holdAdvert() async {
+    if (_apple) return;
+    _advertHolds++;
+    _advertBack?.cancel();
+    if (_advertHolds > 1) return;
+    await _rotationDone();
+    if (_borrowed) return;
+    try {
+      await _pm.stopAdvertising();
+      debugPrint('sync: advert off for a link');
+    } catch (_) {
+      // Was not advertising.
+    }
+  }
+
+  void _releaseAdvert() {
+    if (_apple || _advertHolds == 0) return;
+    if (--_advertHolds > 0) return;
+    _advertBack?.cancel();
+    _advertBack = Timer(_advertRest, () {
+      final last = _lastAd;
+      if (_advertHolds > 0 || last == null || !_serving) return;
+      unawaited(
+        startServer(
+          last,
+        ).catchError((Object e) => debugPrint('sync: advert not restored: $e')),
+      );
+    });
+  }
+
+  /// No sync link opens until this, so quick taps on a light's card are
+  /// not split by one. A cheap tablet (the M10) all but stops hearing
+  /// adverts while it holds a GATT link, and so misses the light's ack.
+  DateTime _quietUntil = DateTime(0);
+  // Taps come in bursts, and the M10 can stay deaf for seconds after a
+  // link closes, so leave room for the next few.
+  static const _quietAfterSend = Duration(seconds: 30);
+
+  /// Whether this screen holds a sync link it dialled. Le'Proto waits
+  /// longer for an ack while one is open (see [_quietAfterSend]).
+  bool get linkOpen => _GattChunkLink.open > 0;
+
+  /// A Le'Proto command is out, or went out in the last 5 s: a sync visit
+  /// up now should hang up so this screen can hear its answer.
+  bool get commandBusy =>
+      _borrowed ||
+      DateTime.now().isBefore(
+        _quietUntil.subtract(_quietAfterSend - const Duration(seconds: 5)),
+      );
+
+  /// Puts [ad] on air instead of the sync advert while [hold] runs, then
+  /// brings the sync advert back. Le'Proto commands go out this way: the
+  /// plugin runs one advert at a time.
+  Future<void> borrowAdvert(
+    Advertisement ad,
+    Future<void> Function() hold,
+  ) async {
+    final pm = _pm;
+    if (!_advertAuthorized) {
+      try {
+        await pm.authorize().timeout(const Duration(seconds: 8));
+      } on UnsupportedError {
+        // iOS asks by itself.
+      } on TimeoutException {
+        debugPrint('leproto: no answer to the permission request');
+      }
+      _advertAuthorized = true;
+    }
+    _borrowed = true;
+    await _rotationDone();
+    try {
+      try {
+        await pm.stopAdvertising();
+      } catch (_) {
+        // Was not advertising.
+      }
+      await pm.startAdvertising(ad).timeout(const Duration(seconds: 5));
+      await hold();
+    } finally {
+      try {
+        await pm.stopAdvertising();
+      } catch (_) {}
+      _borrowed = false;
+      _quietUntil = DateTime.now().add(_quietAfterSend);
+      if (_lastAd case final last?) {
+        try {
+          await startServer(last);
+        } catch (e) {
+          debugPrint('sync: advert not restored: $e');
+        }
+      }
+    }
+  }
+
   @override
   Future<void> startServer(PeerAdvert ad) async {
+    _lastAd = ad;
+    // Back on air when the borrowed advert ends.
+    if (_borrowed) return;
+    await _rotationDone();
     if (!_serving) await _serve(ad.tag);
     _serving = true;
+    // Back on air a few seconds after the last link drops.
+    if (_advertHolds > 0) return;
     final pm = _pm;
     try {
       await pm.stopAdvertising();
     } catch (_) {
       // Was not advertising.
     }
-    final apple =
-        defaultTargetPlatform == TargetPlatform.iOS ||
-        defaultTargetPlatform == TargetPlatform.macOS;
     debugPrint('sync: starting advert');
+    _onShare = false;
     await pm
-        .startAdvertising(
-          // iOS adverts carry only a name and service UUIDs, so everything goes
-          // in the name there. On Android a name would rename the tablet's
-          // Bluetooth, so it rides in manufacturer data instead, without the
-          // 16-byte service UUID: both do not fit in a legacy advert.
-          apple
-              ? Advertisement(
-                  name:
-                      '$syncNamePrefix${ad.tag}.${ad.screen}'
-                      '${ad.adding
-                          ? '+'
-                          : ad.wakeLevel == null
-                          ? ''
-                          : '~${wakeDigit(ad.wakeLevel!).toRadixString(36)}'}',
-                  serviceUUIDs: [UUID.fromString(syncServiceUuid)],
-                )
-              : Advertisement(
-                  manufacturerSpecificData: [
-                    ManufacturerSpecificData(
-                      id: syncCompanyId,
-                      data: Uint8List.fromList([
-                        ...syncMagic,
-                        ad.adding ? 1 : 0,
-                        ...fromHexString(ad.tag),
-                        ...fromHexString(ad.screen),
-                        if (ad.wakeLevel case final l?) ...[
-                          ad.wakeSeq & 0xFF,
-                          (l + 128).clamp(0, 255),
-                        ],
-                      ]),
-                    ),
-                  ],
-                ),
-        )
+        .startAdvertising(_syncAdvertisement(ad))
         .timeout(
           const Duration(seconds: 10),
           onTimeout: () => throw StateError('Starting the advert timed out'),
         );
     debugPrint('sync: advertising ${ad.tag} as ${ad.screen}');
+  }
+
+  static bool get _apple =>
+      defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.macOS;
+
+  static Advertisement _syncAdvertisement(PeerAdvert ad) {
+    final apple = _apple;
+    return
+    // iOS adverts carry only a name and service UUIDs, so everything goes
+    // in the name there. On Android a name would rename the tablet's
+    // Bluetooth, so it rides in manufacturer data instead, without the
+    // 16-byte service UUID: both do not fit in a legacy advert.
+    apple
+        ? Advertisement(
+            name:
+                '$syncNamePrefix${ad.tag}.${ad.screen}'
+                '${ad.adding
+                    ? '+'
+                    : ad.wakeLevel != null
+                    ? '~${wakeDigit(ad.wakeLevel!).toRadixString(36)}'
+                    : ad.news != null
+                    ? '=${(ad.news! % 36).toRadixString(36)}'
+                    : ''}',
+            serviceUUIDs: [UUID.fromString(syncServiceUuid)],
+          )
+        : Advertisement(
+            manufacturerSpecificData: [
+              ManufacturerSpecificData(
+                id: syncCompanyId,
+                data: Uint8List.fromList([
+                  ...syncMagic,
+                  ad.adding ? 1 : 0,
+                  ...fromHexString(ad.tag),
+                  ...fromHexString(ad.screen),
+                  if (ad.wakeLevel case final l?) ...[
+                    ad.wakeSeq & 0xFF,
+                    (l + 128).clamp(0, 255),
+                  ],
+                  if (ad.news case final n?) n & 0xFF,
+                ]),
+              ),
+            ],
+          );
+  }
+
+  // ---- share frames ---------------------------------------------------------
+
+  Uint8List? Function()? _nextShare;
+  Timer? _rotation;
+  bool _onShare = false;
+  bool _rotating = false;
+  int _syncSlots = 0;
+
+  /// The air is shared in slots: the sync advert for two, then one share
+  /// frame, so other screens still see the advert (and its news) often.
+  static const _shareSlot = Duration(milliseconds: 400);
+
+  @override
+  set nextShare(Uint8List? Function()? f) {
+    _nextShare = f;
+    if (f == null) {
+      _rotation?.cancel();
+      _rotation = null;
+      return;
+    }
+    _rotation ??= Timer.periodic(_shareSlot, (_) => _rotate());
+  }
+
+  @override
+  Stream<HeardShare> get shares => scanner.advertisements
+      .map((a) => shareFind(a.manufacturerData, a.longServiceUuids))
+      .where((h) => h != null)
+      .cast();
+
+  Future<void> _rotate() async {
+    final next = _nextShare;
+    final last = _lastAd;
+    if (_rotating || _borrowed || !_serving || next == null || last == null) {
+      return;
+    }
+    // Leave the advertiser alone while a sync link is up and for a few
+    // seconds after it drops. The M10's chip locked up for good (vendor
+    // event 0x57, then no answer to anything) right after a visit's
+    // disconnect while the advertiser was being re-enabled (2026-11-17).
+    if (_advertHolds > 0 ||
+        _GattChunkLink.open > 0 ||
+        _links.isNotEmpty ||
+        DateTime.now().isBefore(_GattChunkLink.quietUntil)) {
+      return;
+    }
+    _rotating = true;
+    try {
+      final pm = _pm;
+      if (_onShare) {
+        _onShare = false;
+        _syncSlots = 0;
+        await _swap(pm, _syncAdvertisement(last));
+        return;
+      }
+      if (++_syncSlots < 2) return;
+      final frame = next();
+      if (frame == null) return;
+      _onShare = true;
+      await _swap(
+        pm,
+        _apple
+            ? Advertisement(serviceUUIDs: [UUID.fromString(lepUuid(frame))])
+            : Advertisement(
+                manufacturerSpecificData: [
+                  ManufacturerSpecificData(id: syncCompanyId, data: frame),
+                ],
+              ),
+      );
+    } catch (e) {
+      debugPrint('sync: share advert failed: $e');
+    } finally {
+      _rotating = false;
+    }
+  }
+
+  static Future<void> _swap(PeripheralManager pm, Advertisement ad) async {
+    try {
+      await pm.stopAdvertising();
+    } catch (_) {}
+    await pm.startAdvertising(ad).timeout(const Duration(seconds: 3));
+  }
+
+  /// Lets a share frame that is going on air finish first.
+  Future<void> _rotationDone() async {
+    for (var i = 0; _rotating && i < 100; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
   }
 
   Future<void> _serve(String tag) async {
@@ -277,10 +502,10 @@ class BleSyncRadio implements SyncRadio {
         if (e.state) {
           // A new subscription is a new link, even when iOS never told us
           // the last one from this screen went away.
-          _links.remove(e.central.uuid.toString())?._gone();
+          _dropCentral(e.central.uuid.toString());
           await _linkFor(e.central);
         } else {
-          _links.remove(e.central.uuid.toString())?._gone();
+          _dropCentral(e.central.uuid.toString());
         }
       }),
     ]);
@@ -289,7 +514,7 @@ class BleSyncRadio implements SyncRadio {
       _subs.add(
         pm.connectionStateChanged.listen((e) {
           if (e.state == ConnectionState.disconnected) {
-            _links.remove(e.central.uuid.toString())?._gone();
+            _dropCentral(e.central.uuid.toString());
           }
         }),
       );
@@ -314,6 +539,12 @@ class BleSyncRadio implements SyncRadio {
     debugPrint('sync server: service added');
   }
 
+  void _dropCentral(String id) {
+    _links.remove(id)?._gone();
+    if (_heldCentrals.remove(id)) _releaseAdvert();
+    _GattChunkLink.quietUntil = DateTime.now().add(const Duration(seconds: 3));
+  }
+
   Future<_CentralLink> _linkFor(Central c) async {
     final key = c.uuid.toString();
     // A link this screen gave up on (silent for too long) stays in the map
@@ -330,6 +561,7 @@ class BleSyncRadio implements SyncRadio {
     }
     final again = _links[key];
     if (again != null && !again.isClosed) return again;
+    if (_heldCentrals.add(key)) unawaited(_holdAdvert());
     final link = _links[key] = _CentralLink(
       _pm,
       c,
@@ -354,6 +586,10 @@ class BleSyncRadio implements SyncRadio {
       await l.close();
     }
     _links.clear();
+    _lastAd = null;
+    _heldCentrals.clear();
+    _advertHolds = 0;
+    _advertBack?.cancel();
     final pm = _pmInstance;
     if (pm == null) return;
     try {
@@ -365,7 +601,12 @@ class BleSyncRadio implements SyncRadio {
   }
 
   @override
-  Future<MessageLink> connect(PeerSighting peer) {
+  Future<MessageLink> connect(PeerSighting peer) async {
+    final until = DateTime.now().add(const Duration(seconds: 45));
+    while ((_borrowed || DateTime.now().isBefore(_quietUntil)) &&
+        DateTime.now().isBefore(until)) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
     final c = connections;
     // The connect gives up after 32 s and each step after it has its own
     // limit, so exclusive's 60 s is only a backstop.
@@ -390,6 +631,8 @@ class BleSyncRadio implements SyncRadio {
         scanner.scanning &&
         await RadioWrites.settle();
     if (wasScanning) await scanner.stop();
+    // The advert stays off until this link is gone.
+    await _holdAdvert();
     GattLink? link;
     try {
       for (var attempt = 1; ; attempt++) {
@@ -406,6 +649,9 @@ class BleSyncRadio implements SyncRadio {
           await Future<void>.delayed(Duration(milliseconds: 700 * attempt));
         }
       }
+    } catch (_) {
+      _releaseAdvert();
+      rethrow;
     } finally {
       if (wasScanning) unawaited(scanner.resume());
     }
@@ -419,8 +665,11 @@ class BleSyncRadio implements SyncRadio {
       debugPrint(
         'sync: connected to ${peer.id}, chunks of $chunk (MTU allows $max)',
       );
-      return MessageLink(_GattChunkLink(l, rx, stream, chunk));
+      return MessageLink(
+        _GattChunkLink(l, rx, stream, chunk, onGone: _releaseAdvert),
+      );
     } catch (_) {
+      _releaseAdvert();
       await l.close();
       rethrow;
     }
@@ -492,11 +741,40 @@ class _GattChunkLink implements ChunkLink {
   /// Screens whose old link is still waiting to be disconnected.
   static final Set<String> lingering = {};
 
-  _GattChunkLink(this._link, this._rx, this._stream, this.maxChunk) {
+  /// Links of this kind not yet dropped.
+  static int open = 0;
+
+  /// No advert swaps until then: the last link dropped moments ago.
+  static DateTime quietUntil = DateTime(0);
+
+  /// Called once, when the link is gone either way.
+  final void Function()? onGone;
+  bool _gone = false;
+
+  _GattChunkLink(
+    this._link,
+    this._rx,
+    this._stream,
+    this.maxChunk, {
+    this.onGone,
+  }) {
+    open++;
     _link.onDisconnected.then((_) {
       if (!_closed.isCompleted) _closed.complete();
       lingering.remove(_id);
+      _dropped();
     });
+  }
+
+  /// The device dropped the link, or this end's disconnect went through.
+  /// A link closed from here never hears its own disconnect, so both
+  /// count.
+  void _dropped() {
+    if (_gone) return;
+    _gone = true;
+    open--;
+    quietUntil = DateTime.now().add(const Duration(seconds: 3));
+    onGone?.call();
   }
 
   String get _id => _link.peripheral.uuid.toString();
@@ -518,13 +796,17 @@ class _GattChunkLink implements ChunkLink {
     if (!_closed.isCompleted) _closed.complete();
     if (_link.droppedByDevice) {
       await _link.close();
+      _dropped();
       return;
     }
     lingering.add(_id);
     unawaited(
       disconnectWhenIdle(_inFlight, _link.close, 'link to $_id').then((done) {
         // Still stuck: it stays lingering until the link drops.
-        if (done) lingering.remove(_id);
+        if (done) {
+          lingering.remove(_id);
+          _dropped();
+        }
       }),
     );
   }

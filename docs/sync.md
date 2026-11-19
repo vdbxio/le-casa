@@ -94,6 +94,41 @@ every screen directly.
   hears from about 30 broadcasts a second to about 2, whatever the link's
   interval, role or traffic (measured 2026-10-27). A control for a screen
   that visits waits for its next visit; a control from one dials at once.
+- News: each screen's advert carries a one-digit fingerprint of what it
+  has to share (keys, Read by choices, its own readings, queued
+  controls): a byte after the screen id on Android, "=n" at the end of
+  the name on iOS when the wake word or "+" is not using the room. A
+  screen that visits dials only when either fingerprint has changed since
+  the last visit, or after 2 minutes for the beacons. A screen still
+  counts as around while its advert is heard. No sync link opens while a
+  Le'LED command waits for its answer, or for 30 s after (2026-11-17: the
+  M10 missed most answers when a visit overlapped).
+- Share frames (2026-11-17): readings also go out as 16-byte adverts,
+  so a screen that visits gets them without a link. A screen's advert
+  takes turns: the sync advert for 0.8 s, then one frame for 0.4 s (on
+  Android as manufacturer data 0xFFFF, on iOS as one 128-bit service
+  UUID). A frame is `'S'`, the first byte of the sender's screen id, a
+  32-bit sequence number (at least a quarter-second count since
+  2026-11-01, so it climbs across restarts), then AES-CCM under a key
+  from the home key (HKDF "LeCasa share v0"): the device's place in the
+  sender's share table and a 4-bit hash of its labels, which reading,
+  and two values as half floats, with a 4-byte MIC. The nonce holds all
+  four bytes of the screen id. A visit still brings the whole reading
+  (labels, units, text); frames then refresh its numbers and switches in
+  place. Status words go as a 10-bit hash in a negative NaN; the other
+  end matches it against a built-in list of common words and any it was
+  given on a visit, and a word it cannot know yet counts as news.
+  Readings no longer count as news, and there is no regular check-in
+  (2026-11-17): a screen counts as around while its advert is heard, and
+  the devices each screen hears are news only when the set changes. A
+  visiting screen also goes when a reading it was given is about to go
+  stale, in case frames are not getting through. Advert swaps pause
+  while a sync link is up and for 3 s after it drops: the M10's
+  Bluetooth chip locked up for good right after a visit's disconnect
+  while its advertiser was being re-enabled. It did so a second time with
+  only the sync advert on air, so an Android screen now takes its advert
+  off before it dials a visit or as a visit reaches it, and puts it back
+  3 s after the last link is gone.
 - Each screen shares a new reading of a device it reads at most every
   10 seconds. Messages are deflated before they are sealed, once the
   other screen's beacon says it can read them.

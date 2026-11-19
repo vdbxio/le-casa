@@ -11,6 +11,7 @@ import 'dart:typed_data';
 
 import 'package:pointycastle/export.dart';
 
+import '../leproto/leled.dart';
 import 'bthome_objects.dart';
 import 'decoded.dart';
 import 'decoder.dart';
@@ -95,7 +96,7 @@ class BtHomeDecoder implements Decoder {
     }
 
     var offset = 1;
-    Uint8List? mac = adv.mac;
+    Uint8List? mac = adv.mac ?? _scanResponseMac(adv);
     if (macIncluded) {
       if (data.length < 7) return null;
       // MAC is sent reversed (little-endian).
@@ -109,6 +110,7 @@ class BtHomeDecoder implements Decoder {
     };
 
     Uint8List payload;
+    Uint8List? usedKey;
     if (encrypted) {
       if (data.length < offset + 8 + 1) {
         return Decoded(
@@ -134,7 +136,10 @@ class BtHomeDecoder implements Decoder {
       Uint8List? plain;
       if (key != null && useMac != null) {
         plain = tryWith(key, useMac);
-        if (plain != null) mac = useMac;
+        if (plain != null) {
+          mac = useMac;
+          usedKey = key;
+        }
       }
       if (plain == null) {
         final found = _found[adv.id];
@@ -144,6 +149,7 @@ class BtHomeDecoder implements Decoder {
           plain = tryWith(found.$1, found.$2);
           if (plain != null) {
             mac = found.$2;
+            usedKey = found.$1;
           } else {
             _found.remove(adv.id);
           }
@@ -154,6 +160,7 @@ class BtHomeDecoder implements Decoder {
         if (hit != null) {
           plain = hit.$1;
           mac = hit.$2;
+          usedKey = _found[adv.id]?.$1;
         }
       }
       if (mac != null) extra['mac'] = hex(mac, sep: ':').toUpperCase();
@@ -256,6 +263,11 @@ class BtHomeDecoder implements Decoder {
       }
     }
 
+    if (encrypted && usedKey != null) {
+      final led = leLedDecoded(adv.id, usedKey, readings, extra);
+      if (led != null) return led;
+    }
+
     final model = _guessModel(
       adv,
       readings,
@@ -271,6 +283,21 @@ class BtHomeDecoder implements Decoder {
       info: extra,
       keyCheck: encrypted ? KeyCheck.works : null,
     );
+  }
+
+  /// MACs devices put in their scan response, by id, for screens whose
+  /// radio hides them (iOS, macOS). Le'LED does this.
+  final Map<String, Uint8List> _scanMacs = {};
+
+  /// A MAC in manufacturer data 0xFFFF after the mark 0x4D, or the last one
+  /// seen from this id.
+  Uint8List? _scanResponseMac(RawAdvertisement adv) {
+    final m = adv.manufacturerData[0xFFFF];
+    // Le'LED adds its health after the MAC (see firmware/le-led/PROTOCOL.md).
+    if (m != null && m.length >= 7 && m[0] == 0x4D) {
+      return _scanMacs[adv.id] = Uint8List.fromList(m.sublist(1, 7));
+    }
+    return _scanMacs[adv.id];
   }
 
   /// Tries the stored keys that could belong to [id]. With [key] set, only

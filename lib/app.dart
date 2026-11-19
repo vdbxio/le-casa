@@ -18,6 +18,7 @@ import 'decoders/raw_advertisement.dart';
 import 'decoders/registry.dart';
 import 'drivers/driver.dart';
 import 'keys/key_store.dart';
+import 'leproto/sender.dart';
 import 'platform/tablet.dart';
 import 'settings/design_store.dart';
 import 'settings/dimmer.dart';
@@ -153,12 +154,16 @@ class _LeCasaAppState extends State<LeCasaApp> {
   late final SettingsStore settings = SettingsStore();
   late final WeatherService weather = WeatherService(settings);
   late final HomeStore home = HomeStore();
+  late final BleSyncRadio radio = BleSyncRadio(
+    scanner,
+    connections: connections,
+  );
   late final SyncService sync = SyncService(
     home: home,
     tracker: tracker,
     keys: keys,
     connections: connections,
-    radio: BleSyncRadio(scanner, connections: connections),
+    radio: radio,
     dialsFirst: defaultTargetPlatform == TargetPlatform.android,
     // Cheap Android tablets hear a tenth of the broadcasts around them
     // while a link is up, so they visit the other screens instead.
@@ -199,6 +204,11 @@ class _LeCasaAppState extends State<LeCasaApp> {
         .then((_) => home.load())
         .then((_) => sync.readBy.load())
         .then((_) => sync.start());
+    connections.leProto = LeProtoSender(
+      radio.borrowAdvert,
+      linkBusy: () => radio.linkOpen,
+    );
+    sync.holdVisits = () => radio.commandBusy;
     connections.load();
     dashboard.load();
     people.load();

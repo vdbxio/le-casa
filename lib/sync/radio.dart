@@ -2,7 +2,10 @@
 // Copyright (C) 2026 Chloe Madison and contributors.
 // SPDX-License-Identifier: GPL-3.0-or-later WITH App-Store-Exception
 
+import 'dart:typed_data';
+
 import 'framing.dart';
+import 'share_frame.dart';
 
 /// The one Le'Casa GATT service, shared by screen sync now and the
 /// phone companion and Le' devices later. "LeCasa" in the first bytes.
@@ -54,12 +57,18 @@ class PeerAdvert {
   final int? wakeLevel;
   final int wakeSeq;
 
+  /// A fingerprint (0-35) of what this screen has to share: keys, Read by
+  /// records, its own readings. A screen that only visits dials when it
+  /// changes, instead of every few seconds.
+  final int? news;
+
   const PeerAdvert(
     this.tag,
     this.screen, {
     this.adding = false,
     this.wakeLevel,
     this.wakeSeq = 0,
+    this.news,
   });
 }
 
@@ -85,6 +94,9 @@ class PeerSighting {
   final int? wakeLevel;
   final int wakeSeq;
 
+  /// See [PeerAdvert.news]; null when the advert had no room for it.
+  final int? news;
+
   const PeerSighting(
     this.id,
     this.tag,
@@ -95,6 +107,7 @@ class PeerSighting {
     this.android = false,
     this.wakeLevel,
     this.wakeSeq = 0,
+    this.news,
   });
 }
 
@@ -116,4 +129,14 @@ abstract interface class SyncRadio {
 
   /// Connects to a screen. Throws when it cannot.
   Future<MessageLink> connect(PeerSighting peer);
+}
+
+/// A radio that can also put share frames on the air between its sync
+/// adverts and hear other screens' (share_frame.dart).
+abstract interface class ShareRadio {
+  /// Asked for the next frame whenever there is room on the air; null when
+  /// this screen has nothing to share.
+  set nextShare(Uint8List? Function()? f);
+
+  Stream<HeardShare> get shares;
 }

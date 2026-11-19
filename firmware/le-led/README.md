@@ -101,6 +101,7 @@ can be changed on the settings page.
 | --- | --- | --- |
 | `enabled` | on | |
 | `btOnly` | on | keeps WLED's AP closed until BOOT is held 6 s. Leave the Wi-Fi network empty so Wi-Fi stays off |
+| `scanPct` | 50 | % of the time spent listening for Bluetooth (at most 33 while Wi-Fi is up). Lower makes effects smoother, commands a little slower |
 | `key` | made at first boot | 32 hex. Clear it to make a new one |
 | `statusPin` | 10 on FLIP_C3 | LED that blinks on each accepted command, -1 for none |
 | `fob1`-`fob4` | empty | Le'Fob (or other encrypted BTHome remote) keys |

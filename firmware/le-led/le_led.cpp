@@ -30,6 +30,10 @@
 #define LELED_BT_ONLY true // keep the Wi-Fi AP closed unless the button asks
 #endif
 
+#ifndef LELED_SCAN_PCT
+#define LELED_SCAN_PCT 50
+#endif
+
 #define LELED_FOBS 4
 #define LELED_IDLE_INTERVAL_MS 1000
 #define LELED_FAST_INTERVAL_MS 30
@@ -87,6 +91,8 @@ class LeLedUsermod : public Usermod {
  private:
   bool enabled = true;
   bool btOnly = LELED_BT_ONLY;
+  // Share of the time spent listening for Bluetooth, in percent.
+  int scanPct = LELED_SCAN_PCT;
   bool initDone = false;
   bool bleUp = false;
   int8_t statusPin = LELED_STATUS_PIN;
@@ -268,14 +274,20 @@ class LeLedUsermod : public Usermod {
     NimBLEDevice::getAdvertising()->setScanResponseData(rsp);
   }
 
-  /// Bluetooth and Wi-Fi share the C3's one radio. With Wi-Fi off (the
-  /// usual btOnly case) the scan takes all of it, so no command is heard
-  /// late; while Wi-Fi is up it takes a third, or the setup page crawls.
+  /// How much of the time the light listens for Bluetooth: [scanPct]
+  /// (half, by default) of every 60 ms, and at most a third while Wi-Fi
+  /// is up, since both share the C3's one radio and the setup page
+  /// crawls otherwise. Listening all the time made effects stutter on a
+  /// 100-pixel strip (2026-11-19): every advert heard interrupts the one
+  /// core that also drives the LEDs. Commands still land quickly, since
+  /// screens repeat them every 30 ms until the light answers.
   void setScanDuty(bool shared) {
     NimBLEScan *scan = NimBLEDevice::getScan();
     if (scan->isScanning()) scan->stop();
-    scan->setInterval(shared ? 96 : 40);
-    scan->setWindow(shared ? 32 : 40);
+    int pct = scanPct < 10 ? 10 : scanPct > 100 ? 100 : scanPct;
+    if (shared && pct > 33) pct = 33;
+    scan->setInterval(96); // 60 ms
+    scan->setWindow((uint16_t)(96 * pct / 100));
     scan->start(0, nullptr, false);
     scanShared = shared;
   }
@@ -503,6 +515,7 @@ class LeLedUsermod : public Usermod {
     JsonObject top = root.createNestedObject(FPSTR(_name));
     top[F("enabled")] = enabled;
     top[F("btOnly")] = btOnly;
+    top[F("scanPct")] = scanPct;
     top[F("key")] = keyHex;
     top[F("statusPin")] = statusPin;
     for (int i = 0; i < LELED_FOBS; i++) {
@@ -521,6 +534,7 @@ class LeLedUsermod : public Usermod {
     if (top.isNull()) return false;
     getJsonValue(top[F("enabled")], enabled);
     getJsonValue(top[F("btOnly")], btOnly);
+    getJsonValue(top[F("scanPct")], scanPct);
     getJsonValue(top[F("key")], keyHex);
     getJsonValue(top[F("statusPin")], statusPin);
     for (int i = 0; i < LELED_FOBS; i++) {
@@ -532,12 +546,16 @@ class LeLedUsermod : public Usermod {
       snprintf(k, sizeof k, "b%dlong", i + 1);
       getJsonValue(top[k], longPress[i]);
     }
-    if (initDone) loadKeys(); // edited from the settings page
+    if (initDone) {
+      loadKeys(); // edited from the settings page
+      if (bleUp) setScanDuty(scanShared);
+    }
     return true;
   }
 
   void appendConfigData(Print &s) override {
     s.print(F("addInfo('LeLED:btOnly',1,'keep Wi-Fi off; leave the Wi-Fi network empty');"));
+    s.print(F("addInfo('LeLED:scanPct',1,'% of time listening for Bluetooth (10-100). Lower = smoother effects, slower commands');"));
     s.print(F("addInfo('LeLED:key',1,'32 hex. Enter it in Le\\'Casa. Empty = make a new one');"));
     s.print(F("addInfo('LeLED:fob1',1,'Le\\'Fob key (hold SW2 5 s on USB to type it here)');"));
     s.print(F("addInfo('LeLED:b1',1,'WLED JSON for button 1 press');"));
